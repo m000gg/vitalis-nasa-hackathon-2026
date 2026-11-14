@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { CrewSlot, MISSIONS, MissionProfile } from "@/lib/domain";
+import { CrewSlot, MissionProfile } from "@/lib/domain";
 import { HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards/types";
 
-let cachedClient: SupabaseClient | null | undefined;
+let cachedClient: SupabaseClient | undefined;
 
 export function isSupabaseConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,8 +13,8 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && key);
 }
 
-export function getSupabaseServerClient(): SupabaseClient | null {
-  if (cachedClient !== undefined) return cachedClient;
+export function getSupabaseServerClient(): SupabaseClient {
+  if (cachedClient) return cachedClient;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
@@ -23,8 +23,9 @@ export function getSupabaseServerClient(): SupabaseClient | null {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    cachedClient = null;
-    return null;
+    throw new Error(
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local."
+    );
   }
 
   cachedClient = createClient(url, key, {
@@ -95,19 +96,16 @@ function mapCharacterRow(row: CharacterRow): CrewSlot {
   };
 }
 
-export async function fetchScenariosFromDb(): Promise<{ source: "supabase" | "local"; scenarios: MissionProfile[] }> {
+export async function fetchScenariosFromDb(): Promise<{ scenarios: MissionProfile[] }> {
   const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", scenarios: MISSIONS };
-  }
 
   const { data: scenarioRows, error: sErr } = await client
     .from("scenarios")
     .select("*")
     .order("created_at", { ascending: true });
 
-  if (sErr || !scenarioRows || scenarioRows.length === 0) {
-    return { source: "local", scenarios: MISSIONS };
+  if (sErr) {
+    throw new Error(`Supabase error fetching public.scenarios: ${sErr.message}`);
   }
 
   const { data: characterRows, error: cErr } = await client
@@ -115,11 +113,11 @@ export async function fetchScenariosFromDb(): Promise<{ source: "supabase" | "lo
     .select("*")
     .order("created_at", { ascending: true });
 
-  if (cErr || !characterRows) {
-    return { source: "local", scenarios: MISSIONS };
+  if (cErr) {
+    throw new Error(`Supabase error fetching public.characters: ${cErr.message}`);
   }
 
-  const mapped: MissionProfile[] = (scenarioRows as ScenarioRow[]).map((s) => ({
+  const mapped: MissionProfile[] = ((scenarioRows ?? []) as ScenarioRow[]).map((s) => ({
     id: s.id,
     name: s.name,
     phase: s.phase,
@@ -128,12 +126,12 @@ export async function fetchScenariosFromDb(): Promise<{ source: "supabase" | "lo
     activeHazardsHighlight: s.active_hazards_highlight ?? [],
     scenarioDescriptionSlot: s.scenario_description,
     environment: s.environment,
-    crew: (characterRows as CharacterRow[])
+    crew: ((characterRows ?? []) as CharacterRow[])
       .filter((c) => c.scenario_id === s.id)
       .map(mapCharacterRow),
   }));
 
-  return { source: "supabase", scenarios: mapped };
+  return { scenarios: mapped };
 }
 
 export async function createScenarioInDb(input: {
@@ -143,7 +141,9 @@ export async function createScenarioInDb(input: {
   scenarioDescriptionSlot: string;
   commsDelayLabel: string;
   leaderCallsign?: string;
-}): Promise<{ source: "supabase" | "local"; scenario: MissionProfile; error?: string }> {
+}): Promise<{ scenario: MissionProfile }> {
+  const client = getSupabaseServerClient();
+
   const defaultLeader: CrewSlot = {
     id: `${input.id}-lead`,
     callsign: input.leaderCallsign || "Leader — Commander",
@@ -188,11 +188,6 @@ export async function createScenarioInDb(input: {
     crew: [defaultLeader],
   };
 
-  const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", scenario };
-  }
-
   const { error: sErr } = await client.from("scenarios").insert({
     id: scenario.id,
     name: scenario.name,
@@ -205,10 +200,10 @@ export async function createScenarioInDb(input: {
   });
 
   if (sErr) {
-    return { source: "local", scenario, error: sErr.message };
+    throw new Error(`Supabase error inserting into public.scenarios: ${sErr.message}`);
   }
 
-  await client.from("characters").insert({
+  const { error: cErr } = await client.from("characters").insert({
     id: defaultLeader.id,
     scenario_id: scenario.id,
     callsign: defaultLeader.callsign,
@@ -222,7 +217,11 @@ export async function createScenarioInDb(input: {
     metrics: defaultLeader.metrics,
   });
 
-  return { source: "supabase", scenario };
+  if (cErr) {
+    throw new Error(`Supabase error inserting default leader into public.characters: ${cErr.message}`);
+  }
+
+  return { scenario };
 }
 
 export async function createCharacterInDb(input: {
@@ -233,7 +232,9 @@ export async function createCharacterInDb(input: {
   isLeadSlot: boolean;
   readinessState: CrewSlot["readinessState"];
   evaGateState: CrewSlot["evaGateState"];
-}): Promise<{ source: "supabase" | "local"; character: CrewSlot; error?: string }> {
+}): Promise<{ character: CrewSlot }> {
+  const client = getSupabaseServerClient();
+
   const character: CrewSlot = {
     id: input.id,
     callsign: input.callsign,
@@ -258,11 +259,6 @@ export async function createCharacterInDb(input: {
     },
   };
 
-  const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", character };
-  }
-
   const { error } = await client.from("characters").insert({
     id: character.id,
     scenario_id: input.scenarioId,
@@ -278,21 +274,18 @@ export async function createCharacterInDb(input: {
   });
 
   if (error) {
-    return { source: "local", character, error: error.message };
+    throw new Error(`Supabase error inserting into public.characters: ${error.message}`);
   }
 
-  return { source: "supabase", character };
+  return { character };
 }
 
 export async function fetchHazardDataFromDb(params: {
   scenarioId: string;
   characterId: string;
   hazardSlug?: HazardSlug;
-}): Promise<{ source: "supabase" | "local"; records: HazardDataRecord[] }> {
+}): Promise<{ records: HazardDataRecord[] }> {
   const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", records: [] };
-  }
 
   let query = client
     .from("character_hazard_data")
@@ -305,11 +298,11 @@ export async function fetchHazardDataFromDb(params: {
   }
 
   const { data, error } = await query.order("updated_at", { ascending: false });
-  if (error || !data) {
-    return { source: "local", records: [] };
+  if (error) {
+    throw new Error(`Supabase error fetching public.character_hazard_data: ${error.message}`);
   }
 
-  const records: HazardDataRecord[] = (data as HazardDataRow[]).map((r) => ({
+  const records: HazardDataRecord[] = ((data ?? []) as HazardDataRow[]).map((r) => ({
     id: r.id,
     scenarioId: r.scenario_id,
     characterId: r.character_id,
@@ -320,7 +313,7 @@ export async function fetchHazardDataFromDb(params: {
     updatedAt: r.updated_at,
   }));
 
-  return { source: "supabase", records };
+  return { records };
 }
 
 export async function upsertHazardDataInDb(input: {
@@ -330,7 +323,9 @@ export async function upsertHazardDataInDb(input: {
   streamName: string;
   rawValue: string;
   payload?: Record<string, unknown>;
-}): Promise<{ source: "supabase" | "local"; record: HazardDataRecord; error?: string }> {
+}): Promise<{ record: HazardDataRecord }> {
+  const client = getSupabaseServerClient();
+
   const record: HazardDataRecord = {
     id: `${input.scenarioId}__${input.characterId}__${input.hazardSlug}__${input.streamName}`.replace(/\s+/g, "_"),
     scenarioId: input.scenarioId,
@@ -341,11 +336,6 @@ export async function upsertHazardDataInDb(input: {
     payload: input.payload ?? { rawValue: input.rawValue },
     updatedAt: new Date().toISOString(),
   };
-
-  const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", record };
-  }
 
   const { error } = await client.from("character_hazard_data").upsert(
     {
@@ -362,10 +352,10 @@ export async function upsertHazardDataInDb(input: {
   );
 
   if (error) {
-    return { source: "local", record, error: error.message };
+    throw new Error(`Supabase error upserting public.character_hazard_data: ${error.message}`);
   }
 
-  return { source: "supabase", record };
+  return { record };
 }
 
 export async function fetchHazardSamplesFromDb(params: {
@@ -373,11 +363,8 @@ export async function fetchHazardSamplesFromDb(params: {
   characterId: string;
   hazardSlug?: HazardSlug;
   streamName?: string;
-}): Promise<{ source: "supabase" | "local"; samples: HazardSampleRecord[] }> {
+}): Promise<{ samples: HazardSampleRecord[] }> {
   const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", samples: [] };
-  }
 
   let query = client
     .from("character_hazard_samples")
@@ -393,11 +380,11 @@ export async function fetchHazardSamplesFromDb(params: {
   }
 
   const { data, error } = await query.order("recorded_at", { ascending: true });
-  if (error || !data) {
-    return { source: "local", samples: [] };
+  if (error) {
+    throw new Error(`Supabase error fetching public.character_hazard_samples: ${error.message}`);
   }
 
-  const samples: HazardSampleRecord[] = (data as HazardSampleRow[]).map((r) => ({
+  const samples: HazardSampleRecord[] = ((data ?? []) as HazardSampleRow[]).map((r) => ({
     id: r.id,
     scenarioId: r.scenario_id,
     characterId: r.character_id,
@@ -408,7 +395,7 @@ export async function fetchHazardSamplesFromDb(params: {
     recordedAt: r.recorded_at,
   }));
 
-  return { source: "supabase", samples };
+  return { samples };
 }
 
 export async function insertHazardSampleInDb(input: {
@@ -418,7 +405,9 @@ export async function insertHazardSampleInDb(input: {
   streamName: string;
   numericValue?: number | null;
   samplePayload?: Record<string, unknown>;
-}): Promise<{ source: "supabase" | "local"; sample: HazardSampleRecord; error?: string }> {
+}): Promise<{ sample: HazardSampleRecord }> {
+  const client = getSupabaseServerClient();
+
   const now = new Date().toISOString();
   const sample: HazardSampleRecord = {
     id: `${input.scenarioId}__${input.characterId}__${input.hazardSlug}__${Date.now()}_${Math.random()
@@ -428,15 +417,13 @@ export async function insertHazardSampleInDb(input: {
     characterId: input.characterId,
     hazardSlug: input.hazardSlug,
     streamName: input.streamName,
-    numericValue: typeof input.numericValue === "number" && Number.isFinite(input.numericValue) ? input.numericValue : null,
+    numericValue:
+      typeof input.numericValue === "number" && Number.isFinite(input.numericValue)
+        ? input.numericValue
+        : null,
     samplePayload: input.samplePayload ?? {},
     recordedAt: now,
   };
-
-  const client = getSupabaseServerClient();
-  if (!client) {
-    return { source: "local", sample };
-  }
 
   const { error } = await client.from("character_hazard_samples").insert({
     id: sample.id,
@@ -450,8 +437,8 @@ export async function insertHazardSampleInDb(input: {
   });
 
   if (error) {
-    return { source: "local", sample, error: error.message };
+    throw new Error(`Supabase error inserting into public.character_hazard_samples: ${error.message}`);
   }
 
-  return { source: "supabase", sample };
+  return { sample };
 }

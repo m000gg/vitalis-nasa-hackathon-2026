@@ -39,56 +39,70 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { source, samples } = await fetchHazardSamplesFromDb({
-    scenarioId,
-    characterId,
-    hazardSlug: hazardSlugParam as HazardSlug | undefined,
-    streamName,
-  });
+  try {
+    const { samples } = await fetchHazardSamplesFromDb({
+      scenarioId,
+      characterId,
+      hazardSlug: hazardSlugParam as HazardSlug | undefined,
+      streamName,
+    });
 
-  return NextResponse.json({
-    source,
-    scenarioId,
-    characterId,
-    hazardSlug: hazardSlugParam ?? null,
-    samples,
-  });
+    return NextResponse.json({
+      source: "supabase",
+      scenarioId,
+      characterId,
+      hazardSlug: hazardSlugParam ?? null,
+      samples,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to fetch hazard samples from Supabase";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
+  let body: Partial<{
+    scenarioId: string;
+    characterId: string;
+    hazardSlug: string;
+    streamName: string;
+    numericValue: number | null;
+    samplePayload: Record<string, unknown>;
+  }>;
+
   try {
-    const body = (await request.json()) as Partial<{
-      scenarioId: string;
-      characterId: string;
-      hazardSlug: string;
-      streamName: string;
-      numericValue: number | null;
-      samplePayload: Record<string, unknown>;
-    }>;
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON payload for hazard sample" },
+      { status: 400 }
+    );
+  }
 
-    const scenarioId = body.scenarioId?.trim() ?? "";
-    const characterId = body.characterId?.trim() ?? "";
-    const hazardSlug = body.hazardSlug?.trim() ?? "";
-    const streamName = body.streamName?.trim() ?? "";
+  const scenarioId = body.scenarioId?.trim() ?? "";
+  const characterId = body.characterId?.trim() ?? "";
+  const hazardSlug = body.hazardSlug?.trim() ?? "";
+  const streamName = body.streamName?.trim() ?? "";
 
-    if (!scenarioId || !characterId || !hazardSlug || !streamName) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing required fields: scenarioId, characterId, hazardSlug, streamName",
-        },
-        { status: 400 }
-      );
-    }
+  if (!scenarioId || !characterId || !hazardSlug || !streamName) {
+    return NextResponse.json(
+      {
+        error:
+          "Missing required fields: scenarioId, characterId, hazardSlug, streamName",
+      },
+      { status: 400 }
+    );
+  }
 
-    if (!isValidHazardSlug(hazardSlug)) {
-      return NextResponse.json(
-        { error: `Invalid hazardSlug '${hazardSlug}'` },
-        { status: 400 }
-      );
-    }
+  if (!isValidHazardSlug(hazardSlug)) {
+    return NextResponse.json(
+      { error: `Invalid hazardSlug '${hazardSlug}'` },
+      { status: 400 }
+    );
+  }
 
-    const result = await insertHazardSampleInDb({
+  try {
+    const { sample } = await insertHazardSampleInDb({
       scenarioId,
       characterId,
       hazardSlug,
@@ -100,28 +114,15 @@ export async function POST(request: NextRequest) {
       samplePayload: body.samplePayload,
     });
 
-    if (result.error) {
-      return NextResponse.json(
-        {
-          error: result.error,
-          source: result.source,
-          sample: result.sample,
-        },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json(
       {
-        source: result.source,
-        sample: result.sample,
+        source: "supabase",
+        sample,
       },
       { status: 201 }
     );
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON payload for hazard sample" },
-      { status: 400 }
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to insert hazard sample in Supabase";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

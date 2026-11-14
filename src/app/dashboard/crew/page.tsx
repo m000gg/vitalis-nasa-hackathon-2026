@@ -21,9 +21,7 @@ export default function CrewOrCheckInPage() {
   } = useMission();
   const { pushToast } = useAlerts();
 
-  const [unlockTarget, setUnlockTarget] = useState(
-    mission.crew.find((c) => !c.isLeadSlot)?.callsign ?? mission.crew[0].callsign
-  );
+  const [unlockTarget, setUnlockTarget] = useState("");
   const [unlockReason, setUnlockReason] = useState("");
   const [rotationNote, setRotationNote] = useState("");
 
@@ -38,6 +36,16 @@ export default function CrewOrCheckInPage() {
     health48h: false,
     isle: true,
   });
+
+  if (!mission || !activeCharacter) {
+    return <DashboardShell>{null}</DashboardShell>;
+  }
+
+  const effectiveUnlockTarget =
+    unlockTarget ||
+    mission.crew.find((c) => !c.isLeadSlot)?.callsign ||
+    mission.crew[0]?.callsign ||
+    "";
 
   const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
   const myPrivateCheckIns = privateCheckIns.filter((entry) => entry.actorId === activeCharacter.id);
@@ -56,7 +64,7 @@ export default function CrewOrCheckInPage() {
   const handleEmergencyUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     const reasonText = unlockReason.trim() || "Add your info: Justification for emergency detail unlock here";
-    addAuditEntry(unlockTarget, reasonText, "Emergency Medical Detail Unlock");
+    addAuditEntry(effectiveUnlockTarget, reasonText, "Emergency Medical Detail Unlock");
     try {
       await fetch("/api/emergency/events", {
         method: "POST",
@@ -64,7 +72,7 @@ export default function CrewOrCheckInPage() {
         body: JSON.stringify({
           type: "EMERGENCY_UNLOCK",
           actorRole: "lead",
-          detail: `${unlockTarget} — ${reasonText}`,
+          detail: `${effectiveUnlockTarget} — ${reasonText}`,
         }),
       });
     } catch {
@@ -73,7 +81,7 @@ export default function CrewOrCheckInPage() {
     setUnlockReason("");
     pushToast({
       title: "Emergency Unlock Logged",
-      message: `Here is: Audit entry recorded for ${unlockTarget} and member notified.`,
+      message: `Here is: Audit entry recorded for ${effectiveUnlockTarget} and member notified.`,
       variant: "warning",
     });
   };
@@ -185,7 +193,7 @@ export default function CrewOrCheckInPage() {
 
               <form onSubmit={handleEmergencyUnlock} className="space-y-2.5 text-xs">
                 <select
-                  value={unlockTarget}
+                  value={effectiveUnlockTarget}
                   onChange={(e) => setUnlockTarget(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
                 >

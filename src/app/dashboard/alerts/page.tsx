@@ -13,6 +13,10 @@ export default function AlertsAndAlarmsPage() {
   const { triggerAlarm } = useAlerts();
   const { mission, activeCharacter, role, reentryMode, shelterConfirmations, actorInputs, auditLog } = useMission();
 
+  if (!mission || !activeCharacter) {
+    return <DashboardShell>{null}</DashboardShell>;
+  }
+
   const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
   const characterModel = evaluateCharacterDashboard(activeCharacter, {
     shelterConfirmed: !!shelterConfirmations[activeCharacter.id],

@@ -39,9 +39,9 @@ Copy `.env.example` to `.env.local` (never commit `.env.local`).
 - **API Key:** `SUPABASE_SERVICE_ROLE_KEY` -> `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - **Optional direct Postgres metadata/migrations (server-only):** `SUPABASE_DB_NAME`, `SUPABASE_DB_PASSWORD`
 
-Behavior & RLS notes:
-- **Automatic Local Fallback:** When `NEXT_PUBLIC_SUPABASE_URL` and a valid key are unset, or when remote tables are not yet initialized/empty, `fetchScenariosFromDb()` falls back to local `MISSIONS` (`source: "local"`) so offline development still works cleanly.
-- **Database Initialization:** Run `supabase/schema.sql` once in the Supabase SQL Editor to create the tables, indexes, and starter seed rows.
+Behavior & Strict Error Policy (No Silent DB Fallbacks):
+- **No Database Fallbacks:** The app requires a live Supabase connection. There is **no** local fallback for database reads or writes. If env vars are missing, `supabase/schema.sql` has not been executed, RLS blocks access, or any Supabase query fails, `src/lib/supabase/server.ts` throws an explicit `Error`, `/api/*` routes return HTTP `500` with `{ error }`, and the UI surfaces a visible Supabase error banner/toast.
+- **Database Initialization:** Run `supabase/schema.sql` once in the Supabase SQL Editor to create the tables, indexes, and starter seed rows. If `public.scenarios` has 0 rows, the UI shows an explicit empty-database prompt rather than faking data.
 - **RLS vs Server Key:** If Row Level Security (RLS) is enabled on those tables in Supabase, either add explicit RLS policies for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or provide `SUPABASE_SERVICE_ROLE_KEY` on the server.
 
 ### 3-Area Table & API Split (+ Time-Series Samples)
@@ -103,7 +103,7 @@ Every hazard file is organized into three clearly labeled comment sections so AI
 
 - `src/lib/hazards/types.ts` & `src/lib/hazards/index.ts` — Shared TypeScript interfaces (`HazardSpec`, `HazardEvaluationInput`, `HazardEvaluationResult`, `HazardDataRecord`) and registry array `HAZARDS`.
 - `src/lib/evaluator.ts` — Info-agnostic overview evaluators (`evaluateCharacterDashboard`, `evaluateLeaderDashboard`, `evaluateHazardForActor`).
-- `src/lib/domain.ts` — Core types (`MissionProfile`, `CrewSlot`, `DtnMessage`, `AuditLogEntry`) and fallback `MISSIONS`.
+- `src/lib/domain.ts` — Core types (`MissionProfile`, `CrewSlot`, `DtnMessage`, `AuditLogEntry`) and static domain reference lists (`MEDICAL_INVENTORY_SLOTS`, `BUDDY_RESCUE_STEPS`, `TEAM_BUFFS_SLOTS`, `TEAM_DEBUFFS_SLOTS`).
 - `src/context/MissionContext.tsx` & `src/context/AlertContext.tsx` — App state, Supabase `/api/*` synchronization, toasts, and alarms.
 
 ---

@@ -18,7 +18,7 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     mission,
     activeCharacter,
     role,
-    dbSource,
+    dbStatus,
     linkOnline,
     reentryMode,
     actorInputs,
@@ -28,13 +28,18 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
   } = useMission();
   const { pushToast } = useAlerts();
 
-  const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [subfieldDrafts, setSubfieldDrafts] = useState<Record<string, Record<string, string>>>({});
 
   if (!hazard) {
     notFound();
   }
+
+  if (!mission || !activeCharacter) {
+    return <DashboardShell>{null}</DashboardShell>;
+  }
+
+  const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
 
   const scopedRecords = hazardRecords.filter((r) => r.hazardSlug === hazard.slug);
   const scopedSamples = hazardSamples.filter((s) => s.hazardSlug === hazard.slug);
@@ -52,73 +57,87 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     const savedRec = scopedRecords.find((r) => r.streamName === streamName);
     const shouldSample = Boolean(recordSample || forceSample);
 
-    if (subfields && subfields.length > 0) {
-      const savedPayload = savedRec?.payload ?? {};
-      const currentDrafts = subfieldDrafts[streamName] ?? {};
-      const payloadObj: Record<string, unknown> = {};
-      const summaryParts: string[] = [];
-      let firstNumeric: number | null = null;
+    try {
+      if (subfields && subfields.length > 0) {
+        const savedPayload = savedRec?.payload ?? {};
+        const currentDrafts = subfieldDrafts[streamName] ?? {};
+        const payloadObj: Record<string, unknown> = {};
+        const summaryParts: string[] = [];
+        let firstNumeric: number | null = null;
 
-      subfields.forEach((sf) => {
-        const prevVal = typeof savedPayload[sf.key] === "string" || typeof savedPayload[sf.key] === "number"
-          ? String(savedPayload[sf.key])
-          : "";
-        const val = (currentDrafts[sf.key] ?? prevVal).trim();
-        if (val) {
-          const num = Number(val);
-          const isNum = sf.fieldType === "number" && Number.isFinite(num);
-          payloadObj[sf.key] = isNum ? num : val;
-          if (isNum && firstNumeric === null) {
-            firstNumeric = num;
+        subfields.forEach((sf) => {
+          const prevVal = typeof savedPayload[sf.key] === "string" || typeof savedPayload[sf.key] === "number"
+            ? String(savedPayload[sf.key])
+            : "";
+          const val = (currentDrafts[sf.key] ?? prevVal).trim();
+          if (val) {
+            const num = Number(val);
+            const isNum = sf.fieldType === "number" && Number.isFinite(num);
+            payloadObj[sf.key] = isNum ? num : val;
+            if (isNum && firstNumeric === null) {
+              firstNumeric = num;
+            }
+            summaryParts.push(`${sf.label}: ${val}${sf.unit ? ` ${sf.unit}` : ""}`);
           }
-          summaryParts.push(`${sf.label}: ${val}${sf.unit ? ` ${sf.unit}` : ""}`);
-        }
-      });
+        });
 
-      const summaryVal = summaryParts.join(", ");
-      if (summaryVal) {
+        const summaryVal = summaryParts.join(", ");
+        if (!summaryVal) {
+          pushToast({
+            title: `${hazard.shortTitle}: No Input`,
+            message: `Here is: Add your info to ${streamName} to save to Supabase.`,
+            variant: "info",
+          });
+          return;
+        }
+
         await saveActorInput(streamName, summaryVal, hazard.slug, {
           payload: payloadObj,
           numericValue: firstNumeric,
           recordSample: shouldSample,
         });
+
+        pushToast({
+          title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged to Supabase" : "Structured Input Saved"}`,
+          message: `Here is: ${summaryVal} saved for ${activeCharacter.callsign}.`,
+          variant: "success",
+        });
+        return;
       }
 
-      pushToast({
-        title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged" : "Structured Input Saved"}`,
-        message: summaryVal
-          ? `Here is: ${summaryVal} stored for ${activeCharacter.callsign} (${
-              dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"
-            }).`
-          : `Here is: Add your info to ${streamName} to update character telemetry.`,
-        variant: summaryVal ? "success" : "info",
-      });
-      return;
-    }
+      const persisted = savedRec?.rawValue ?? "";
+      const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? persisted).trim();
+      if (!val) {
+        pushToast({
+          title: `${hazard.shortTitle}: No Input`,
+          message: `Here is: Add your info to ${streamName} to save to Supabase.`,
+          variant: "info",
+        });
+        return;
+      }
 
-    const persisted = savedRec?.rawValue ?? "";
-    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? persisted).trim();
-    const numericCandidate = Number(val);
-    const numericValue =
-      val !== "" && Number.isFinite(numericCandidate) ? numericCandidate : null;
+      const numericCandidate = Number(val);
+      const numericValue = Number.isFinite(numericCandidate) ? numericCandidate : null;
 
-    if (val) {
       await saveActorInput(streamName, val, hazard.slug, {
         payload: numericValue !== null ? { rawValue: val, value: numericValue, unit: slot.unit } : { rawValue: val },
         numericValue,
         recordSample: shouldSample,
       });
-    }
 
-    pushToast({
-      title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged" : "Input Saved"}`,
-      message: val
-        ? `Here is: "${val}" stored for ${activeCharacter.callsign} in ${streamName} (${
-            dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"
-          }).`
-        : `Here is: Add your info to ${streamName} to update character telemetry.`,
-      variant: val ? "success" : "info",
-    });
+      pushToast({
+        title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged to Supabase" : "Input Saved"}`,
+        message: `Here is: "${val}" saved for ${activeCharacter.callsign} in ${streamName}.`,
+        variant: "success",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save telemetry to Supabase";
+      pushToast({
+        title: "Supabase Write Error",
+        message: msg,
+        variant: "hazard",
+      });
+    }
   };
 
   const charts = snapshot.charts ?? [];
@@ -135,13 +154,13 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                dbSource === "supabase"
+                dbStatus === "connected"
                   ? "bg-emerald-50 text-emerald-700"
-                  : "bg-slate-100 text-slate-600"
+                  : "bg-red-100 text-red-800"
               }`}
             >
               <Database className="h-3 w-3" />
-              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"} · {scopedRecords.length} saved ·{" "}
+              {dbStatus === "connected" ? "Supabase Connected" : "Supabase Error"} · {scopedRecords.length} saved ·{" "}
               {scopedSamples.length} samples
             </span>
             <span className="font-mono text-xs text-slate-400">

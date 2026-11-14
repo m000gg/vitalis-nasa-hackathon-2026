@@ -172,10 +172,10 @@ export function AlertLayer() {
                   </ul>
                   <div>
                     <p className="mb-2 text-xs font-semibold text-slate-400">
-                      Crew Shelter Tracker ({mission.name})
+                      Crew Shelter Tracker ({mission?.name ?? "No Scenario"})
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {mission.crew.map((member) => {
+                      {(mission?.crew ?? []).map((member) => {
                         const confirmed = !!shelterConfirmations[member.id];
                         return (
                           <button

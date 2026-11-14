@@ -23,6 +23,10 @@ export default function DashboardOverviewPage() {
     hazardSamples,
   } = useMission();
 
+  if (!mission || !activeCharacter) {
+    return <DashboardShell>{null}</DashboardShell>;
+  }
+
   const characterModel = evaluateCharacterDashboard(activeCharacter, {
     shelterConfirmed: !!shelterConfirmations[activeCharacter.id],
     reentryMode,

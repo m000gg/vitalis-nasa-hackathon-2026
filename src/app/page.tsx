@@ -2,14 +2,14 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Database, Plus, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Database, Plus, RefreshCw, Users } from "lucide-react";
 import { MissionProfile } from "@/lib/domain";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
 
 export default function GreetingScenarioPage() {
   const router = useRouter();
-  const { scenarios, dbSource, setMissionId, createScenario } = useMission();
+  const { scenarios, dbStatus, dbError, refreshScenarios, setMissionId, createScenario } = useMission();
   const { pushToast } = useAlerts();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -34,30 +34,36 @@ export default function GreetingScenarioPage() {
     e.preventDefault();
     if (!name.trim()) return;
     setCreating(true);
-    const result = await createScenario({
-      name: name.trim(),
-      phase: phase.trim() || "Add your info: Mission phase here",
-      scenarioDescriptionSlot:
-        scenarioDescriptionSlot.trim() || "Add your info: Scenario description here",
-      commsDelayLabel: commsDelayLabel.trim() || "Add your info: Comms delay here",
-      leaderCallsign: leaderCallsign.trim() || undefined,
-    });
-    setCreating(false);
-
-    pushToast({
-      title: result.error ? "Scenario Saved Locally" : "Scenario Created",
-      message: `Here is: ${result.scenario.name} (${
-        result.source === "supabase" ? "Supabase Remote" : "Local Fallback"
-      }).`,
-      variant: result.error ? "warning" : "success",
-    });
-
-    setName("");
-    setPhase("");
-    setScenarioDescriptionSlot("");
-    setCommsDelayLabel("");
-    setLeaderCallsign("");
-    setShowCreateForm(false);
+    try {
+      const created = await createScenario({
+        name: name.trim(),
+        phase: phase.trim() || "Add your info: Mission phase here",
+        scenarioDescriptionSlot:
+          scenarioDescriptionSlot.trim() || "Add your info: Scenario description here",
+        commsDelayLabel: commsDelayLabel.trim() || "Add your info: Comms delay here",
+        leaderCallsign: leaderCallsign.trim() || undefined,
+      });
+      pushToast({
+        title: "Scenario Created in Supabase",
+        message: `Here is: ${created.name} saved to public.scenarios.`,
+        variant: "success",
+      });
+      setName("");
+      setPhase("");
+      setScenarioDescriptionSlot("");
+      setCommsDelayLabel("");
+      setLeaderCallsign("");
+      setShowCreateForm(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save scenario to Supabase";
+      pushToast({
+        title: "Supabase Error",
+        message: msg,
+        variant: "hazard",
+      });
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -68,13 +74,19 @@ export default function GreetingScenarioPage() {
           <div className="flex items-center gap-3">
             <span
               className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                dbSource === "supabase"
+                dbStatus === "connected"
                   ? "bg-emerald-50 text-emerald-700"
+                  : dbStatus === "error"
+                  ? "bg-red-100 text-red-800"
                   : "bg-slate-100 text-slate-600"
               }`}
             >
               <Database className="h-3 w-3" />
-              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"}
+              {dbStatus === "connected"
+                ? "Supabase Connected"
+                : dbStatus === "error"
+                ? "Supabase Error"
+                : "Connecting to Supabase..."}
             </span>
             <span className="text-xs text-slate-500">Step 1 · Choose Scenario</span>
           </div>
@@ -86,8 +98,8 @@ export default function GreetingScenarioPage() {
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome to Vitalis+</h1>
             <p className="text-sm text-slate-600">
-              Here is: Select a mission scenario to feed its telemetry and crew roster into the dashboard, then pick your
-              character (Leader or Member).
+              Here is: Select a mission scenario from Supabase to feed its telemetry and crew roster into the dashboard,
+              then pick your character (Leader or Member).
             </p>
           </div>
           <button
@@ -100,14 +112,34 @@ export default function GreetingScenarioPage() {
           </button>
         </section>
 
+        {dbError && (
+          <div className="rounded-2xl border border-red-300 bg-red-50 p-5 text-red-950">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="inline-flex items-center gap-2 text-sm font-bold text-red-900">
+                  <AlertTriangle className="h-4 w-4" />
+                  Supabase Database Error
+                </p>
+                <p className="font-mono text-xs text-red-800">{dbError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshScenarios()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Retry Connection
+              </button>
+            </div>
+          </div>
+        )}
+
         {showCreateForm && (
           <form
             onSubmit={handleCreateScenario}
             className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs"
           >
-            <h2 className="text-sm font-bold text-slate-900">
-              Add New Scenario ({dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"})
-            </h2>
+            <h2 className="text-sm font-bold text-slate-900">Add New Scenario to Supabase (public.scenarios)</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <input
                 type="text"
@@ -152,40 +184,56 @@ export default function GreetingScenarioPage() {
                 disabled={creating}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
               >
-                {creating ? "Saving..." : "Save Scenario"}
+                {creating ? "Saving to Supabase..." : "Save Scenario"}
               </button>
             </div>
           </form>
         )}
 
-        <section className="grid gap-5 md:grid-cols-2">
-          {scenarios.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => handleSelectScenario(m)}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-xs transition hover:border-sky-400 hover:shadow-sm"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-sky-700">{m.phase}</span>
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                    <Users className="h-3.5 w-3.5" />
-                    {m.crew.length} Characters
-                  </span>
-                </div>
-                <h2 className="text-lg font-bold text-slate-900">{m.name}</h2>
-                <p className="text-sm text-slate-600">{m.scenarioDescriptionSlot}</p>
-                <p className="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-500">{m.commsDelayLabel}</p>
-              </div>
+        {dbStatus === "loading" && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+            Loading scenarios from Supabase...
+          </div>
+        )}
 
-              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-sm font-semibold text-slate-900">
-                <span>Choose Character in Scenario</span>
-                <ArrowRight className="h-4 w-4 text-sky-600" />
-              </div>
-            </button>
-          ))}
-        </section>
+        {dbStatus === "connected" && scenarios.length === 0 && !dbError && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
+            No scenarios exist in <span className="font-mono">public.scenarios</span> yet. Run{" "}
+            <span className="font-mono">supabase/schema.sql</span> in Supabase SQL Editor or click{" "}
+            <strong>Create Scenario</strong> above.
+          </div>
+        )}
+
+        {scenarios.length > 0 && (
+          <section className="grid gap-5 md:grid-cols-2">
+            {scenarios.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => handleSelectScenario(m)}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-xs transition hover:border-sky-400 hover:shadow-sm"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-sky-700">{m.phase}</span>
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <Users className="h-3.5 w-3.5" />
+                      {m.crew.length} Characters
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-900">{m.name}</h2>
+                  <p className="text-sm text-slate-600">{m.scenarioDescriptionSlot}</p>
+                  <p className="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-500">{m.commsDelayLabel}</p>
+                </div>
+
+                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-sm font-semibold text-slate-900">
+                  <span>Choose Character in Scenario</span>
+                  <ArrowRight className="h-4 w-4 text-sky-600" />
+                </div>
+              </button>
+            ))}
+          </section>
+        )}
       </main>
     </div>
   );

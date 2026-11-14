@@ -8,13 +8,17 @@ import { useAlerts } from "@/context/AlertContext";
 import { MEDICAL_INVENTORY_SLOTS } from "@/lib/domain";
 
 export default function CommsAndInventoryPage() {
-  const { linkOnline, setLinkOnline, dtnQueue, queueDtnReport, syncDtnQueue, mission } = useMission();
+  const { linkOnline, setLinkOnline, dtnQueue, queueDtnReport, syncDtnQueue, mission, activeCharacter } = useMission();
   const { pushToast } = useAlerts();
 
   const [reportTitle, setReportTitle] = useState("");
   const [hazardSlug, setHazardSlug] = useState("distance");
   const [payloadSummary, setPayloadSummary] = useState("");
   const [ephemerisSlot, setEphemerisSlot] = useState("");
+
+  if (!mission || !activeCharacter) {
+    return <DashboardShell>{null}</DashboardShell>;
+  }
 
   const handleQueue = async (e: React.FormEvent) => {
     e.preventDefault();
