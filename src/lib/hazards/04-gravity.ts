@@ -94,6 +94,7 @@ export const GRAVITY_PIPELINE_VALUES = {
     rollingAdherenceWindowDays: 7, // ASSUMPTION: 7-day rolling exercise window
     minPointsForRegression: 2,
     minPointsForConfidenceInterval: 3,
+    minRegressionResidualPct: 0.5, // ASSUMPTION: minimum ±0.5% instrument/physiological noise floor so collinear N=3 never emits 0–0d CI
   },
 } as const;
 
@@ -109,6 +110,7 @@ export interface EvaReadinessInput {
   suitType: "EMU" | "ORLAN" | null;
   pfeDaysAgo: number | null;
   preEvaGripTaken: boolean | null;
+  preEvaGripFlightDay: number | null;
   armErgometryCompleted: boolean | null;
   prebreatheVerifiedPct: number | null;
   preEvaHealthStatusHoursAgo: number | null;
@@ -152,11 +154,17 @@ export interface LinearTrendResult {
   sampleSize: number;
   baselineValue: number;
   latestValue: number;
+  latestFlightDay: number;
   latestPctChange: number;
   slopePctPerDay: number;
+  projectedCrossFlightDay: number | null;
+  projectedPctAtCurrentDay: number | null;
+  isThresholdProjectedCrossed: boolean;
+  daysSinceLastMeasurement: number | null;
   etaDaysToThreshold: number | null;
   etaMinDays: number | null;
   etaMaxDays: number | null;
+  ciHasResidualFloor: boolean;
   series: Array<{ label: string; value: number }>;
 }
 
@@ -329,6 +337,8 @@ function parseEvaReadinessInput(
     suitType,
     pfeDaysAgo: readNum(p, "pfeDaysAgo") ?? readNum(p, "pfe_days_ago"),
     preEvaGripTaken: readBoolChoice(p, "preEvaGripTaken") ?? readBoolChoice(p, "pre_eva_grip_taken"),
+    preEvaGripFlightDay:
+      readNum(p, "preEvaGripFlightDay") ?? readNum(p, "pre_eva_grip_fd"),
     armErgometryCompleted:
       readBoolChoice(p, "armErgometryCompleted") ?? readBoolChoice(p, "arm_ergometry"),
     prebreatheVerifiedPct:
@@ -389,7 +399,8 @@ function classifyPreEvaSymptomNote(note: string): string | null {
 function evaluatePreEvaGate(
   eva: EvaReadinessInput,
   cond: PreTestConditionInput,
-  actorEvaState: "GO" | "CONDITIONAL" | "NO-GO"
+  actorEvaState: "GO" | "CONDITIONAL" | "NO-GO",
+  latestGripSampleFd: number | null = null
 ): EvaGateEvaluation {
   const S = GRAVITY_PIPELINE_VALUES.schedule;
   const C = GRAVITY_PIPELINE_VALUES.preTestConditions;
@@ -546,6 +557,29 @@ function evaluatePreEvaGate(
       : S.pfeMaxAgeDaysDefault;
   const hoursToEva = eva.hoursToPlannedEva;
   const daysToEva = hoursToEva !== null ? hoursToEva / 24 : null;
+  const evaFd =
+    eva.currentFlightDay !== null && daysToEva !== null ? eva.currentFlightDay + daysToEva : null;
+  const preEvaWindowStartFd =
+    evaFd !== null ? evaFd - (S.gripPreEvaMaxDays + S.gripPreEvaFlexDays) : null;
+  const preEvaWindowEndFd =
+    evaFd !== null ? evaFd - (S.gripPreEvaMinDays - S.gripPreEvaFlexDays) : null;
+  const gripTakenFd = eva.preEvaGripFlightDay ?? latestGripSampleFd;
+  const gripSampleInPreEvaWindow =
+    gripTakenFd !== null &&
+    preEvaWindowStartFd !== null &&
+    evaFd !== null &&
+    gripTakenFd >= preEvaWindowStartFd &&
+    gripTakenFd <= evaFd - S.gripLockoutHoursBeforeEva / 24;
+  const gripFlagStaleConflict =
+    eva.preEvaGripTaken === true &&
+    gripTakenFd !== null &&
+    preEvaWindowStartFd !== null &&
+    gripTakenFd < preEvaWindowStartFd;
+  const effectivePreEvaGripDone: boolean | null = gripSampleInPreEvaWindow
+    ? true
+    : gripFlagStaleConflict
+    ? false
+    : eva.preEvaGripTaken;
   const armRequired =
     eva.currentFlightDay !== null &&
     eva.currentFlightDay > S.armErgometryAfterFlightDay &&
@@ -595,19 +629,23 @@ function evaluatePreEvaGate(
       label: "Pre-EVA Handgrip Window (EVA-14..10d)",
       medbRef: "MR081L",
       status:
-        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false
+        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && effectivePreEvaGripDone === false
           ? "LOCKOUT"
-          : eva.preEvaGripTaken === false
+          : effectivePreEvaGripDone === false
           ? "BLOCKER"
-          : eva.preEvaGripTaken === true
+          : effectivePreEvaGripDone === true
           ? "PASS"
           : "PENDING",
       detail:
-        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false
+        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && effectivePreEvaGripDone === false
           ? `Locked out inside <24h pre-EVA (${hoursToEva.toFixed(1)}h left)`
-          : eva.preEvaGripTaken === true
-          ? "Completed; <24h lockout preserved"
-          : eva.preEvaGripTaken === false
+          : gripFlagStaleConflict && preEvaWindowStartFd !== null && preEvaWindowEndFd !== null
+          ? `Flag=yes conflicts with latest reading FD${gripTakenFd} (outside FD${Math.round(preEvaWindowStartFd)}–${Math.round(preEvaWindowEndFd)} window)`
+          : effectivePreEvaGripDone === true
+          ? gripTakenFd !== null
+            ? `Completed FD${gripTakenFd}; <24h lockout preserved`
+            : "Completed; <24h lockout preserved"
+          : effectivePreEvaGripDone === false
           ? "Pending in EVA-14..10d (+/-2d) window"
           : "Awaiting telemetry",
     },
@@ -725,18 +763,26 @@ function evaluatePreEvaGate(
   }
 
   // 3. Handgrip window & 24h lockout (MR081L)
-  if (hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false) {
+  if (hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && effectivePreEvaGripDone === false) {
     hardNoGo = true;
-    blockers.push("Handgrip test missing inside 24h pre-EVA lockout (MR081L prohibits testing <24h)");
+    blockers.push(
+      gripFlagStaleConflict
+        ? `Pre-EVA handgrip missing in EVA-14..10d window (latest FD${gripTakenFd}; now <24h MR081L lockout)`
+        : "Handgrip test missing inside 24h pre-EVA lockout (MR081L prohibits testing <24h)"
+    );
     pendingActions.push({
       priorityHours: Math.max(0, hoursToEva),
       text: "DO NOT perform handgrip test within 24h of EVA (MR081L lockout); escalate missing test to Lead/CMO.",
     });
-  } else if (eva.preEvaGripTaken === false) {
+  } else if (effectivePreEvaGripDone === false) {
     const windowCloseDays = S.gripPreEvaMinDays - S.gripPreEvaFlexDays; // EVA - 8d
     const hoursLeftInWindow =
       daysToEva !== null ? Math.max(0, (daysToEva - windowCloseDays) * 24) : 24;
-    if (daysToEva !== null && daysToEva < windowCloseDays) {
+    if (gripFlagStaleConflict && preEvaWindowStartFd !== null && preEvaWindowEndFd !== null) {
+      blockers.push(
+        `Pre-EVA handgrip flag conflicts with stale FD${gripTakenFd} measurement (outside FD${Math.round(preEvaWindowStartFd)}–${Math.round(preEvaWindowEndFd)} window); >24h left for recovery-safe test`
+      );
+    } else if (daysToEva !== null && daysToEva < windowCloseDays) {
       blockers.push("Pre-EVA handgrip window (EVA-14..10d +/-2d) missed; >24h remaining allows recovery-safe test");
     } else {
       blockers.push("Pre-EVA handgrip test (MR081L) pending in EVA-14..10d (+/-2d) window");
@@ -831,7 +877,7 @@ function evaluatePreEvaGate(
     if (healthDueWithin48h) {
       nearestDeadlineHours = Math.max(0, hoursToEva);
       nearestDeadlineLabel = `${nearestDeadlineHours.toFixed(1)}h until suit donning (MEDB 6.1 <=48h health check due)`;
-    } else if (eva.preEvaGripTaken === false && hoursToEva > S.gripLockoutHoursBeforeEva) {
+    } else if (effectivePreEvaGripDone === false && hoursToEva > S.gripLockoutHoursBeforeEva) {
       const hoursToLockout = hoursToEva - S.gripLockoutHoursBeforeEva;
       nearestDeadlineHours = hoursToLockout;
       nearestDeadlineLabel = `${hoursToLockout.toFixed(1)}h until 24h Handgrip lockout (MR081L)`;
@@ -890,8 +936,14 @@ function parseAnthropometricSamples(
       readNum(sp, "measurementFlightDay") ??
       readNum(sp, "flightDay") ??
       (idx + 1) * GRAVITY_PIPELINE_VALUES.schedule.calfCadenceDays;
-    const maxGripKg = readNum(sp, "maxGripKg") ?? (s.numericValue ?? null);
+    const explicitGrip = readNum(sp, "maxGripKg");
     const calfVolumeValue = readNum(sp, "calfVolumeValue");
+    const maxGripKg =
+      explicitGrip !== null
+        ? explicitGrip
+        : calfVolumeValue === null
+        ? (s.numericValue ?? null)
+        : null;
     const bodyMassKg = readNum(sp, "bodyMassKg");
     const explicitCond = readBoolChoice(sp, "calfMorningFastedPaired");
     const conditionsMet = explicitCond !== null ? explicitCond : cond.calfMorningFastedPaired !== false;
@@ -961,9 +1013,30 @@ function parseAnthropometricSamples(
   return { validCalfPoints, validGripPoints, invalidCalfSamplesCount, latestSnapshot };
 }
 
+// Two-sided 90% Student's t critical values (t_{0.95, df}) for small-N slope uncertainty
+const STUDENT_T_90_TABLE = [
+  6.314, // df = 1 (N = 3)
+  2.920, // df = 2 (N = 4)
+  2.353, // df = 3 (N = 5)
+  2.132, // df = 4 (N = 6)
+  2.015, // df = 5 (N = 7)
+  1.943, // df = 6 (N = 8)
+  1.895, // df = 7 (N = 9)
+  1.860, // df = 8 (N = 10)
+  1.833, // df = 9 (N = 11)
+  1.812, // df = 10 (N = 12)
+] as const;
+
+function getStudentT90(df: number): number {
+  if (df <= 0) return STUDENT_T_90_TABLE[0];
+  const idx = Math.min(df - 1, STUDENT_T_90_TABLE.length - 1);
+  return STUDENT_T_90_TABLE[idx];
+}
+
 /**
  * Computes transparent OLS linear fit over % change from personal first-valid baseline.
- * Never presented as ML; explicitly exposes sampleSize N and confidence bounds.
+ * Never presented as ML; explicitly exposes sampleSize N, Student's t uncertainty, and
+ * non-clamped crossing days when projection already passed threshold on stale telemetry.
  */
 function computeLinearBaselineTrend(
   points: Array<{ day: number; value: number; label: string }>,
@@ -982,17 +1055,24 @@ function computeLinearBaselineTrend(
 
   const latest = pctPoints[pctPoints.length - 1];
   const n = pctPoints.length;
+  const daysSinceLastMeasurement = Math.max(0, Math.round(currentFlightDay - latest.x));
 
   if (n < GRAVITY_PIPELINE_VALUES.assumptions.minPointsForRegression) {
     return {
       sampleSize: n,
       baselineValue,
       latestValue: points[n - 1].value,
+      latestFlightDay: latest.x,
       latestPctChange: latest.y,
       slopePctPerDay: 0,
+      projectedCrossFlightDay: null,
+      projectedPctAtCurrentDay: null,
+      isThresholdProjectedCrossed: false,
+      daysSinceLastMeasurement,
       etaDaysToThreshold: null,
       etaMinDays: null,
       etaMaxDays: null,
+      ciHasResidualFloor: false,
       series: pctPoints.map((p) => ({ label: p.label, value: Number(p.y.toFixed(2)) })),
     };
   }
@@ -1007,11 +1087,17 @@ function computeLinearBaselineTrend(
       sampleSize: n,
       baselineValue,
       latestValue: points[n - 1].value,
+      latestFlightDay: latest.x,
       latestPctChange: latest.y,
       slopePctPerDay: 0,
+      projectedCrossFlightDay: null,
+      projectedPctAtCurrentDay: null,
+      isThresholdProjectedCrossed: false,
+      daysSinceLastMeasurement,
       etaDaysToThreshold: null,
       etaMinDays: null,
       etaMaxDays: null,
+      ciHasResidualFloor: false,
       series: pctPoints.map((p) => ({ label: p.label, value: Number(p.y.toFixed(2)) })),
     };
   }
@@ -1019,28 +1105,42 @@ function computeLinearBaselineTrend(
   const slope = sxy / sxx;
   const intercept = meanY - slope * meanX;
 
+  let projectedCrossFlightDay: number | null = null;
+  let projectedPctAtCurrentDay: number | null = null;
+  let isThresholdProjectedCrossed = false;
   let etaDaysToThreshold: number | null = null;
   let etaMinDays: number | null = null;
   let etaMaxDays: number | null = null;
+  let ciHasResidualFloor = false;
 
   if (slope < -0.001) {
-    const crossDay = (thresholdPct - intercept) / slope;
-    etaDaysToThreshold = Math.max(0, Math.round(crossDay - currentFlightDay));
+    projectedCrossFlightDay = (thresholdPct - intercept) / slope;
+    projectedPctAtCurrentDay = slope * currentFlightDay + intercept;
+    etaDaysToThreshold = Math.round(projectedCrossFlightDay - currentFlightDay);
+    isThresholdProjectedCrossed =
+      projectedCrossFlightDay <= currentFlightDay || latest.y <= thresholdPct;
 
     if (n >= GRAVITY_PIPELINE_VALUES.assumptions.minPointsForConfidenceInterval) {
+      const df = n - 2;
       const sse = pctPoints.reduce((acc, p) => {
         const pred = slope * p.x + intercept;
         return acc + (p.y - pred) ** 2;
       }, 0);
-      const slopeSe = Math.sqrt(sse / (n - 2) / sxx);
-      const steeperSlope = slope - slopeSe;
-      const shallowerSlope = slope + slopeSe;
+      const rawRmse = Math.sqrt(sse / df);
+      const minFloor = GRAVITY_PIPELINE_VALUES.assumptions.minRegressionResidualPct;
+      ciHasResidualFloor = rawRmse < minFloor;
+      const effectiveRmse = Math.max(rawRmse, minFloor);
+      const tCrit = getStudentT90(df);
+      const slopeHalfWidth = tCrit * (effectiveRmse / Math.sqrt(sxx));
+
+      const steeperSlope = slope - slopeHalfWidth;
+      const shallowerSlope = slope + slopeHalfWidth;
 
       if (steeperSlope < -0.001) {
-        etaMinDays = Math.max(0, Math.round((thresholdPct - intercept) / steeperSlope - currentFlightDay));
+        etaMinDays = Math.round((thresholdPct - intercept) / steeperSlope - currentFlightDay);
       }
       if (shallowerSlope < -0.001) {
-        etaMaxDays = Math.max(0, Math.round((thresholdPct - intercept) / shallowerSlope - currentFlightDay));
+        etaMaxDays = Math.round((thresholdPct - intercept) / shallowerSlope - currentFlightDay);
       }
       if (etaMinDays !== null && etaMaxDays !== null && etaMinDays > etaMaxDays) {
         [etaMinDays, etaMaxDays] = [etaMaxDays, etaMinDays];
@@ -1052,11 +1152,17 @@ function computeLinearBaselineTrend(
     sampleSize: n,
     baselineValue,
     latestValue: points[n - 1].value,
+    latestFlightDay: latest.x,
     latestPctChange: latest.y,
     slopePctPerDay: slope,
+    projectedCrossFlightDay,
+    projectedPctAtCurrentDay,
+    isThresholdProjectedCrossed,
+    daysSinceLastMeasurement,
     etaDaysToThreshold,
     etaMinDays,
     etaMaxDays,
+    ciHasResidualFloor,
     series: pctPoints.map((p) => ({ label: p.label, value: Number(p.y.toFixed(2)) })),
   };
 }
@@ -1107,6 +1213,54 @@ function parseExerciseEntries(
   return entries;
 }
 
+export function formatTrendCiRange(trend: LinearTrendResult): string {
+  if (trend.etaMinDays === null && trend.etaMaxDays === null) return "";
+  const floorNote = trend.ciHasResidualFloor ? "±floor" : "";
+  if (trend.etaMinDays !== null && trend.etaMaxDays !== null) {
+    return ` [CI${floorNote}: ${trend.etaMinDays}–${trend.etaMaxDays}d]`;
+  }
+  if (trend.etaMinDays !== null) {
+    return ` [CI${floorNote}: >= ${trend.etaMinDays}d; upper bound non-crossing]`;
+  }
+  return "";
+}
+
+function formatTrendProjectionAlert(
+  metricLabel: string,
+  baselineLabel: string,
+  thresholdPct: number,
+  trend: LinearTrendResult,
+  currentFlightDay: number,
+  daysOverdue: number | null
+): string | null {
+  if (trend.latestPctChange <= thresholdPct) {
+    return `${metricLabel} ${trend.latestPctChange.toFixed(1)}% vs ${baselineLabel} (crossed ${thresholdPct}% [ASSUMPTION], N=${trend.sampleSize} pts)`;
+  }
+  if (trend.isThresholdProjectedCrossed && trend.projectedCrossFlightDay !== null) {
+    const crossFd = Math.round(trend.projectedCrossFlightDay);
+    const pastDays = Math.max(0, Math.round(currentFlightDay - trend.projectedCrossFlightDay));
+    const projStr =
+      trend.projectedPctAtCurrentDay !== null
+        ? `; projected ~${trend.projectedPctAtCurrentDay.toFixed(1)}% at FD${currentFlightDay}`
+        : "";
+    const staleStr = daysOverdue !== null && daysOverdue > 0
+      ? `, overdue ${daysOverdue}d`
+      : trend.daysSinceLastMeasurement !== null
+      ? `, last reading ${trend.daysSinceLastMeasurement}d ago`
+      : "";
+    return `${metricLabel} projected crossed ${thresholdPct}% [ASSUMPTION] ~FD${crossFd} (${pastDays}d ago${projStr}${staleStr}, low-N fit N=${trend.sampleSize})`;
+  }
+  if (trend.etaDaysToThreshold !== null) {
+    const ci = formatTrendCiRange(trend);
+    return `${metricLabel} trending ${(trend.slopePctPerDay * 7).toFixed(1)}%/wk; reaches ${thresholdPct}% [ASSUMPTION] in ~${trend.etaDaysToThreshold}d${ci} (low-N fit, N=${trend.sampleSize})`;
+  }
+  return null;
+}
+
+function isMissionReconditioningPhase(missionPhase: string, reentryMode: boolean): boolean {
+  return reentryMode || /postflight|return|reentry/i.test(missionPhase);
+}
+
 /**
  * Evaluates Feature 2: Microgravity Atrophy, Proxy Bone-Shield & Exercise Adherence Engine.
  */
@@ -1116,10 +1270,12 @@ function evaluateAtrophyAndConditioning(
   records: HazardDataRecord[],
   samples: HazardSampleRecord[],
   actorInputs: Record<string, string>,
-  reentryMode: boolean
+  reentryMode: boolean,
+  missionPhase: string
 ): AtrophyEvaluation {
   const S = GRAVITY_PIPELINE_VALUES.schedule;
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
+  const isReconditioningPhase = isMissionReconditioningPhase(missionPhase, reentryMode);
 
   const { validCalfPoints, validGripPoints, invalidCalfSamplesCount } = parseAnthropometricSamples(
     records,
@@ -1152,9 +1308,16 @@ function evaluateAtrophyAndConditioning(
       ? Math.max(0, eva.currentFlightDay - (validCalfPoints[validCalfPoints.length - 1].day + S.calfCadenceDays))
       : null;
 
+  const latestSampleGripFd =
+    validGripPoints.length > 0 ? validGripPoints[validGripPoints.length - 1].day : null;
+  const effectiveLatestGripFd =
+    eva.preEvaGripFlightDay !== null && latestSampleGripFd !== null
+      ? Math.max(eva.preEvaGripFlightDay, latestSampleGripFd)
+      : eva.preEvaGripFlightDay ?? latestSampleGripFd;
+
   const gripDaysOverdue =
-    eva.currentFlightDay !== null && validGripPoints.length > 0
-      ? Math.max(0, eva.currentFlightDay - (validGripPoints[validGripPoints.length - 1].day + S.gripCadenceDays))
+    eva.currentFlightDay !== null && effectiveLatestGripFd !== null
+      ? Math.max(0, eva.currentFlightDay - (effectiveLatestGripFd + S.gripCadenceDays))
       : null;
 
   const exerciseEntries = parseExerciseEntries(records, samples, actorInputs);
@@ -1186,9 +1349,12 @@ function evaluateAtrophyAndConditioning(
     ).length;
 
     const latestRecond = [...recentWindow].reverse().find((e) => e.reconditioningDayRPlus !== null);
-    const recondDay = latestRecond?.reconditioningDayRPlus ?? null;
-    const recondPct =
-      recondDay !== null || reentryMode ? (totalAvg / S.reconditioningDailyTargetMin) * 100 : null;
+    const recondDay = isReconditioningPhase
+      ? (latestRecond?.reconditioningDayRPlus ?? 0)
+      : null;
+    const recondPct = isReconditioningPhase
+      ? (totalAvg / S.reconditioningDailyTargetMin) * 100
+      : null;
 
     adherenceSummary = {
       sessionsCount: recentWindow.length,
@@ -1225,28 +1391,32 @@ function evaluateAtrophyAndConditioning(
     alerts.push(`Monthly handgrip check (MR081L) overdue by ${gripDaysOverdue} day(s)`);
   }
 
-  if (calfTrend && calfTrend.latestPctChange <= A.calfAtrophyAlertPct) {
-    alerts.push(
-      `Calf volume ${calfTrend.latestPctChange.toFixed(1)}% vs L+14 baseline (crossed ${A.calfAtrophyAlertPct}% [ASSUMPTION] across N=${calfTrend.sampleSize} pts)`
+  if (calfTrend) {
+    const calfMsg = formatTrendProjectionAlert(
+      "Calf volume",
+      "L+14 baseline",
+      A.calfAtrophyAlertPct,
+      calfTrend,
+      inferredFlightDay,
+      calfDaysOverdue
     );
-  } else if (calfTrend?.etaDaysToThreshold !== null && calfTrend?.etaDaysToThreshold !== undefined) {
-    const ci =
-      calfTrend.etaMinDays !== null && calfTrend.etaMaxDays !== null
-        ? ` [CI: ${calfTrend.etaMinDays}–${calfTrend.etaMaxDays}d]`
-        : "";
-    alerts.push(
-      `Calf volume trending ${(calfTrend.slopePctPerDay * 7).toFixed(1)}%/wk; reaches ${A.calfAtrophyAlertPct}% [ASSUMPTION] in ~${calfTrend.etaDaysToThreshold}d${ci} (low-N fit, N=${calfTrend.sampleSize})`
-    );
+    if (calfMsg) alerts.push(calfMsg);
   }
 
-  if (gripTrend && gripTrend.latestPctChange <= A.gripDeclineAlertPct) {
-    alerts.push(
-      `Handgrip ${gripTrend.latestPctChange.toFixed(1)}% vs FD14 baseline (crossed ${A.gripDeclineAlertPct}% [ASSUMPTION], N=${gripTrend.sampleSize} pts)`
+  if (gripTrend) {
+    const gripMsg = formatTrendProjectionAlert(
+      "Handgrip",
+      "FD14 baseline",
+      A.gripDeclineAlertPct,
+      gripTrend,
+      inferredFlightDay,
+      gripDaysOverdue
     );
+    if (gripMsg) alerts.push(gripMsg);
   }
 
   if (adherenceSummary) {
-    if (adherenceSummary.reconditioningDayRPlus !== null || reentryMode) {
+    if (isReconditioningPhase) {
       const rDay = adherenceSummary.reconditioningDayRPlus ?? 0;
       const pct = adherenceSummary.reconditioningPct ?? adherenceSummary.overallPct;
       if (rDay <= S.reconditioningDurationDays && pct < A.weeklyAdherenceAlertPct) {
@@ -1255,11 +1425,14 @@ function evaluateAtrophyAndConditioning(
         );
         actions.push("Complete 120 min/day MR026L postflight reconditioning block (recovery benchmark: ~2% of baseline, MEDB 1.11).");
       }
-    } else if (adherenceSummary.resistancePct < A.weeklyAdherenceAlertPct) {
+    } else if (
+      adherenceSummary.overallPct < A.weeklyAdherenceAlertPct ||
+      adherenceSummary.resistancePct < A.weeklyAdherenceAlertPct
+    ) {
       alerts.push(
-        `Resistance loading adherence ${adherenceSummary.resistancePct}% (<${A.weeklyAdherenceAlertPct}% [ASSUMPTION]) — elevated estimated bone unloading risk (DXA pre/post only, MEDB 1.11)`
+        `In-flight exercise adherence ${adherenceSummary.overallPct}% (Resistance ${adherenceSummary.resistancePct}%, <${A.weeklyAdherenceAlertPct}% [ASSUMPTION] of 150 min/d MEDB 5.2) — elevated estimated bone unloading risk (DXA pre/post only, MEDB 1.11)`
       );
-      actions.push("Prioritize full 90-min resistance session today to protect bone loading (MEDB 5.2 / MEDB 1.11).");
+      actions.push("Prioritize full 90-min resistance session today toward 150 min/d MEDB 5.2 bone-loading target.");
     }
 
     if (adherenceSummary.sleepViolations > 0) {
@@ -1276,12 +1449,18 @@ function evaluateAtrophyAndConditioning(
 
   const etaDays = calfTrend?.etaDaysToThreshold ?? gripTrend?.etaDaysToThreshold ?? null;
   let etaLabel = "Log >=2 valid baseline measurements (L+14 / FD14) for trend projection";
-  if (calfDaysOverdue !== null && calfDaysOverdue > 0) {
+  if (calfDaysOverdue !== null && calfDaysOverdue > 0 && etaDays !== null && etaDays <= 0) {
+    etaLabel = `Projected threshold crossed ~${Math.abs(etaDays)}d ago [ASSUMPTION]; calf measurement overdue by ${calfDaysOverdue}d`;
+  } else if (calfDaysOverdue !== null && calfDaysOverdue > 0) {
     etaLabel = `Calf measurement overdue by ${calfDaysOverdue}d (next valid window: morning pre-breakfast)`;
+  } else if (etaDays !== null && etaDays <= 0) {
+    etaLabel = `Projected conditioning threshold crossed ~${Math.abs(etaDays)}d ago [ASSUMPTION]`;
   } else if (etaDays !== null) {
     etaLabel = `~${etaDays} days until conditioning threshold [ASSUMPTION]`;
   } else if (adherenceSummary) {
-    etaLabel = `Weekly adherence ${adherenceSummary.overallPct}% (target 150 min/d, MEDB 5.2)`;
+    etaLabel = isReconditioningPhase
+      ? `Reconditioning adherence ${adherenceSummary.reconditioningPct ?? adherenceSummary.overallPct}% (120 min/d MR026L)`
+      : `Weekly adherence ${adherenceSummary.overallPct}% (target 150 min/d, MEDB 5.2)`;
   }
 
   return {
@@ -1304,7 +1483,8 @@ function buildGravityCharts(
   atrophy: AtrophyEvaluation,
   records: HazardDataRecord[],
   samples: HazardSampleRecord[],
-  actorInputs: Record<string, string>
+  actorInputs: Record<string, string>,
+  isReconditioningPhase: boolean
 ): HazardChartSpec[] {
   const charts: HazardChartSpec[] = [];
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
@@ -1354,12 +1534,11 @@ function buildGravityCharts(
 
   const exEntries = parseExerciseEntries(records, samples, actorInputs);
   if (exEntries.length > 0) {
-    const isReconditioning = atrophy.adherenceSummary?.reconditioningDayRPlus !== null &&
-      atrophy.adherenceSummary?.reconditioningDayRPlus !== undefined;
+    const isReconditioning = isReconditioningPhase;
     charts.push({
       id: "gravity-exercise-daily-min",
       title: isReconditioning
-        ? `Postflight Reconditioning Volume (MR026L R+${atrophy.adherenceSummary?.reconditioningDayRPlus}, target ${S.reconditioningDailyTargetMin} min)`
+        ? `Postflight Reconditioning Volume (MR026L R+${atrophy.adherenceSummary?.reconditioningDayRPlus ?? 0}, target ${S.reconditioningDailyTargetMin} min)`
         : `Daily Exercise Volume (MEDB 5.2, target ${S.dailyTotalTargetMin} min)`,
       unit: "min",
       series: exEntries.map((e, idx) => ({
@@ -1416,6 +1595,19 @@ function buildLeadGravityCharts(crewOverview: GravityCrewOverview): HazardChartS
   ];
 }
 
+function hasThresholdCrossedCondition(atrophy: AtrophyEvaluation): boolean {
+  const A = GRAVITY_PIPELINE_VALUES.assumptions;
+  const calfCrossed =
+    atrophy.calfTrend !== null &&
+    (atrophy.calfTrend.latestPctChange <= A.calfAtrophyAlertPct ||
+      (atrophy.calfTrend.isThresholdProjectedCrossed && (atrophy.calfDaysOverdue ?? 0) > 0));
+  const gripCrossed =
+    atrophy.gripTrend !== null &&
+    (atrophy.gripTrend.latestPctChange <= A.gripDeclineAlertPct ||
+      (atrophy.gripTrend.isThresholdProjectedCrossed && (atrophy.gripDaysOverdue ?? 0) > 0));
+  return calfCrossed || gripCrossed;
+}
+
 function computeConditioningStatus(
   atrophy: AtrophyEvaluation,
   status: HazardEvaluationResult["status"]
@@ -1423,12 +1615,7 @@ function computeConditioningStatus(
   if (!atrophy.hasAnyAnthropometric && !atrophy.hasAnyExercise) {
     return "UNLOGGED";
   }
-  const A = GRAVITY_PIPELINE_VALUES.assumptions;
-  if (
-    status === "CRITICAL" ||
-    (atrophy.calfTrend && atrophy.calfTrend.latestPctChange <= A.calfAtrophyAlertPct) ||
-    (atrophy.gripTrend && atrophy.gripTrend.latestPctChange <= A.gripDeclineAlertPct)
-  ) {
+  if (status === "CRITICAL" || hasThresholdCrossedCondition(atrophy)) {
     return "ALERT";
   }
   if (atrophy.alerts.length > 0) {
@@ -1445,8 +1632,9 @@ function computeGravityDiagnosticsCore(options: {
   hazardSamples: readonly HazardSampleRecord[];
   allHazardRecords: readonly HazardDataRecord[];
   reentryMode: boolean;
+  missionPhase?: string;
 }): GravityActorDiagnostics {
-  const { actor, role, actorInputs, reentryMode } = options;
+  const { actor, role, actorInputs, reentryMode, missionPhase = "" } = options;
   const hazardRecords = [...options.hazardRecords];
   const hazardSamples = [...options.hazardSamples];
   const allHazardRecords = [...options.allHazardRecords];
@@ -1455,14 +1643,24 @@ function computeGravityDiagnosticsCore(options: {
   const evaInput: EvaReadinessInput =
     role === "lead" ? { ...rawEvaInput, symptomNote: "" } : rawEvaInput;
   const condInput = parsePreTestConditions(hazardRecords, actorInputs);
-  const evaGate = evaluatePreEvaGate(evaInput, condInput, actor.evaGateState);
+  const { validGripPoints } = parseAnthropometricSamples(
+    hazardRecords,
+    hazardSamples,
+    actorInputs,
+    condInput
+  );
+  const latestGripSampleFd =
+    validGripPoints.length > 0 ? validGripPoints[validGripPoints.length - 1].day : null;
+
+  const evaGate = evaluatePreEvaGate(evaInput, condInput, actor.evaGateState, latestGripSampleFd);
   const atrophy = evaluateAtrophyAndConditioning(
     evaInput,
     condInput,
     hazardRecords,
     hazardSamples,
     actorInputs,
-    reentryMode
+    reentryMode,
+    missionPhase
   );
   const exerciseEntries = parseExerciseEntries(hazardRecords, hazardSamples, actorInputs);
 
@@ -1481,8 +1679,7 @@ function computeGravityDiagnosticsCore(options: {
   if (
     evaGate.decision === "NO-GO" ||
     actor.readinessState === "HOLD" ||
-    (atrophy.calfTrend && atrophy.calfTrend.latestPctChange <= GRAVITY_PIPELINE_VALUES.assumptions.calfAtrophyAlertPct) ||
-    (atrophy.gripTrend && atrophy.gripTrend.latestPctChange <= GRAVITY_PIPELINE_VALUES.assumptions.gripDeclineAlertPct)
+    hasThresholdCrossedCondition(atrophy)
   ) {
     status = "CRITICAL";
   } else if (
@@ -1519,6 +1716,7 @@ export function evaluateGravityDiagnostics(options: {
   hazardSamples: readonly HazardSampleRecord[];
   allHazardRecords?: readonly HazardDataRecord[];
   reentryMode: boolean;
+  missionPhase?: string;
 }): GravityActorDiagnostics {
   return computeGravityDiagnosticsCore({
     actor: options.actor,
@@ -1528,6 +1726,7 @@ export function evaluateGravityDiagnostics(options: {
     hazardSamples: [...options.hazardSamples],
     allHazardRecords: [...(options.allHazardRecords ?? options.hazardRecords)],
     reentryMode: options.reentryMode,
+    missionPhase: options.missionPhase ?? "",
   });
 }
 
@@ -1557,6 +1756,7 @@ export function evaluateGravityCrewOverview(
       hazardSamples: memberGravitySamples,
       allHazardRecords: memberAllRecords,
       reentryMode,
+      missionPhase: mission.phase,
     });
 
     const adherencePct = diag.atrophy.adherenceSummary
@@ -1625,6 +1825,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
   } = input;
 
   const effectiveRole: UserRole = role ?? (actor.isLeadSlot ? "lead" : "member");
+  const isReconditioningPhase = isMissionReconditioningPhase(mission.phase, reentryMode);
   const diag = computeGravityDiagnosticsCore({
     actor,
     role: effectiveRole,
@@ -1633,6 +1834,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     hazardSamples,
     allHazardRecords,
     reentryMode,
+    missionPhase: mission.phase,
   });
   const { evaGate, atrophy, status, sleepCrossNote, conditioningStatus } = diag;
 
@@ -1654,10 +1856,10 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     if (atrophy.adherenceSummary) {
       prolongedParts.push(`Exercise Adherence: ${adherenceLabel(atrophy.adherenceSummary)}`);
     }
-    if (atrophy.calfDaysOverdue !== null) {
+    if (atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0) {
       prolongedParts.push(`Category Flag: MEDB 5.4 calf check overdue (${atrophy.calfDaysOverdue}d)`);
     }
-    if (atrophy.gripDaysOverdue !== null) {
+    if (atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0) {
       prolongedParts.push(`Category Flag: MR081L handgrip check overdue (${atrophy.gripDaysOverdue}d)`);
     }
   } else {
@@ -1686,10 +1888,16 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
       ? `${prolongedParts.join(" | ")}${effectiveRole === "member" ? sleepCrossNote : ""}`
       : gravityHazard.outputSlots.prolongedHorizon;
 
-  // Combined ETA (prioritize imminent EVA deadline if <= 7 days, else prolonged trend ETA)
+  // Combined ETA (prioritize imminent EVA deadline, plus non-clamped conditioning ETA)
+  const conditioningEtaSuffix =
+    atrophy.etaDays === null
+      ? ""
+      : atrophy.etaDays <= 0
+      ? ` | Projected conditioning threshold crossed ~${Math.abs(atrophy.etaDays)}d ago [ASSUMPTION]`
+      : ` | Conditioning threshold ETA: ~${atrophy.etaDays}d [ASSUMPTION]`;
   const eta =
     evaGate.hasAnyInput && evaGate.nearestDeadlineHours !== null
-      ? `${evaGate.nearestDeadlineLabel}${atrophy.etaDays !== null ? ` | Conditioning threshold ETA: ~${atrophy.etaDays}d [ASSUMPTION]` : ""}`
+      ? `${evaGate.nearestDeadlineLabel}${conditioningEtaSuffix}`
       : atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
       ? atrophy.etaLabel
       : actor.metrics.etaSlot;
@@ -1719,7 +1927,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
             reentryMode
           )
         )
-      : buildGravityCharts(atrophy, hazardRecords, hazardSamples, actorInputs);
+      : buildGravityCharts(atrophy, hazardRecords, hazardSamples, actorInputs, isReconditioningPhase);
 
   return {
     status,
@@ -1803,6 +2011,13 @@ export const gravityHazard: HazardSpec = {
           label: "Pre-EVA Grip Test Done",
           fieldType: "boolean",
           prompt: "Add your info: yes or no (EVA-14..10d window) here",
+        },
+        {
+          key: "preEvaGripFlightDay",
+          label: "Pre-EVA Grip Flight Day",
+          fieldType: "number",
+          unit: "FD",
+          prompt: "Add your info: Flight day of pre-EVA grip check (EVA-14..10d) here",
         },
         {
           key: "armErgometryCompleted",
