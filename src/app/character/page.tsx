@@ -13,7 +13,7 @@ function CharacterPickerContent() {
   const searchParams = useSearchParams();
   const scenarioQuery = searchParams.get("scenario");
 
-  const { mission, setMissionId, setRole, setSelectedMemberId } = useMission();
+  const { mission, setMissionId, setActiveCharacterId } = useMission();
   const { pushToast } = useAlerts();
 
   useEffect(() => {
@@ -28,12 +28,7 @@ function CharacterPickerContent() {
 
   const handleSelectCharacter = (character: CrewSlot) => {
     setMissionId(activeScenario.id);
-    if (character.isLeadSlot) {
-      setRole("lead");
-    } else {
-      setRole("member");
-      setSelectedMemberId(character.id);
-    }
+    setActiveCharacterId(character.id);
     pushToast({
       title: `Entered as ${character.isLeadSlot ? "Leader" : "Member"}`,
       message: `Here is: ${character.callsign} active in ${activeScenario.name}.`,
@@ -59,11 +54,10 @@ function CharacterPickerContent() {
           <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">{activeScenario.name}</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Choose Your Character</h1>
           <p className="text-sm text-slate-600">
-            Here is: Pick the Crew Leader or any Crew Member below to experience the dashboard from their perspective.
+            Here is: Every character passes their own role and status into the generalized dashboard components.
           </p>
         </div>
 
-        {/* Leader Section */}
         {leader && (
           <section className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Crew Leader</h2>
@@ -79,10 +73,7 @@ function CharacterPickerContent() {
                 </span>
                 <h3 className="text-lg font-bold text-slate-900">{leader.callsign}</h3>
                 <p className="text-xs font-medium text-slate-500">{leader.assignedRoleTitle}</p>
-                <p className="text-sm text-slate-600">
-                  Here is: Sees Crew Readiness Matrix, Team Buffs/Debuffs, Shelter Tracker, and overrides (private logs
-                  stay masked).
-                </p>
+                <p className="text-sm text-slate-600">{leader.publicStatusSummary}</p>
               </div>
               <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-semibold text-white">
                 Enter as Leader
@@ -92,7 +83,6 @@ function CharacterPickerContent() {
           </section>
         )}
 
-        {/* All Crew Members Section */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Crew Members ({members.length})

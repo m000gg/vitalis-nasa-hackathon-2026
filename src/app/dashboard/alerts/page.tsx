@@ -1,79 +1,98 @@
 "use client";
 
 import React from "react";
-import { AlertOctagon, Bell, HeartPulse, ShieldAlert } from "lucide-react";
+import { AlertTriangle, HeartPulse, ShieldAlert } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
-import { ToastVariant, useAlerts } from "@/context/AlertContext";
+import { useAlerts } from "@/context/AlertContext";
 import { useMission } from "@/context/MissionContext";
 import { HAZARDS } from "@/lib/hazards";
 import { BUDDY_RESCUE_STEPS } from "@/lib/domain";
+import { evaluateCharacterDashboard, evaluateLeaderDashboard } from "@/lib/evaluator";
 
 export default function AlertsAndAlarmsPage() {
-  const { pushToast, triggerAlarm } = useAlerts();
-  const { role, auditLog } = useMission();
+  const { triggerAlarm } = useAlerts();
+  const { mission, activeCharacter, role, reentryMode, shelterConfirmations, actorInputs, auditLog } = useMission();
 
-  const fireVariantToast = (variant: ToastVariant, title: string, message: string) => {
-    pushToast({ variant, title, message });
+  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
+  const characterModel = evaluateCharacterDashboard(activeCharacter, {
+    shelterConfirmed: !!shelterConfirmations[activeCharacter.id],
+    reentryMode,
+    customInputs: actorInputs[activeCharacter.id],
+  });
+
+  const handleReportUnresponsiveCrewmate = () => {
+    const h = HAZARDS[2]; // Distance from Earth / Deep Space Autonomy & Buddy-Rescue
+    triggerAlarm({
+      hazardNumber: h.number,
+      hazardTitle: h.title,
+      title: "UNRESPONSIVE CREWMATE — BUDDY-RESCUE PROTOCOL",
+      severity: "CRITICAL",
+      etaLabel: "Immediate onboard response required (Earth link cannot assist in real time)",
+      descriptionSlot: `Here is: Crew member emergency flagged in ${mission.name} by ${activeCharacter.callsign}.`,
+      leadActions: h.alarmPreset.leadActions,
+      memberActions: h.alarmPreset.memberActions,
+    });
   };
 
   return (
     <DashboardShell>
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h1 className="text-xl font-bold text-slate-900">Toasts, Full-Screen Alarms &amp; Buddy-Rescue</h1>
+        <h1 className="text-xl font-bold text-slate-900">Active Alerts, Emergency Escalation &amp; Buddy-Rescue</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Here is: Offline local alert controls. Trigger toast popups or full-screen emergency alarms tailored to your
-          active role ({role.toUpperCase()}).
+          Here is: Alerts derived from {mission.name} for {activeCharacter.callsign} ({role.toUpperCase()}).
         </p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Derived Alerts */}
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <div className="flex items-center gap-2 text-sky-700">
-            <Bell className="h-4 w-4" />
-            <h2 className="text-sm font-bold">Toast Popups</h2>
+          <div className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="h-4 w-4" />
+            <h2 className="text-sm font-bold">
+              {role === "lead" ? "Derived Team Alerts" : "Derived Character Blockers & Alerts"}
+            </h2>
           </div>
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => fireVariantToast("info", "Info Toast", "Here is: Baseline or phase notice.")}
-              className="rounded-xl bg-slate-100 px-3 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-200"
-            >
-              Info Toast
-            </button>
-            <button
-              type="button"
-              onClick={() => fireVariantToast("success", "Success Toast", "Here is: Check-in or shelter confirmed.")}
-              className="rounded-xl bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-            >
-              Success Toast
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                fireVariantToast("warning", "Prolonged Hazard Toast", "Here is: Elevated CO₂ / sleep debt trend.")
-              }
-              className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-            >
-              Warning Toast
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                fireVariantToast("hazard", "Immediate Hazard Toast", "Here is: Urgent hazard threshold crossed.")
-              }
-              className="rounded-xl bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-800 hover:bg-red-100"
-            >
-              Hazard Toast
-            </button>
+
+          <div className="space-y-2.5 text-xs">
+            {role === "lead" ? (
+              leaderModel.derivedTeamAlerts.map((alertText, i) => (
+                <div key={i} className="rounded-xl bg-slate-50 p-3.5 text-slate-700">
+                  {alertText}
+                </div>
+              ))
+            ) : characterModel.blockers.length > 0 ? (
+              characterModel.blockers.map((blocker, i) => (
+                <div key={i} className="rounded-xl bg-amber-50 p-3.5 text-amber-900">
+                  {blocker}
+                </div>
+              ))
+            ) : (
+              <div className="rounded-xl bg-emerald-50 p-3.5 text-emerald-900">
+                Here is: No active blockers for {characterModel.callsign}.
+              </div>
+            )}
           </div>
         </section>
 
+        {/* Operational Emergency Escalation */}
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex items-center gap-2 text-red-700">
-            <AlertOctagon className="h-4 w-4" />
-            <h2 className="text-sm font-bold">All-Over-the-Screen Alarms</h2>
+            <ShieldAlert className="h-4 w-4" />
+            <h2 className="text-sm font-bold">Declare Onboard Emergency</h2>
           </div>
-          <div className="grid gap-2">
+          <p className="text-xs text-slate-600">
+            Here is: Escalating a medical or habitat emergency activates the full-screen alarm across the crew console.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleReportUnresponsiveCrewmate}
+            className="w-full rounded-xl bg-red-600 px-4 py-3 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            Report Unresponsive Crewmate (Launch Buddy-Rescue Alarm)
+          </button>
+
+          <div className="space-y-2 pt-1">
             {HAZARDS.map((h) => (
               <button
                 key={h.slug}
@@ -85,10 +104,10 @@ export default function AlertsAndAlarmsPage() {
                     ...h.alarmPreset,
                   })
                 }
-                className="flex items-center justify-between rounded-xl bg-red-50 px-3.5 py-2.5 text-left text-xs font-medium text-red-900 hover:bg-red-100"
+                className="flex w-full items-center justify-between rounded-xl bg-red-50 px-3.5 py-2.5 text-left text-xs font-medium text-red-900 hover:bg-red-100"
               >
                 <span>
-                  <strong>Hazard {h.number}:</strong> {h.alarmPreset.title}
+                  Escalate Hazard {h.number}: {h.shortTitle}
                 </span>
                 <ShieldAlert className="h-4 w-4 shrink-0 text-red-600" />
               </button>

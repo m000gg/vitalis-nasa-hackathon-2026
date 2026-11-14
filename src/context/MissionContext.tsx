@@ -1,10 +1,11 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { AuditLogEntry, DtnMessage, MISSIONS, MissionProfile, UserRole } from "@/lib/domain";
+import { AuditLogEntry, CrewSlot, DtnMessage, MISSIONS, MissionProfile, UserRole } from "@/lib/domain";
 
 export interface PrivateCheckIn {
   id: string;
+  actorId: string;
   timestamp: string;
   fatigueScore: string;
   sleepHoursInput: string;
@@ -14,6 +15,8 @@ export interface PrivateCheckIn {
 interface MissionContextValue {
   mission: MissionProfile;
   setMissionId: (id: string) => void;
+  activeCharacter: CrewSlot;
+  setActiveCharacterId: (id: string) => void;
   role: UserRole;
   setRole: (role: UserRole) => void;
   selectedMemberId: string;
@@ -22,6 +25,8 @@ interface MissionContextValue {
   setLinkOnline: (online: boolean) => void;
   reentryMode: boolean;
   setReentryMode: (enabled: boolean) => void;
+  actorInputs: Record<string, Record<string, string>>;
+  saveActorInput: (streamName: string, value: string) => void;
   dtnQueue: DtnMessage[];
   queueDtnReport: (reportTitle: string, hazardSlug: string, payloadSummary: string) => Promise<void>;
   syncDtnQueue: () => Promise<void>;
@@ -30,31 +35,36 @@ interface MissionContextValue {
   shelterConfirmations: Record<string, boolean>;
   toggleCrewShelter: (crewId: string) => void;
   privateCheckIns: PrivateCheckIn[];
-  addPrivateCheckIn: (entry: Omit<PrivateCheckIn, "id" | "timestamp">) => void;
+  addPrivateCheckIn: (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => void;
 }
 
 const MissionContext = createContext<MissionContextValue | null>(null);
 
-const STORAGE_KEY = "vitalis_session_v1";
+const STORAGE_KEY = "vitalis_session_v2";
+
+function buildInitialDtnForMission(m: MissionProfile): DtnMessage[] {
+  const firstMember = m.crew.find((c) => !c.isLeadSlot) ?? m.crew[0];
+  return [
+    {
+      id: `dtn-init-${m.id}`,
+      reportTitle: `Here is: Baseline Crew Report (${m.name})`,
+      senderCallsign: firstMember.callsign,
+      hazardSlug: "distance",
+      status: m.environment.linkOnlineDefault ? "ACKNOWLEDGED" : "PENDING",
+      createdAt: "Scenario Initialized",
+      retryCount: m.environment.linkOnlineDefault ? 0 : 1,
+      payloadSummary: "Add your info: Structured symptom & vital baseline delta summary here",
+    },
+  ];
+}
 
 export function MissionProvider({ children }: { children: React.ReactNode }) {
   const [missionId, setMissionIdState] = useState<string>(MISSIONS[0].id);
-  const [role, setRoleState] = useState<UserRole>("lead");
-  const [selectedMemberId, setSelectedMemberId] = useState<string>(MISSIONS[0].crew[1].id);
-  const [linkOnline, setLinkOnline] = useState<boolean>(false);
+  const [activeCharacterId, setActiveCharacterIdState] = useState<string>(MISSIONS[0].crew[0].id);
+  const [linkOnline, setLinkOnline] = useState<boolean>(MISSIONS[0].environment.linkOnlineDefault);
   const [reentryMode, setReentryMode] = useState<boolean>(false);
-  const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>([
-    {
-      id: "dtn-init-1",
-      reportTitle: "Here is: Baseline Crew Incident Report (Mission Day 126)",
-      senderCallsign: "Member Slot 1 — Crew Medical Officer",
-      hazardSlug: "distance",
-      status: "PENDING",
-      createdAt: "Initial Queue Slot",
-      retryCount: 1,
-      payloadSummary: "Add your info: Structured symptom & vital baseline delta summary here",
-    },
-  ]);
+  const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
+  const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>(() => buildInitialDtnForMission(MISSIONS[0]));
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
   const [privateCheckIns, setPrivateCheckIns] = useState<PrivateCheckIn[]>([]);
@@ -65,13 +75,15 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.missionId && MISSIONS.some((m) => m.id === parsed.missionId)) {
-          setMissionIdState(parsed.missionId);
-        }
-        if (parsed.role === "lead" || parsed.role === "member") {
-          setRoleState(parsed.role);
-        }
-        if (parsed.selectedMemberId) {
-          setSelectedMemberId(parsed.selectedMemberId);
+          const found = MISSIONS.find((m) => m.id === parsed.missionId) ?? MISSIONS[0];
+          setMissionIdState(found.id);
+          setLinkOnline(found.environment.linkOnlineDefault);
+          setDtnQueue(buildInitialDtnForMission(found));
+          if (parsed.activeCharacterId && found.crew.some((c) => c.id === parsed.activeCharacterId)) {
+            setActiveCharacterIdState(parsed.activeCharacterId);
+          } else {
+            setActiveCharacterIdState(found.crew[0].id);
+          }
         }
       }
     } catch {
@@ -79,11 +91,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const persistSession = (nextMissionId: string, nextRole: UserRole, nextMemberId: string) => {
+  const persistSession = (nextMissionId: string, nextCharacterId: string) => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ missionId: nextMissionId, role: nextRole, selectedMemberId: nextMemberId })
+        JSON.stringify({ missionId: nextMissionId, activeCharacterId: nextCharacterId })
       );
     } catch {
       // Ignore storage write errors
@@ -91,6 +103,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   };
 
   const mission = MISSIONS.find((m) => m.id === missionId) ?? MISSIONS[0];
+  const activeCharacter = mission.crew.find((c) => c.id === activeCharacterId) ?? mission.crew[0];
+  const role: UserRole = activeCharacter.isLeadSlot ? "lead" : "member";
+  const selectedMemberId = activeCharacter.isLeadSlot
+    ? (mission.crew.find((c) => !c.isLeadSlot)?.id ?? mission.crew[0].id)
+    : activeCharacter.id;
 
   useEffect(() => {
     const initial: Record<string, boolean> = {};
@@ -100,39 +117,67 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     setShelterConfirmations(initial);
   }, [mission]);
 
-  const setMissionId = useCallback(
-    (id: string) => {
-      const found = MISSIONS.find((m) => m.id === id) ?? MISSIONS[0];
-      const defaultMember = found.crew.find((c) => !c.isLeadSlot)?.id ?? found.crew[0].id;
-      setMissionIdState(found.id);
-      setSelectedMemberId(defaultMember);
-      persistSession(found.id, role, defaultMember);
+  const setMissionId = useCallback((id: string) => {
+    const found = MISSIONS.find((m) => m.id === id) ?? MISSIONS[0];
+    const defaultChar = found.crew[0];
+    setMissionIdState(found.id);
+    setActiveCharacterIdState(defaultChar.id);
+    setLinkOnline(found.environment.linkOnlineDefault);
+    setDtnQueue(buildInitialDtnForMission(found));
+    persistSession(found.id, defaultChar.id);
+  }, []);
+
+  const setActiveCharacterId = useCallback(
+    (charId: string) => {
+      const exists = mission.crew.some((c) => c.id === charId);
+      const nextId = exists ? charId : mission.crew[0].id;
+      setActiveCharacterIdState(nextId);
+      persistSession(mission.id, nextId);
     },
-    [role]
+    [mission]
   );
 
   const setRole = useCallback(
     (nextRole: UserRole) => {
-      setRoleState(nextRole);
-      persistSession(missionId, nextRole, selectedMemberId);
+      const target =
+        nextRole === "lead"
+          ? mission.crew.find((c) => c.isLeadSlot) ?? mission.crew[0]
+          : mission.crew.find((c) => !c.isLeadSlot) ?? mission.crew[0];
+      setActiveCharacterIdState(target.id);
+      persistSession(mission.id, target.id);
     },
-    [missionId, selectedMemberId]
+    [mission]
+  );
+
+  const setSelectedMemberId = useCallback(
+    (memberId: string) => {
+      setActiveCharacterId(memberId);
+    },
+    [setActiveCharacterId]
+  );
+
+  const saveActorInput = useCallback(
+    (streamName: string, value: string) => {
+      setActorInputs((prev) => ({
+        ...prev,
+        [activeCharacter.id]: {
+          ...(prev[activeCharacter.id] ?? {}),
+          [streamName]: value,
+        },
+      }));
+    },
+    [activeCharacter.id]
   );
 
   const queueDtnReport = useCallback(
     async (reportTitle: string, hazardSlug: string, payloadSummary: string) => {
-      const activeMember =
-        role === "lead"
-          ? mission.crew.find((c) => c.isLeadSlot)?.callsign ?? "Lead"
-          : mission.crew.find((c) => c.id === selectedMemberId)?.callsign ?? "Member";
-
       try {
         const res = await fetch("/api/communications/queue", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             reportTitle,
-            senderCallsign: activeMember,
+            senderCallsign: activeCharacter.callsign,
             hazardSlug,
             payloadSummary,
             linkOnline,
@@ -150,7 +195,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       const localMsg: DtnMessage = {
         id: `dtn-${Date.now()}`,
         reportTitle,
-        senderCallsign: activeMember,
+        senderCallsign: activeCharacter.callsign,
         hazardSlug,
         status: linkOnline ? "ACKNOWLEDGED" : "PENDING",
         createdAt: new Date().toLocaleTimeString(),
@@ -161,7 +206,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       };
       setDtnQueue((prev) => [localMsg, ...prev]);
     },
-    [linkOnline, mission.crew, role, selectedMemberId]
+    [activeCharacter.callsign, linkOnline]
   );
 
   const syncDtnQueue = useCallback(async () => {
@@ -177,9 +222,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toLocaleTimeString();
     setDtnQueue((prev) =>
       prev.map((m) =>
-        m.status === "PENDING"
-          ? { ...m, status: "ACKNOWLEDGED", sentAt: now, acknowledgedAt: now }
-          : m
+        m.status === "PENDING" ? { ...m, status: "ACKNOWLEDGED", sentAt: now, acknowledgedAt: now } : m
       )
     );
   }, [dtnQueue]);
@@ -208,22 +251,28 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  const addPrivateCheckIn = useCallback((entry: Omit<PrivateCheckIn, "id" | "timestamp">) => {
-    setPrivateCheckIns((prev) => [
-      {
-        ...entry,
-        id: `priv-${Date.now()}`,
-        timestamp: new Date().toLocaleTimeString(),
-      },
-      ...prev,
-    ]);
-  }, []);
+  const addPrivateCheckIn = useCallback(
+    (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => {
+      setPrivateCheckIns((prev) => [
+        {
+          ...entry,
+          id: `priv-${Date.now()}`,
+          actorId: activeCharacter.id,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+        ...prev,
+      ]);
+    },
+    [activeCharacter.id]
+  );
 
   return (
     <MissionContext.Provider
       value={{
         mission,
         setMissionId,
+        activeCharacter,
+        setActiveCharacterId,
         role,
         setRole,
         selectedMemberId,
@@ -232,6 +281,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         setLinkOnline,
         reentryMode,
         setReentryMode,
+        actorInputs,
+        saveActorInput,
         dtnQueue,
         queueDtnReport,
         syncDtnQueue,

@@ -3,16 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  AlertOctagon,
-  Bell,
-  LayoutDashboard,
-  Radio,
-  Shield,
-  Users,
-  Wifi,
-  WifiOff,
-} from "lucide-react";
+import { Bell, LayoutDashboard, Radio, Shield, Users, Wifi, WifiOff } from "lucide-react";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
 import { HAZARDS } from "@/lib/hazards";
@@ -21,20 +12,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const {
     mission,
+    activeCharacter,
+    setActiveCharacterId,
     role,
-    setRole,
-    selectedMemberId,
-    setSelectedMemberId,
     linkOnline,
     setLinkOnline,
     reentryMode,
     setReentryMode,
     dtnQueue,
   } = useMission();
-  const { pushToast, triggerAlarm } = useAlerts();
+  const { pushToast } = useAlerts();
 
   const pendingDtnCount = dtnQueue.filter((m) => m.status === "PENDING").length;
-  const activeMember = mission.crew.find((c) => c.id === selectedMemberId) ?? mission.crew[1] ?? mission.crew[0];
 
   const navItems = [
     {
@@ -54,23 +43,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     },
     {
       href: "/dashboard/alerts",
-      label: "Alarms & Buddy-Rescue",
+      label: "Alerts & Buddy-Rescue",
       icon: Bell,
     },
   ];
 
-  const handleQuickAlarm = () => {
-    const h = HAZARDS[0];
-    triggerAlarm({
-      hazardNumber: h.number,
-      hazardTitle: h.title,
-      ...h.alarmPreset,
-    });
-  };
-
   return (
     <div className="min-h-screen bg-[#f1f5f9] text-slate-900">
-      {/* Standalone App Header */}
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -94,57 +73,29 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setRole("lead");
+            {/* Character Switcher (Leader or any Member) */}
+            <select
+              value={activeCharacter.id}
+              onChange={(e) => {
+                const next = mission.crew.find((c) => c.id === e.target.value);
+                setActiveCharacterId(e.target.value);
+                if (next) {
                   pushToast({
-                    title: "Role: Lead",
-                    message: "Here is: Commander Matrix & privacy firewall active.",
+                    title: `Switched Character (${next.isLeadSlot ? "Lead" : "Member"})`,
+                    message: `Here is: Viewing dashboard as ${next.callsign}.`,
                     variant: "info",
                   });
-                }}
-                className={`rounded-md px-3 py-1 font-medium transition ${
-                  role === "lead" ? "bg-white text-sky-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Lead
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRole("member");
-                  pushToast({
-                    title: "Role: Member",
-                    message: "Here is: Personal dashboard & private logs active.",
-                    variant: "info",
-                  });
-                }}
-                className={`rounded-md px-3 py-1 font-medium transition ${
-                  role === "member" ? "bg-white text-emerald-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Member
-              </button>
-            </div>
-
-            {role === "member" && (
-              <select
-                value={activeMember.id}
-                onChange={(e) => setSelectedMemberId(e.target.value)}
-                aria-label="Select crew member slot"
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700"
-              >
-                {mission.crew
-                  .filter((c) => !c.isLeadSlot)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.callsign}
-                    </option>
-                  ))}
-              </select>
-            )}
+                }
+              }}
+              aria-label="Active character"
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700"
+            >
+              {mission.crew.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.callsign} ({c.isLeadSlot ? "Lead" : "Member"})
+                </option>
+              ))}
+            </select>
 
             <button
               type="button"
@@ -186,20 +137,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             >
               {reentryMode ? "Phase: Re-Entry" : "Phase: Ops"}
             </button>
-
-            <button
-              type="button"
-              onClick={handleQuickAlarm}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-            >
-              <AlertOctagon className="h-3.5 w-3.5" />
-              Screen Alarm
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Workspace Body */}
       <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[230px_1fr]">
         <aside className="space-y-6">
           <nav className="space-y-1">

@@ -3,40 +3,46 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertOctagon, ArrowLeft, Bell, Lock } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { getHazardBySlug, HAZARDS } from "@/lib/hazards";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
+import { evaluateHazardForActor } from "@/lib/evaluator";
 
 export default function HazardDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const hazard = getHazardBySlug(slug);
-  const { role } = useMission();
-  const { pushToast, triggerAlarm } = useAlerts();
+  const { mission, activeCharacter, role, actorInputs, saveActorInput } = useMission();
+  const { pushToast } = useAlerts();
 
-  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
 
   if (!hazard) {
     notFound();
   }
 
   const roleConfig = role === "lead" ? hazard.leadView : hazard.memberView;
+  const snapshot = evaluateHazardForActor(mission, activeCharacter, hazard, currentActorInputs);
 
   const handleSaveSlot = (streamName: string) => {
-    const val = inputValues[streamName]?.trim();
+    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? "").trim();
+    if (val) {
+      saveActorInput(streamName, val);
+    }
     pushToast({
-      title: `${hazard.shortTitle}: Input Recorded`,
+      title: `${hazard.shortTitle}: Input Saved`,
       message: val
-        ? `Here is: "${val}" captured in ${streamName}.`
-        : `Here is: ${streamName} slot opened (add your info to populate).`,
+        ? `Here is: "${val}" stored for ${activeCharacter.callsign} in ${streamName}.`
+        : `Here is: Add your info to ${streamName} to update character telemetry.`,
       variant: val ? "success" : "info",
     });
   };
 
   return (
     <DashboardShell>
-      {/* Header Card */}
+      {/* Info-Agnostic Hazard Header */}
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900">
@@ -46,45 +52,22 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           <span className="text-xs text-slate-400">Doc: {hazard.sourceDoc}</span>
         </div>
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1.5">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-block rounded-md bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
               Hazard {hazard.number} of 5 · {role.toUpperCase()} View
             </span>
-            <h1 className="text-2xl font-bold text-slate-900">{hazard.title}</h1>
-            <p className="max-w-3xl text-sm text-slate-600">{hazard.overviewSlot}</p>
+            <span className="rounded-md bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
+              {snapshot.actorStatusLabel}
+            </span>
           </div>
+          <h1 className="text-2xl font-bold text-slate-900">{hazard.title}</h1>
+          <p className="max-w-3xl text-sm text-slate-600">{hazard.overviewSlot}</p>
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                pushToast({
-                  title: `Hazard ${hazard.number} Toast`,
-                  message: `Here is: ${hazard.title} notification for ${role.toUpperCase()}.`,
-                  variant: "warning",
-                })
-              }
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-            >
-              <Bell className="h-3.5 w-3.5 text-amber-600" />
-              Hazard Toast
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                triggerAlarm({
-                  hazardNumber: hazard.number,
-                  hazardTitle: hazard.title,
-                  ...hazard.alarmPreset,
-                })
-              }
-              className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-red-700"
-            >
-              <AlertOctagon className="h-3.5 w-3.5" />
-              Screen Alarm
-            </button>
-          </div>
+        <div className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Active Scenario Slot ({mission.name}): </span>
+          {snapshot.scenarioStatusSlot}
         </div>
       </section>
 
@@ -118,30 +101,33 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-base font-bold text-slate-900">Input Ingestion Slots</h2>
           <div className="space-y-3">
-            {hazard.inputSlots.map((slot) => (
-              <div key={slot.streamName} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-900">{slot.streamName}</span>
-                  <span className="text-slate-400">{slot.sourceRef}</span>
+            {hazard.inputSlots.map((slot) => {
+              const displayValue = draftValues[slot.streamName] ?? currentActorInputs[slot.streamName] ?? "";
+              return (
+                <div key={slot.streamName} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-900">{slot.streamName}</span>
+                    <span className="text-slate-400">{slot.sourceRef}</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={displayValue}
+                    onChange={(e) => setDraftValues((prev) => ({ ...prev, [slot.streamName]: e.target.value }))}
+                    placeholder={slot.inputPrompt}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSlot(slot.streamName)}
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                    >
+                      Save Input
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  value={inputValues[slot.streamName] ?? ""}
-                  onChange={(e) => setInputValues((prev) => ({ ...prev, [slot.streamName]: e.target.value }))}
-                  placeholder={slot.inputPrompt}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
-                />
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => handleSaveSlot(slot.streamName)}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
-                  >
-                    Submit Slot
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

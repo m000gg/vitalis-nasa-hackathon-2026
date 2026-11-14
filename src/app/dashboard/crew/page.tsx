@@ -5,12 +5,13 @@ import { CheckSquare, Lock, ShieldCheck, Unlock } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
+import { evaluateLeaderDashboard } from "@/lib/evaluator";
 
 export default function CrewOrCheckInPage() {
   const {
     mission,
+    activeCharacter,
     role,
-    selectedMemberId,
     shelterConfirmations,
     toggleCrewShelter,
     auditLog,
@@ -20,8 +21,11 @@ export default function CrewOrCheckInPage() {
   } = useMission();
   const { pushToast } = useAlerts();
 
-  const [unlockTarget, setUnlockTarget] = useState(mission.crew[1]?.callsign ?? "Member Slot");
+  const [unlockTarget, setUnlockTarget] = useState(
+    mission.crew.find((c) => !c.isLeadSlot)?.callsign ?? mission.crew[0].callsign
+  );
   const [unlockReason, setUnlockReason] = useState("");
+  const [rotationNote, setRotationNote] = useState("");
 
   const [fatigueScore, setFatigueScore] = useState("");
   const [sleepHoursInput, setSleepHoursInput] = useState("");
@@ -35,7 +39,19 @@ export default function CrewOrCheckInPage() {
     isle: true,
   });
 
-  const activeMember = mission.crew.find((c) => c.id === selectedMemberId) ?? mission.crew[1] ?? mission.crew[0];
+  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
+  const myPrivateCheckIns = privateCheckIns.filter((entry) => entry.actorId === activeCharacter.id);
+
+  const handleSaveRotation = (e: React.FormEvent) => {
+    e.preventDefault();
+    const note = rotationNote.trim() || "Add your info: Proposed crew rotation / sleep bay reassignment plan here";
+    setRotationNote("");
+    pushToast({
+      title: "Rotation Advisory Dispatched",
+      message: `Here is: "${note}" queued for crew.`,
+      variant: "info",
+    });
+  };
 
   const handleEmergencyUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +90,7 @@ export default function CrewOrCheckInPage() {
     setPrivateJournalNote("");
     pushToast({
       title: "Private Check-In Saved",
-      message: "Here is: Raw mood & journal remain private to you.",
+      message: `Here is: Check-in recorded privately for ${activeCharacter.callsign}.`,
       variant: "success",
     });
   };
@@ -87,7 +103,8 @@ export default function CrewOrCheckInPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-900">Lead Crew Matrix &amp; Privacy Firewall</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Here is: Duty readiness, EVA gate status, and shelter confirmations. Raw personal journals stay private.
+                Here is: Duty readiness, EVA gate status, and shelter confirmations derived from {mission.name}. Raw
+                personal journals stay private.
               </p>
             </div>
 
@@ -103,35 +120,32 @@ export default function CrewOrCheckInPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {mission.crew.map((c) => {
-                    const sheltered = !!shelterConfirmations[c.id];
-                    return (
-                      <tr key={c.id}>
-                        <td className="py-3 pr-4">
-                          <p className="font-semibold text-slate-900">{c.callsign}</p>
-                          <p className="text-slate-500">{c.assignedRoleTitle}</p>
-                        </td>
-                        <td className="py-3 pr-4 font-semibold text-slate-800">{c.readinessState}</td>
-                        <td className="py-3 pr-4 text-slate-600">{c.evaGateState}</td>
-                        <td className="py-3 pr-4">
-                          <button
-                            type="button"
-                            onClick={() => toggleCrewShelter(c.id)}
-                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
-                              sheltered ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
-                            }`}
-                          >
-                            {sheltered ? "Confirmed" : "Pending"}
-                          </button>
-                        </td>
-                        <td className="py-3 text-slate-400">
-                          <span className="inline-flex items-center gap-1">
-                            <Lock className="h-3 w-3" /> Private
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {leaderModel.crewMatrix.map((c) => (
+                    <tr key={c.id}>
+                      <td className="py-3 pr-4">
+                        <p className="font-semibold text-slate-900">{c.callsign}</p>
+                        <p className="text-slate-500">{c.assignedRoleTitle}</p>
+                      </td>
+                      <td className="py-3 pr-4 font-semibold text-slate-800">{c.readinessState}</td>
+                      <td className="py-3 pr-4 text-slate-600">{c.evaGateState}</td>
+                      <td className="py-3 pr-4">
+                        <button
+                          type="button"
+                          onClick={() => toggleCrewShelter(c.id)}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                            c.shelterConfirmed ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
+                          }`}
+                        >
+                          {c.shelterConfirmed ? "Confirmed" : "Pending"}
+                        </button>
+                      </td>
+                      <td className="py-3 text-slate-400">
+                        <span className="inline-flex items-center gap-1">
+                          <Lock className="h-3 w-3" /> Private
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -143,22 +157,21 @@ export default function CrewOrCheckInPage() {
               <p className="text-xs text-slate-600">
                 Here is: Lower-exposure rotation (Hazard 1) and module relocation advice (Hazard 5).
               </p>
-              <p className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-500">
-                Add your info: Proposed crew rotation / sleep bay reassignment plan here.
-              </p>
-              <button
-                type="button"
-                onClick={() =>
-                  pushToast({
-                    title: "Rotation Advisory Sent",
-                    message: "Here is: Crew rotation & relocation notice dispatched.",
-                    variant: "info",
-                  })
-                }
-                className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700"
-              >
-                Send Rotation Toast
-              </button>
+              <form onSubmit={handleSaveRotation} className="space-y-2.5 text-xs">
+                <input
+                  type="text"
+                  value={rotationNote}
+                  onChange={(e) => setRotationNote(e.target.value)}
+                  placeholder="Add your info: Proposed crew rotation / sleep bay reassignment plan here"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800 placeholder:text-slate-400"
+                />
+                <button
+                  type="submit"
+                  className="rounded-xl bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700"
+                >
+                  Issue Rotation Advisory
+                </button>
+              </form>
             </section>
 
             <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6">
@@ -216,10 +229,10 @@ export default function CrewOrCheckInPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-xl font-bold text-slate-900">
-                60-Second Self-Check &amp; EVA Gate ({activeMember.callsign})
+                60-Second Self-Check &amp; EVA Gate ({activeCharacter.callsign})
               </h1>
               <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                <Lock className="h-3 w-3" /> Private to Member
+                <Lock className="h-3 w-3" /> Private to {activeCharacter.callsign}
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-600">
@@ -260,9 +273,9 @@ export default function CrewOrCheckInPage() {
                 </button>
               </form>
 
-              {privateCheckIns.length > 0 && (
+              {myPrivateCheckIns.length > 0 && (
                 <div className="space-y-2 pt-2">
-                  {privateCheckIns.map((item) => (
+                  {myPrivateCheckIns.map((item) => (
                     <div key={item.id} className="rounded-xl bg-slate-50 p-3 text-xs">
                       <p className="text-slate-400">{item.timestamp}</p>
                       <p className="mt-0.5 text-slate-700">Fatigue: {item.fatigueScore}</p>
@@ -305,7 +318,7 @@ export default function CrewOrCheckInPage() {
                 })}
               </div>
               <p className="rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-800">
-                Gate Status: {Object.values(evaChecks).every(Boolean) ? "GO" : "CONDITIONAL / HOLD"}
+                Evaluated Gate Status: {Object.values(evaChecks).every(Boolean) ? "GO" : activeCharacter.evaGateState}
               </p>
             </section>
           </div>

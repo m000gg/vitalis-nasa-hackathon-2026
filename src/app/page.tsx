@@ -2,22 +2,21 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bell, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, Users } from "lucide-react";
 import { MISSIONS, MissionProfile } from "@/lib/domain";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
-import { HAZARDS } from "@/lib/hazards";
 
 export default function GreetingScenarioPage() {
   const router = useRouter();
   const { setMissionId } = useMission();
-  const { pushToast, triggerAlarm } = useAlerts();
+  const { pushToast } = useAlerts();
 
   const handleSelectScenario = (m: MissionProfile) => {
     setMissionId(m.id);
     pushToast({
       title: "Scenario Selected",
-      message: `Here is: ${m.name} loaded. Choose a character (Leader or Member) next.`,
+      message: `Here is: ${m.name} loaded. Choose a character next.`,
       variant: "info",
     });
     router.push(`/character?scenario=${encodeURIComponent(m.id)}`);
@@ -28,52 +27,19 @@ export default function GreetingScenarioPage() {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <span className="text-sm font-bold tracking-tight text-slate-900">Vitalis+ App</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                pushToast({
-                  title: "Toast Check",
-                  message: "Here is: Toast notification mechanism active.",
-                  variant: "info",
-                })
-              }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-            >
-              <Bell className="h-3.5 w-3.5 text-sky-600" />
-              Test Toast
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const h = HAZARDS[0];
-                triggerAlarm({
-                  hazardNumber: h.number,
-                  hazardTitle: h.title,
-                  ...h.alarmPreset,
-                });
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-            >
-              <ShieldAlert className="h-3.5 w-3.5" />
-              Test Alarm
-            </button>
-          </div>
+          <span className="text-xs text-slate-500">Step 1 · Choose Scenario</span>
         </div>
       </header>
 
       <main className="mx-auto max-w-4xl space-y-8 px-6 py-12">
-        {/* Greeting */}
         <section className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Step 1 · Choose Scenario</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome to Vitalis+</h1>
           <p className="text-sm text-slate-600">
-            Here is: Select a mission scenario below to pick your character (Leader or Crew Member) and enter the
-            5-hazard space health dashboard.
+            Here is: Select a mission scenario to feed its telemetry and crew roster into the dashboard, then pick your
+            character (Leader or Member).
           </p>
         </section>
 
-        {/* Direct Scenario Choosing */}
         <section className="grid gap-5 md:grid-cols-2">
           {MISSIONS.map((m) => (
             <button
