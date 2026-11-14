@@ -147,18 +147,18 @@ export function evaluateHazardForActor(
     reentryMode: boolean;
   }
 ): HazardActorSnapshot {
-  const scopedRecords = (options.hazardRecords ?? []).filter(
-    (r) => r.hazardSlug === hazard.slug
-  );
-  const scopedSamples = (options.hazardSamples ?? []).filter(
-    (s) => s.hazardSlug === hazard.slug
-  );
+  const allRecords = options.hazardRecords ?? [];
+  const allSamples = options.hazardSamples ?? [];
+  const scopedRecords = allRecords.filter((r) => r.hazardSlug === hazard.slug);
+  const scopedSamples = allSamples.filter((s) => s.hazardSlug === hazard.slug);
   const result = hazard.evaluate({
     mission,
     actor,
     actorInputs: options.actorInputs,
     hazardRecords: scopedRecords,
     hazardSamples: scopedSamples,
+    allHazardRecords: allRecords,
+    allHazardSamples: allSamples,
     linkOnline: options.linkOnline,
     reentryMode: options.reentryMode,
   });

@@ -84,6 +84,7 @@ Every hazard file is organized into three clearly labeled comment sections so AI
      - `input.actorInputs` (`Record<streamName, rawValue>` from live form edits)
      - `input.hazardRecords` (latest `HazardDataRecord[]` + flexible `payload` JSONB from `character_hazard_data`, filtered to your `hazardSlug`)
      - `input.hazardSamples` (historical `HazardSampleRecord[]` from `character_hazard_samples`, filtered to your `hazardSlug`)
+     - `input.allHazardRecords` & `input.allHazardSamples` (**read-only** across all 5 hazards for this scenario/character—use e.g. `input.allHazardRecords.find(r => r.hazardSlug === "isolation" && ...)` to combine Hazard 02 sleep with Hazard 01 without touching `02-isolation.ts`)
      - `input.linkOnline`, `input.reentryMode`
    - Return `status` (`"NOMINAL" | "ELEVATED" | "CRITICAL"`), `scenarioStatusSlot`, `immediateHorizon`, `prolongedHorizon`, `eta`, `solutions` (respect `reentryMode` 1-action cap when enabled), and optional `charts?: HazardChartSpec[]` (automatically rendered by `<HazardTelemetryChart />`).
 3. **`// [SECTION 3: HAZARD N UI METADATA, INPUT STREAMS & ALARMS]`**

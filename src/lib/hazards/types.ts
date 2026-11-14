@@ -60,6 +60,10 @@ export interface HazardEvaluationInput {
   actorInputs: Record<string, string>;
   hazardRecords: HazardDataRecord[];
   hazardSamples: HazardSampleRecord[];
+  /** Read-only snapshots across ALL 5 hazards for this scenario/character (e.g. reading sleep from `isolation` inside `radiation`). */
+  allHazardRecords: readonly HazardDataRecord[];
+  /** Read-only time-series samples across ALL 5 hazards for this scenario/character. */
+  allHazardSamples: readonly HazardSampleRecord[];
   linkOnline: boolean;
   reentryMode: boolean;
 }
