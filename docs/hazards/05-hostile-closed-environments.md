@@ -72,3 +72,33 @@ Combine **1 + 5**: *"The environment attacks the crew, and we warn early."*
 - Both rest on **published NASA research**, such as the finding that each +1 mmHg of CO₂ doubles the odds of a headache [2][3].
 - Both link the **environment to crew health**, warning the crew before symptoms start.
 - Each hazard is tracked as one sensor or metric, and the system combines them into one picture of crew health.
+
+---
+
+## 5. Proposed API Endpoints
+
+> All endpoints below are **proposed**. They are not implemented yet, and all values in the example are **illustrative**.
+
+| Feature # | Method | Path | Purpose | Key params |
+| :--- | :--- | :--- | :--- | :--- |
+| Shared | `POST` | `/api/environment/replay/start` | Replay real ISS data as a live stream | `mission_id`, `speed` |
+| Shared | `GET` | `/api/environment/replay/status` | Show the state of the current replay | — |
+| 1 | `GET` | `/api/environment/co2/live` | Current cabin CO₂ from the live stream | — |
+| 1 | `GET` | `/api/environment/headache-risk` | Crew headache risk forecast based on CO₂ | `person_id`, `horizon_hours` |
+| 2 | `GET` | `/api/environment/modules` | Module weather for all modules (green/yellow/red) | — |
+| 2 | `GET` | `/api/environment/modules/{module_id}` | Module weather for one module | `module_id` |
+| 3 | `GET` | `/api/environment/recommendations/relocation` | "Where to go" advice for a crew member | `person_id` |
+| 4 | `GET` | `/api/environment/sleep-report/{person_id}` | Morning report linking sleep to noise and CO₂ | `person_id`, `date` |
+| 5 | `GET` | `/api/environment/radiation/{person_id}` | Radiation budget: dose received this mission and dose left | `person_id` |
+| 6 | `GET` | `/api/environment/contacts/{person_id}` | Contacts of a sick crew member (future work, limited data) | `person_id` |
+
+### Example: `GET /api/environment/headache-risk` (proposed, illustrative)
+
+```json
+{
+  "current_co2": 3.4,
+  "risk_level": "elevated",
+  "risk_multiplier": 2.0,
+  "warning_message": "CO2 is rising. Headache risk is higher than normal."
+}
+```
