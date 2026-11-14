@@ -6,6 +6,12 @@ import {
   defaultSimulationParameters,
   runRadiationSimulation,
 } from "../src/lib/radiation/simulation.ts";
+import {
+  PARAMETER_GROUPS,
+  RADIATION_WORKBENCH_CATALOG,
+  parametersForPreset,
+  validateWorkbenchParameters,
+} from "../src/lib/radiation/simulation-ux.ts";
 
 test("all documented radiation scenarios A-S are executable", () => {
   assert.equal(RADIATION_SIMULATION_CATALOG.length, 19);
@@ -46,6 +52,44 @@ test("invalid parameter bounds are rejected", () => {
     /must be at least/
   );
   assert.throws(() => runRadiationSimulation({ scenarioId: "Z" }), /Unknown radiation scenario/);
+});
+
+test("all A-S workbench scenarios include complete newcomer guidance", () => {
+  assert.equal(RADIATION_WORKBENCH_CATALOG.length, 19);
+  for (const scenario of RADIATION_WORKBENCH_CATALOG) {
+    assert.ok(scenario.whatsHappening.length > 60, `${scenario.id} needs a plain-language situation description`);
+    assert.ok(scenario.whatVitalisDoes.length > 60, `${scenario.id} needs a plain-language behavior description`);
+    assert.equal(scenario.previewEvents.length, 3);
+    assert.equal(scenario.resultHighlights.length, 3);
+    assert.ok(scenario.presets.length >= 2);
+    for (const parameter of scenario.parameters) {
+      assert.ok(PARAMETER_GROUPS.includes(parameter.group), `${scenario.id}/${parameter.key} has an invalid group`);
+      assert.ok(parameter.tooltip.length > parameter.help.length, `${scenario.id}/${parameter.key} needs a complete tooltip`);
+    }
+  }
+});
+
+test("every workbench preset produces a valid real engine result", () => {
+  for (const scenario of RADIATION_WORKBENCH_CATALOG) {
+    for (const preset of scenario.presets) {
+      const parameters = parametersForPreset(scenario, preset.id);
+      assert.deepEqual(validateWorkbenchParameters(scenario, parameters), {}, `${scenario.id}/${preset.id} must be valid`);
+      const result = runRadiationSimulation({ scenarioId: scenario.id, parameters });
+      assert.equal(result.scenarioId, scenario.id);
+      assert.ok(result.metrics.length >= 2);
+      assert.ok(result.events.every((event, index, events) => index === 0 || event.offsetMinutes >= events[index - 1].offsetMinutes));
+    }
+  }
+});
+
+test("workbench validation blocks cross-field mistakes", () => {
+  const storm = RADIATION_WORKBENCH_CATALOG.find((scenario) => scenario.id === "A");
+  const extension = RADIATION_WORKBENCH_CATALOG.find((scenario) => scenario.id === "N");
+  assert.ok(storm && extension);
+  const stormErrors = validateWorkbenchParameters(storm, { ...defaultSimulationParameters(storm), elevatedThreshold: 4, criticalThreshold: 0.05 });
+  assert.match(stormErrors.criticalThreshold, /higher/);
+  const extensionErrors = validateWorkbenchParameters(extension, { ...defaultSimulationParameters(extension), originalHours: 300, extendedHours: 100 });
+  assert.match(extensionErrors.extendedHours, /cannot be shorter/);
 });
 
 test("medical and research scenarios preserve safety boundaries", () => {

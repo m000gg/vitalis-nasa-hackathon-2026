@@ -4,7 +4,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Beaker,
+  BookOpen,
   CheckCircle2,
+  CircleHelp,
   CloudSun,
   Database,
   Download,
@@ -19,8 +21,11 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Users,
+  X,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import { PARAMETER_GROUPS, validateWorkbenchParameters } from "@/lib/radiation/simulation-ux";
+import type { ParameterGroup, WorkbenchParameterDefinition } from "@/lib/radiation/simulation-ux";
 import type { HazardScreenProps } from "./types";
 
 type ScenarioItem = {
@@ -67,17 +72,13 @@ type MethodResult = {
 
 type SimulationParameterValue = number | boolean | string;
 
-type SimulationParameterDefinition = {
-  key: string;
+type SimulationParameterDefinition = WorkbenchParameterDefinition;
+
+type SimulationPreset = {
+  id: string;
   label: string;
-  type: "number" | "boolean" | "select";
-  unit?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  defaultValue: SimulationParameterValue;
-  options?: Array<{ label: string; value: string }>;
-  help: string;
+  description: string;
+  values: Record<string, SimulationParameterValue>;
 };
 
 type SimulationDefinition = {
@@ -87,6 +88,11 @@ type SimulationDefinition = {
   description: string;
   parameters: SimulationParameterDefinition[];
   defaultParameters: Record<string, SimulationParameterValue>;
+  whatsHappening: string;
+  whatVitalisDoes: string;
+  previewEvents: string[];
+  resultHighlights: string[];
+  presets: SimulationPreset[];
 };
 
 type SimulationResult = {
@@ -138,6 +144,37 @@ function methodClass(status: MethodItem["status"]) {
   return "border-[#D97706] bg-amber-50 text-amber-900";
 }
 
+function ParameterHelp({ parameter }: { parameter: SimulationParameterDefinition }) {
+  const [open, setOpen] = useState(false);
+  const tooltipId = `parameter-help-${parameter.key}`;
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        aria-label={`Explain ${parameter.label}`}
+        aria-expanded={open}
+        aria-describedby={open ? tooltipId : undefined}
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[#4502FF] outline-none hover:bg-violet-100 focus:ring-2 focus:ring-[#FFDA14]"
+      >
+        <CircleHelp className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {open && (
+        <span id={tooltipId} role="tooltip" className="absolute left-0 top-7 z-30 w-72 border-2 border-slate-900 bg-white p-3 text-left text-xs font-normal normal-case leading-relaxed text-slate-700 shadow-[4px_4px_0_#FFDA14]" style={mono}>
+          {parameter.tooltip}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function RadiationHazardScreen({
   mission,
   activeCharacter,
@@ -161,6 +198,7 @@ export function RadiationHazardScreen({
   const [activeSimulationRunId, setActiveSimulationRunId] = useState<string | null>(null);
   const [protocolCompletion, setProtocolCompletion] = useState<Record<string, boolean>>({});
   const [showComparison, setShowComparison] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
   const standaloneDemo = mission.id === "radiation-demo-local";
@@ -387,8 +425,23 @@ export function RadiationHazardScreen({
 
   const visibleMethods = methods.filter((method) => methodFilter === "all" || method.group === methodFilter);
   const activeSimulationDefinition = simulationCatalog.find((scenario) => scenario.id === selectedSimulationId) ?? null;
-  const activeSimulationParameters = simulationParameterSets[selectedSimulationId] ?? activeSimulationDefinition?.defaultParameters ?? {};
-  const activeSimulationResult = simulationRuns.find((run) => run.runId === activeSimulationRunId) ?? simulationRuns[0] ?? null;
+  const activeSimulationParameters = useMemo(
+    () => simulationParameterSets[selectedSimulationId] ?? activeSimulationDefinition?.defaultParameters ?? {},
+    [activeSimulationDefinition, selectedSimulationId, simulationParameterSets]
+  );
+  const activeSimulationResult = simulationRuns.find((run) => run.runId === activeSimulationRunId) ?? null;
+  const simulationValidationErrors = useMemo(
+    () => activeSimulationDefinition
+      ? validateWorkbenchParameters(activeSimulationDefinition, activeSimulationParameters)
+      : {},
+    [activeSimulationDefinition, activeSimulationParameters]
+  );
+  const groupedSimulationParameters = useMemo(() => {
+    if (!activeSimulationDefinition) return [] as Array<[ParameterGroup, SimulationParameterDefinition[]]>;
+    return PARAMETER_GROUPS
+      .map((group) => [group, activeSimulationDefinition.parameters.filter((parameter) => parameter.group === group)] as [ParameterGroup, SimulationParameterDefinition[]])
+      .filter(([, parameters]) => parameters.length > 0);
+  }, [activeSimulationDefinition]);
 
   const updateSimulationParameter = (key: string, value: SimulationParameterValue) => {
     setSimulationParameterSets((current) => ({
@@ -397,8 +450,32 @@ export function RadiationHazardScreen({
     }));
   };
 
+  const selectSimulation = (scenarioId: string) => {
+    setSelectedSimulationId(scenarioId);
+    setActiveSimulationRunId(null);
+    setProtocolCompletion({});
+    setShowComparison(false);
+    setNotice("");
+  };
+
+  const applySimulationPreset = (preset: SimulationPreset) => {
+    if (!activeSimulationDefinition) return;
+    setSimulationParameterSets((current) => ({
+      ...current,
+      [activeSimulationDefinition.id]: { ...activeSimulationDefinition.defaultParameters, ...preset.values },
+    }));
+    setActiveSimulationRunId(null);
+    setProtocolCompletion({});
+    setShowComparison(false);
+    setNotice(`${preset.label} preset applied. Review the inputs, then run the scenario.`);
+  };
+
   const runInteractiveSimulation = async () => {
     if (!activeSimulationDefinition) return;
+    if (Object.keys(simulationValidationErrors).length > 0) {
+      setNotice("Fix the highlighted configuration errors before running the scenario.");
+      return;
+    }
     setBusy("simulation");
     setNotice("");
     try {
@@ -426,6 +503,7 @@ export function RadiationHazardScreen({
   const resetInteractiveSimulation = () => {
     if (!activeSimulationDefinition) return;
     setSimulationParameterSets((current) => ({ ...current, [activeSimulationDefinition.id]: activeSimulationDefinition.defaultParameters }));
+    setActiveSimulationRunId(null);
     setProtocolCompletion({});
     setShowComparison(false);
     setNotice(`${activeSimulationDefinition.title}: parameters reset to deterministic Demo Mode defaults.`);
@@ -502,21 +580,43 @@ export function RadiationHazardScreen({
                 <h3 className="mt-1 text-3xl">RADIATION SCENARIO WORKBENCH</h3>
                 <p className="mt-2 max-w-3xl text-sm text-slate-300">Select any documented scenario A–S, change its model inputs, run the same backend logic, complete the response protocol and compare recent results.</p>
               </div>
-              <div className="border border-slate-600 px-3 py-2 text-right text-xs" style={mono}>
-                <p>{simulationCatalog.length} SCENARIOS AVAILABLE</p>
-                <p className="mt-1 text-[#FFDA14]">{simulationRuns.length} LOCAL RUN(S) SAVED</p>
+              <div className="space-y-2 text-right text-xs" style={mono}>
+                <div className="border border-slate-600 px-3 py-2">
+                  <p>{simulationCatalog.length} SCENARIOS AVAILABLE</p>
+                  <p className="mt-1 text-[#FFDA14]">{simulationRuns.length} LOCAL RUN(S) SAVED</p>
+                </div>
+                <button type="button" onClick={() => setShowGuide(true)} className="w-full border-2 border-[#FFDA14] bg-transparent px-3 py-2 font-bold text-[#FFDA14] hover:bg-[#FFDA14] hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-white">
+                  <BookOpen className="mr-1 inline h-4 w-4" />HOW DOES THIS WORK?
+                </button>
               </div>
             </div>
           </div>
 
+          {showGuide && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-labelledby="radiation-guide-title" onKeyDown={(event) => { if (event.key === "Escape") setShowGuide(false); }}>
+              <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-slate-900 bg-white p-5 shadow-[8px_8px_0_#FFDA14]">
+                <div className="flex items-start justify-between gap-4">
+                  <div><p className="text-xs font-bold tracking-wider text-[#4502FF]" style={mono}>QUICK GUIDE · DEMO MODE</p><h4 id="radiation-guide-title" className="mt-1 text-3xl">How the Workbench works</h4></div>
+                  <button type="button" aria-label="Close guide" onClick={() => setShowGuide(false)} className="border-2 border-slate-900 p-2 hover:bg-[#FFDA14] focus:outline-none focus:ring-2 focus:ring-[#4502FF]"><X className="h-5 w-5" /></button>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-slate-700">This Workbench runs deterministic educational scenarios through the existing Vitalis+ calculation engine. Values are simulated inputs, not live NASA telemetry or medical advice.</p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  {[{ n: "01", title: "Configure", text: "Choose a scenario, read the explanations, or apply a quick preset." }, { n: "02", title: "Simulate", text: "Run the validated inputs through the real scenario engine." }, { n: "03", title: "Understand", text: "Review the decision, numbers, crew actions, and chronological timeline." }].map((step) => <div key={step.n} className="border-2 border-slate-900 p-3"><span className="text-xl font-bold text-[#4502FF]" style={mono}>{step.n}</span><p className="mt-2 font-bold">{step.title}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{step.text}</p></div>)}
+                </div>
+                <div className="mt-5 border-l-4 border-[#D97706] bg-amber-50 p-3 text-xs leading-relaxed text-amber-950"><strong>Important:</strong> configurable thresholds and shielding factors are demo assumptions. Vitalis+ labels those assumptions and does not present them as universal NASA limits.</div>
+                <button type="button" onClick={() => setShowGuide(false)} className="mt-5 w-full border-2 border-slate-900 bg-[#4502FF] px-4 py-3 font-bold text-white shadow-[3px_3px_0_#111827] hover:translate-x-px hover:translate-y-px">START EXPLORING</button>
+              </div>
+            </div>
+          )}
+
           <div className="grid xl:grid-cols-[0.9fr_1.4fr]">
             <div className="border-b-2 border-slate-900 p-5 xl:border-b-0 xl:border-r-2">
               <label className="text-xs font-bold tracking-wider text-[#4502FF]" htmlFor="radiation-scenario-select" style={mono}>SELECT SCENARIO</label>
-              <select id="radiation-scenario-select" value={selectedSimulationId} onChange={(event) => { setSelectedSimulationId(event.target.value); setProtocolCompletion({}); setShowComparison(false); }} className="mt-2 w-full border-2 border-slate-900 bg-white p-3 text-base font-bold outline-none focus:ring-4 focus:ring-[#FFDA14]">
+              <select id="radiation-scenario-select" value={selectedSimulationId} onChange={(event) => selectSimulation(event.target.value)} className="mt-2 w-full border-2 border-slate-900 bg-white p-3 text-base font-bold outline-none focus:ring-4 focus:ring-[#FFDA14]">
                 {simulationCatalog.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id}. {scenario.title}</option>)}
               </select>
               <div className="mt-3 grid grid-cols-7 gap-1 sm:grid-cols-10 xl:grid-cols-7">
-                {simulationCatalog.map((scenario) => <button key={scenario.id} type="button" onClick={() => { setSelectedSimulationId(scenario.id); setProtocolCompletion({}); setShowComparison(false); }} aria-label={`Select ${scenario.title}`} className={`border-2 px-1 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#4502FF] ${selectedSimulationId === scenario.id ? "border-slate-900 bg-[#FFDA14] text-slate-900" : "border-slate-300 bg-white text-slate-600 hover:border-[#4502FF]"}`} style={mono}>{scenario.id}</button>)}
+                {simulationCatalog.map((scenario) => <button key={scenario.id} type="button" onClick={() => selectSimulation(scenario.id)} aria-label={`Select ${scenario.title}`} className={`border-2 px-1 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#4502FF] ${selectedSimulationId === scenario.id ? "border-slate-900 bg-[#FFDA14] text-slate-900" : "border-slate-300 bg-white text-slate-600 hover:border-[#4502FF]"}`} style={mono}>{scenario.id}</button>)}
               </div>
 
               {activeSimulationDefinition && (
@@ -526,36 +626,55 @@ export function RadiationHazardScreen({
                     <span className="text-[10px] text-slate-500" style={mono}>SCENARIO {activeSimulationDefinition.id}</span>
                   </div>
                   <h4 className="mt-2 text-2xl">{activeSimulationDefinition.title}</h4>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{activeSimulationDefinition.description}</p>
+                  <div className="mt-3 space-y-3 border-2 border-slate-900 bg-slate-50 p-3">
+                    <div><p className="text-[10px] font-bold tracking-wider text-[#4502FF]" style={mono}>WHAT&apos;S HAPPENING?</p><p className="mt-1 text-sm leading-relaxed text-slate-700">{activeSimulationDefinition.whatsHappening}</p></div>
+                    <div className="border-t border-slate-300 pt-3"><p className="text-[10px] font-bold tracking-wider text-[#4502FF]" style={mono}>WHAT WILL VITALIS+ DO?</p><p className="mt-1 text-sm leading-relaxed text-slate-700">{activeSimulationDefinition.whatVitalisDoes}</p></div>
+                  </div>
 
-                  <div className="mt-5 space-y-4">
-                    {activeSimulationDefinition.parameters.map((parameter) => (
-                      <div key={parameter.key} className="border border-slate-300 bg-white p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <label htmlFor={`sim-${parameter.key}`} className="text-xs font-bold" style={mono}>{parameter.label.toUpperCase()}</label>
-                          {parameter.unit && <span className="text-[10px] text-slate-500" style={mono}>{parameter.unit}</span>}
+                  <div className="mt-4">
+                    <p className="text-[10px] font-bold tracking-wider text-slate-500" style={mono}>QUICK DEMONSTRATION PRESETS</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                      {activeSimulationDefinition.presets.map((preset) => <button key={preset.id} type="button" onClick={() => applySimulationPreset(preset)} title={preset.description} className="border-2 border-slate-300 bg-white px-2 py-2 text-left text-xs font-bold hover:border-[#4502FF] hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-[#FFDA14]">{preset.label}<span className="mt-1 block text-[10px] font-normal leading-snug text-slate-500">{preset.description}</span></button>)}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-5">
+                    {groupedSimulationParameters.map(([group, parameters]) => (
+                      <fieldset key={group} className="border-2 border-slate-300 bg-slate-100/70 p-3">
+                        <legend className="px-2 text-xs font-bold tracking-wider text-[#4502FF]" style={mono}>{group.toUpperCase()}</legend>
+                        <div className="space-y-3">
+                          {parameters.map((parameter) => {
+                            const error = simulationValidationErrors[parameter.key];
+                            return <div key={parameter.key} className={`border-2 bg-white p-3 ${error ? "border-red-500" : "border-slate-300"}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="flex items-center gap-1.5"><label htmlFor={`sim-${parameter.key}`} className="text-xs font-bold" style={mono}>{parameter.label.toUpperCase()}</label><ParameterHelp parameter={parameter} /></span>
+                                {parameter.unit && <span className="border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600" style={mono}>{parameter.unit}</span>}
+                              </div>
+                              {parameter.type === "number" && (
+                                <div className="mt-2 grid grid-cols-[1fr_92px] items-center gap-3">
+                                  <input id={`sim-${parameter.key}`} type="range" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} className="w-full accent-[#4502FF]" />
+                                  <input type="number" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} aria-label={`${parameter.label} numeric value`} aria-invalid={Boolean(error)} className="border-2 border-slate-900 px-2 py-1 text-right text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]" style={mono} />
+                                </div>
+                              )}
+                              {parameter.type === "boolean" && (
+                                <button id={`sim-${parameter.key}`} type="button" role="switch" aria-checked={Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onClick={() => updateSimulationParameter(parameter.key, !Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue))} className={`mt-2 w-full border-2 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#FFDA14] ${Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "border-[#16A34A] bg-emerald-50 text-emerald-800" : "border-slate-400 bg-slate-100 text-slate-700"}`} style={mono}>{Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "YES / CONFIRMED" : "NO / NOT CONFIRMED"}</button>
+                              )}
+                              {parameter.type === "select" && (
+                                <select id={`sim-${parameter.key}`} value={String(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, event.target.value)} className="mt-2 w-full border-2 border-slate-900 bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]">
+                                  {parameter.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                              )}
+                              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{parameter.help}</p>
+                              {error && <p className="mt-2 text-xs font-bold text-red-700" role="alert">{error}</p>}
+                            </div>;
+                          })}
                         </div>
-                        {parameter.type === "number" && (
-                          <div className="mt-2 grid grid-cols-[1fr_90px] gap-3">
-                            <input id={`sim-${parameter.key}`} type="range" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} className="accent-[#4502FF]" />
-                            <input type="number" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} aria-label={`${parameter.label} numeric value`} className="border-2 border-slate-900 px-2 py-1 text-right text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]" style={mono} />
-                          </div>
-                        )}
-                        {parameter.type === "boolean" && (
-                          <button id={`sim-${parameter.key}`} type="button" role="switch" aria-checked={Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onClick={() => updateSimulationParameter(parameter.key, !Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue))} className={`mt-2 w-full border-2 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#FFDA14] ${Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "border-[#16A34A] bg-emerald-50 text-emerald-800" : "border-slate-400 bg-slate-100 text-slate-700"}`} style={mono}>{Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "ON / TRUE" : "OFF / FALSE"}</button>
-                        )}
-                        {parameter.type === "select" && (
-                          <select id={`sim-${parameter.key}`} value={String(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, event.target.value)} className="mt-2 w-full border-2 border-slate-900 bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]">
-                            {parameter.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                          </select>
-                        )}
-                        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{parameter.help}</p>
-                      </div>
+                      </fieldset>
                     ))}
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={runInteractiveSimulation} disabled={busy !== null} className="border-2 border-slate-900 bg-[#4502FF] px-3 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111827] enabled:hover:translate-x-px enabled:hover:translate-y-px disabled:opacity-50"><Play className="mr-2 inline h-4 w-4" />{busy === "simulation" ? "RUNNING…" : "RUN SCENARIO"}</button>
+                    <button type="button" onClick={runInteractiveSimulation} disabled={busy !== null || Object.keys(simulationValidationErrors).length > 0} className="border-2 border-slate-900 bg-[#4502FF] px-3 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111827] enabled:hover:translate-x-px enabled:hover:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"><Play className="mr-2 inline h-4 w-4" />{busy === "simulation" ? "RUNNING…" : Object.keys(simulationValidationErrors).length > 0 ? "FIX INPUT ERRORS" : "RUN SCENARIO"}</button>
                     <button type="button" onClick={resetInteractiveSimulation} disabled={busy !== null} className="border-2 border-slate-900 bg-white px-3 py-3 text-sm font-bold enabled:hover:bg-[#FFDA14] disabled:opacity-50"><RotateCcw className="mr-2 inline h-4 w-4" />RESET INPUTS</button>
                   </div>
                 </div>
@@ -564,10 +683,18 @@ export function RadiationHazardScreen({
 
             <div className="p-5">
               {!activeSimulationResult ? (
-                <div className="flex min-h-[420px] flex-col items-center justify-center border-2 border-dashed border-slate-400 bg-white p-8 text-center">
-                  <SlidersHorizontal className="h-12 w-12 text-[#4502FF]" />
-                  <h4 className="mt-4 text-2xl">Configure and run a scenario</h4>
-                  <p className="mt-2 max-w-md text-sm text-slate-600">The result will show auditable metrics, causal explanation, two prioritized actions, protocol progress, an event timeline and comparison data.</p>
+                activeSimulationDefinition && <div className="min-h-[520px] border-2 border-slate-900 bg-white p-5 shadow-[5px_5px_0_#FFDA14]">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
+                    <div><p className="text-xs font-bold tracking-[0.18em] text-[#4502FF]" style={mono}>SCENARIO PREVIEW · READY TO CONFIGURE</p><h4 className="mt-1 text-3xl">{activeSimulationDefinition.id}. {activeSimulationDefinition.title}</h4></div>
+                    <SlidersHorizontal className="h-10 w-10 text-[#4502FF]" aria-hidden="true" />
+                  </div>
+                  <p className="mt-5 max-w-3xl text-base leading-relaxed text-slate-700">{activeSimulationDefinition.whatsHappening}</p>
+                  <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <article className="border-2 border-slate-900 bg-slate-50 p-4"><p className="text-xs font-bold text-[#4502FF]" style={mono}>EVENTS THIS RUN WILL MODEL</p><ol className="mt-3 space-y-3">{activeSimulationDefinition.previewEvents.map((event, index) => <li key={event} className="flex gap-3 text-sm"><span className="flex h-6 w-6 shrink-0 items-center justify-center border border-slate-900 bg-white text-xs font-bold" style={mono}>{index + 1}</span><span>{event}</span></li>)}</ol></article>
+                    <article className="border-2 border-slate-900 bg-[#111827] p-4 text-white"><p className="text-xs font-bold text-[#FFDA14]" style={mono}>RESULTS YOU WILL SEE</p><ul className="mt-3 space-y-3">{activeSimulationDefinition.resultHighlights.map((item) => <li key={item} className="flex gap-2 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#FFDA14]" /><span>{item}</span></li>)}</ul></article>
+                  </div>
+                  <div className="mt-6"><p className="text-xs font-bold tracking-wider text-slate-500" style={mono}>THREE SIMPLE STEPS</p><div className="mt-3 grid gap-3 sm:grid-cols-3">{[{ n: "1", title: "Configure", text: "Adjust the mission conditions or choose a preset." }, { n: "2", title: "Simulate", text: "Run the existing calculation engine." }, { n: "3", title: "Understand", text: "Review the assessment, actions, and timeline." }].map((step) => <div key={step.n} className="border-2 border-slate-300 p-3"><span className="text-2xl font-bold text-[#4502FF]" style={mono}>{step.n}</span><p className="font-bold">{step.title}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{step.text}</p></div>)}</div></div>
+                  <p className="mt-6 border-l-4 border-[#4502FF] bg-violet-50 p-3 text-xs leading-relaxed text-slate-700"><strong>Demo boundary:</strong> this scenario uses simulated inputs and documented toy-model assumptions. It does not display live crew telemetry or issue medical advice.</p>
                 </div>
               ) : (
                 <div className="space-y-5">
@@ -579,13 +706,19 @@ export function RadiationHazardScreen({
                       </div>
                       <span className="border-2 border-current px-3 py-1 text-sm font-bold" style={mono}>{activeSimulationResult.severity}</span>
                     </div>
-                    <p className="mt-3 text-base font-bold">{activeSimulationResult.summary}</p>
-                    <p className="mt-2 text-sm leading-relaxed">{activeSimulationResult.explanation}</p>
+                    <p className="mt-4 text-[10px] font-bold tracking-wider" style={mono}>WHAT HAPPENED?</p>
+                    <p className="mt-1 text-base font-bold">{activeSimulationResult.summary}</p>
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {activeSimulationResult.metrics.map((item) => <div key={item.label} className={`border-2 p-3 ${item.tone === "danger" ? "border-red-500 bg-red-50" : item.tone === "warning" ? "border-amber-500 bg-amber-50" : item.tone === "good" ? "border-emerald-500 bg-emerald-50" : "border-slate-300 bg-white"}`}><p className="text-[10px] font-bold tracking-wide text-slate-500" style={mono}>{item.label.toUpperCase()}</p><p className="mt-1 text-xl font-bold">{item.value} {item.unit ?? ""}</p></div>)}
+                  <div className="border-2 border-slate-900 bg-white p-4">
+                    <p className="text-xs font-bold text-[#4502FF]" style={mono}>WHY DID VITALIS+ MAKE THIS DECISION?</p>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-700">{activeSimulationResult.explanation}</p>
+                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" style={mono}><p className="border border-slate-300 bg-slate-50 p-2"><strong>INPUTS:</strong> values configured in this Workbench</p><p className="border border-slate-300 bg-slate-50 p-2"><strong>CALCULATION:</strong> deterministic scenario engine</p></div>
                   </div>
+
+                  <div><p className="mb-2 text-xs font-bold text-[#4502FF]" style={mono}>UNDERSTAND THE NUMBERS</p><div className="grid gap-2 sm:grid-cols-3">
+                    {activeSimulationResult.metrics.map((item) => <div key={item.label} className={`border-2 p-3 ${item.tone === "danger" ? "border-red-500 bg-red-50" : item.tone === "warning" ? "border-amber-500 bg-amber-50" : item.tone === "good" ? "border-emerald-500 bg-emerald-50" : "border-slate-300 bg-white"}`}><p className="text-[10px] font-bold tracking-wide text-slate-500" style={mono}>{item.label.toUpperCase()}</p><p className="mt-1 text-xl font-bold">{item.value} {item.unit ?? ""}</p><p className="mt-1 text-[10px] leading-relaxed text-slate-500">{item.unit ? `Reported in ${item.unit}; calculated from this run's simulated inputs.` : "Derived status or count for this simulated run."}</p></div>)}
+                  </div></div>
 
                   {activeSimulationResult.assignments && <div className="border-2 border-slate-900 bg-white p-4"><p className="text-xs font-bold text-[#4502FF]" style={mono}>CREW-TO-SHELTER ALLOCATION</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{activeSimulationResult.assignments.map((assignment) => <div key={assignment.crewMember} className={`flex items-center justify-between gap-3 border p-2 text-sm ${assignment.shelter === "UNASSIGNED" ? "border-red-500 bg-red-50" : "border-slate-300"}`}><span>{assignment.crewMember}</span><strong>{assignment.shelter}</strong></div>)}</div></div>}
 
@@ -597,7 +730,7 @@ export function RadiationHazardScreen({
                       </div>
                     </article>
                     <article className="border-2 border-slate-900 bg-[#111827] p-4 text-white">
-                      <p className="text-xs font-bold text-[#FFDA14]" style={mono}>PRIORITIZED ACTIONS</p>
+                      <p className="text-xs font-bold text-[#FFDA14]" style={mono}>WHAT SHOULD THE CREW DO NEXT?</p>
                       <ol className="mt-3 space-y-3">{activeSimulationResult.actions.slice(0, 2).map((action, index) => <li key={action} className="flex gap-3 text-sm"><span className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#FFDA14] text-[#FFDA14]" style={mono}>0{index + 1}</span><span>{action}</span></li>)}</ol>
                     </article>
                   </div>
@@ -608,7 +741,7 @@ export function RadiationHazardScreen({
                       <div className="mt-3 space-y-2">{activeSimulationResult.protocol.map((step) => <button key={step.id} type="button" onClick={() => toggleProtocolStep(step.id)} className={`flex w-full items-center gap-3 border-2 p-3 text-left text-sm focus:outline-none focus:ring-2 focus:ring-[#4502FF] ${protocolCompletion[step.id] ? "border-emerald-500 bg-emerald-50" : "border-slate-300 bg-white hover:border-[#4502FF]"}`}><span className={`flex h-5 w-5 shrink-0 items-center justify-center border-2 text-xs ${protocolCompletion[step.id] ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-400"}`}>{protocolCompletion[step.id] ? "✓" : ""}</span><span>{step.label}</span>{step.required && <span className="ml-auto text-[9px] font-bold text-red-600" style={mono}>REQUIRED</span>}</button>)}</div>
                     </article>
                     <article className="border-2 border-slate-900 bg-white p-4">
-                      <p className="text-xs font-bold text-[#4502FF]" style={mono}>EVENT LOG</p>
+                      <p className="text-xs font-bold text-[#4502FF]" style={mono}>EVENT TIMELINE</p>
                       <div className="mt-3 space-y-0">{activeSimulationResult.events.map((event, index) => <div key={`${event.offsetMinutes}-${event.label}`} className="grid grid-cols-[54px_14px_1fr] gap-2 text-xs"><span className="py-2 text-right text-slate-500" style={mono}>T+{event.offsetMinutes}</span><div className="relative flex justify-center"><span className={`mt-2 h-3 w-3 border-2 ${event.kind === "warning" ? "border-red-500 bg-red-100" : event.kind === "action" ? "border-[#4502FF] bg-violet-100" : "border-slate-400 bg-white"}`} />{index < activeSimulationResult.events.length - 1 && <span className="absolute top-5 bottom-0 w-px bg-slate-300" />}</div><span className="py-2">{event.label}</span></div>)}</div>
                     </article>
                   </div>

@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  RADIATION_SIMULATION_CATALOG,
-  defaultSimulationParameters,
-  runRadiationSimulation,
-} from "@/lib/radiation/simulation";
+import { defaultSimulationParameters, runRadiationSimulation } from "@/lib/radiation/simulation";
+import { RADIATION_WORKBENCH_CATALOG } from "@/lib/radiation/simulation-ux";
 
 export async function GET() {
   return NextResponse.json({
     mode: "demo",
     provenanceKind: "simulated",
-    scenarios: RADIATION_SIMULATION_CATALOG.map((scenario) => ({
+    scenarios: RADIATION_WORKBENCH_CATALOG.map((scenario) => ({
       ...scenario,
       defaultParameters: defaultSimulationParameters(scenario),
     })),
