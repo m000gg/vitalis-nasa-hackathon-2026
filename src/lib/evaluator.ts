@@ -1,5 +1,9 @@
 import { CrewSlot, MissionProfile, ReadinessState } from "@/lib/domain";
-import { HazardEvaluationResult, HazardSpec } from "@/lib/hazards";
+import {
+  HazardDataRecord,
+  HazardEvaluationResult,
+  HazardSpec,
+} from "@/lib/hazards";
 
 /**
  * Info-agnostic dashboard evaluation layer.
@@ -135,14 +139,19 @@ export function evaluateHazardForActor(
   hazard: HazardSpec,
   options: {
     actorInputs: Record<string, string>;
+    hazardRecords?: HazardDataRecord[];
     linkOnline: boolean;
     reentryMode: boolean;
   }
 ): HazardActorSnapshot {
+  const scopedRecords = (options.hazardRecords ?? []).filter(
+    (r) => r.hazardSlug === hazard.slug
+  );
   const result = hazard.evaluate({
     mission,
     actor,
     actorInputs: options.actorInputs,
+    hazardRecords: scopedRecords,
     linkOnline: options.linkOnline,
     reentryMode: options.reentryMode,
   });

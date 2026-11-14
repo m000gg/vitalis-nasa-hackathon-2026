@@ -2,6 +2,17 @@ import { CrewSlot, MissionProfile } from "@/lib/domain";
 
 export type HazardSlug = "radiation" | "isolation" | "distance" | "gravity" | "environment";
 
+export interface HazardDataRecord {
+  id: string;
+  scenarioId: string;
+  characterId: string;
+  hazardSlug: HazardSlug;
+  streamName: string;
+  rawValue: string;
+  payload: Record<string, unknown>;
+  updatedAt: string;
+}
+
 export interface HazardInputSlot {
   streamName: string;
   inputPrompt: string;
@@ -12,6 +23,7 @@ export interface HazardEvaluationInput {
   mission: MissionProfile;
   actor: CrewSlot;
   actorInputs: Record<string, string>;
+  hazardRecords: HazardDataRecord[];
   linkOnline: boolean;
   reentryMode: boolean;
 }

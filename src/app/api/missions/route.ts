@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { MISSIONS } from "@/lib/domain";
+import { fetchScenariosFromDb } from "@/lib/supabase/server";
 
 export async function GET() {
+  const { source, scenarios } = await fetchScenariosFromDb();
   return NextResponse.json({
-    missions: MISSIONS,
-    note: "Missions and crew compositions grounded in docs/OUTLINE.md and docs/hazards/*.md",
+    source,
+    missions: scenarios,
+    note: "Missions and crew compositions loaded from Supabase (or local fallback when env vars are unset)",
   });
 }

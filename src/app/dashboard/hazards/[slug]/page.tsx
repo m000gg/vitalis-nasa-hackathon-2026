@@ -3,7 +3,7 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Database, Lock } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { getHazardBySlug, HAZARDS } from "@/lib/hazards";
 import { useMission } from "@/context/MissionContext";
@@ -13,7 +13,17 @@ import { evaluateHazardForActor } from "@/lib/evaluator";
 export default function HazardDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const hazard = getHazardBySlug(slug);
-  const { mission, activeCharacter, role, linkOnline, reentryMode, actorInputs, saveActorInput } = useMission();
+  const {
+    mission,
+    activeCharacter,
+    role,
+    dbSource,
+    linkOnline,
+    reentryMode,
+    actorInputs,
+    hazardRecords,
+    saveActorInput,
+  } = useMission();
   const { pushToast } = useAlerts();
 
   const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
@@ -23,22 +33,27 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     notFound();
   }
 
+  const scopedRecords = hazardRecords.filter((r) => r.hazardSlug === hazard.slug);
   const roleConfig = role === "lead" ? hazard.leadView : hazard.memberView;
   const snapshot = evaluateHazardForActor(mission, activeCharacter, hazard, {
     actorInputs: currentActorInputs,
+    hazardRecords,
     linkOnline,
     reentryMode,
   });
 
-  const handleSaveSlot = (streamName: string) => {
-    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? "").trim();
+  const handleSaveSlot = async (streamName: string) => {
+    const persisted = scopedRecords.find((r) => r.streamName === streamName)?.rawValue ?? "";
+    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? persisted).trim();
     if (val) {
-      saveActorInput(streamName, val);
+      await saveActorInput(streamName, val, hazard.slug);
     }
     pushToast({
       title: `${hazard.shortTitle}: Input Saved`,
       message: val
-        ? `Here is: "${val}" stored for ${activeCharacter.callsign} in ${streamName}.`
+        ? `Here is: "${val}" stored for ${activeCharacter.callsign} in ${streamName} (${
+            dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"
+          }).`
         : `Here is: Add your info to ${streamName} to update character telemetry.`,
       variant: val ? "success" : "info",
     });
@@ -53,9 +68,21 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to Overview
           </Link>
-          <span className="font-mono text-xs text-slate-400">
-            Logic: {hazard.ownerSlot} · Doc: {hazard.sourceDoc}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                dbSource === "supabase"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              <Database className="h-3 w-3" />
+              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"} · {scopedRecords.length} saved
+            </span>
+            <span className="font-mono text-xs text-slate-400">
+              Logic: {hazard.ownerSlot} · Doc: {hazard.sourceDoc}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -119,12 +146,19 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           <h2 className="text-base font-bold text-slate-900">Input Ingestion Slots</h2>
           <div className="space-y-3">
             {hazard.inputSlots.map((slot) => {
-              const displayValue = draftValues[slot.streamName] ?? currentActorInputs[slot.streamName] ?? "";
+              const savedRec = scopedRecords.find((r) => r.streamName === slot.streamName);
+              const displayValue =
+                draftValues[slot.streamName] ??
+                currentActorInputs[slot.streamName] ??
+                savedRec?.rawValue ??
+                "";
               return (
                 <div key={slot.streamName} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-900">{slot.streamName}</span>
-                    <span className="text-slate-400">{slot.sourceRef}</span>
+                    <span className="text-slate-400">
+                      {savedRec ? `Saved (${new Date(savedRec.updatedAt).toLocaleTimeString()})` : slot.sourceRef}
+                    </span>
                   </div>
                   <input
                     type="text"

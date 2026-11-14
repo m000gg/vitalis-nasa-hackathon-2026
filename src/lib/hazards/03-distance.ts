@@ -1,12 +1,25 @@
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
 
 /**
+ * ============================================================================
  * HAZARD 3: DISTANCE FROM EARTH
- * Owner: Teammate 3 — Edit ONLY this file to change Hazard 3 logic, formulas, inputs, or outputs.
+ * Owner: Teammate 3 — Edit ONLY this file (src/lib/hazards/03-distance.ts).
+ * ============================================================================
  */
+
+// [SECTION 1: HAZARD 3 VALUES & THRESHOLD SLOTS]
+// Replace or extend constants here for Distance from Earth only.
+export const DISTANCE_PIPELINE_VALUES = {
+  // Add your info: Speed-of-light delay & inventory expiry window constants here
+  supportedStreams: ["Earth–Mars Ephemeris (JPL Horizons)", "DTN Outbound Medical Queue", "Onboard Medical Inventory"],
+};
+
+// [SECTION 2: HAZARD 3 FORMULAS & EVALUATION PIPELINE]
+// Write generalized comms-delay / DTN / inventory formulas here.
 export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, linkOnline, reentryMode } = input;
-  const ephemerisInput = actorInputs["Earth–Mars Ephemeris (JPL Horizons)"];
+  const { mission, actor, actorInputs, hazardRecords, linkOnline, reentryMode } = input;
+  const dbEphemeris = hazardRecords.find((r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)")?.rawValue;
+  const ephemerisInput = actorInputs["Earth–Mars Ephemeris (JPL Horizons)"] || dbEphemeris;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status = !linkOnline ? "ELEVATED" : actor.readinessState === "HOLD" ? "CRITICAL" : "NOMINAL";
@@ -30,6 +43,7 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
   };
 }
 
+// [SECTION 3: HAZARD 3 UI METADATA, INPUT STREAMS & ALARMS]
 export const distanceHazard: HazardSpec = {
   slug: "distance",
   number: 3,
@@ -102,7 +116,7 @@ export const distanceHazard: HazardSpec = {
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/communications/queue", purpose: "Inspect Store-and-Forward outbound medical queue" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=distance", purpose: "Fetch persisted distance/DTN records for scenario + character" },
     { method: "POST", path: "/api/communications/queue", purpose: "Queue a medical report locally while Earth link is unavailable" },
     { method: "POST", path: "/api/communications/sync", purpose: "Transmit pending reports and record receipts when link restores" },
   ],

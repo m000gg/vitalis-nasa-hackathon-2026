@@ -6,6 +6,7 @@ import { environmentHazard } from "./05-environment";
 import { HazardSpec } from "./types";
 
 export type {
+  HazardDataRecord,
   HazardEvaluationInput,
   HazardEvaluationResult,
   HazardInputSlot,

@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { AuditLogEntry, CrewSlot, DtnMessage, MISSIONS, MissionProfile, UserRole } from "@/lib/domain";
+import { HazardDataRecord, HazardSlug } from "@/lib/hazards";
 
 export interface PrivateCheckIn {
   id: string;
@@ -12,7 +13,32 @@ export interface PrivateCheckIn {
   privateJournalNote: string;
 }
 
+export interface CreateScenarioInput {
+  name: string;
+  phase: string;
+  scenarioDescriptionSlot: string;
+  commsDelayLabel: string;
+  leaderCallsign?: string;
+}
+
+export interface CreateCharacterInput {
+  scenarioId: string;
+  callsign: string;
+  assignedRoleTitle: string;
+  isLeadSlot: boolean;
+  readinessState?: CrewSlot["readinessState"];
+  evaGateState?: CrewSlot["evaGateState"];
+}
+
 interface MissionContextValue {
+  scenarios: MissionProfile[];
+  dbSource: "supabase" | "local";
+  createScenario: (
+    input: CreateScenarioInput
+  ) => Promise<{ scenario: MissionProfile; source: "supabase" | "local"; error?: string }>;
+  createCharacter: (
+    input: CreateCharacterInput
+  ) => Promise<{ character?: CrewSlot; source: "supabase" | "local"; error?: string }>;
   mission: MissionProfile;
   setMissionId: (id: string) => void;
   activeCharacter: CrewSlot;
@@ -26,7 +52,8 @@ interface MissionContextValue {
   reentryMode: boolean;
   setReentryMode: (enabled: boolean) => void;
   actorInputs: Record<string, Record<string, string>>;
-  saveActorInput: (streamName: string, value: string) => void;
+  hazardRecords: HazardDataRecord[];
+  saveActorInput: (streamName: string, value: string, hazardSlug?: HazardSlug) => Promise<void>;
   dtnQueue: DtnMessage[];
   queueDtnReport: (reportTitle: string, hazardSlug: string, payloadSummary: string) => Promise<void>;
   syncDtnQueue: () => Promise<void>;
@@ -59,36 +86,66 @@ function buildInitialDtnForMission(m: MissionProfile): DtnMessage[] {
 }
 
 export function MissionProvider({ children }: { children: React.ReactNode }) {
+  const [scenarios, setScenarios] = useState<MissionProfile[]>(MISSIONS);
+  const [dbSource, setDbSource] = useState<"supabase" | "local">("local");
   const [missionId, setMissionIdState] = useState<string>(MISSIONS[0].id);
   const [activeCharacterId, setActiveCharacterIdState] = useState<string>(MISSIONS[0].crew[0].id);
   const [linkOnline, setLinkOnline] = useState<boolean>(MISSIONS[0].environment.linkOnlineDefault);
   const [reentryMode, setReentryMode] = useState<boolean>(false);
   const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
+  const [hazardRecords, setHazardRecords] = useState<HazardDataRecord[]>([]);
   const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>(() => buildInitialDtnForMission(MISSIONS[0]));
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
   const [privateCheckIns, setPrivateCheckIns] = useState<PrivateCheckIn[]>([]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.missionId && MISSIONS.some((m) => m.id === parsed.missionId)) {
-          const found = MISSIONS.find((m) => m.id === parsed.missionId) ?? MISSIONS[0];
-          setMissionIdState(found.id);
-          setLinkOnline(found.environment.linkOnlineDefault);
-          setDtnQueue(buildInitialDtnForMission(found));
-          if (parsed.activeCharacterId && found.crew.some((c) => c.id === parsed.activeCharacterId)) {
-            setActiveCharacterIdState(parsed.activeCharacterId);
-          } else {
-            setActiveCharacterIdState(found.crew[0].id);
+    let active = true;
+    async function loadScenarios() {
+      let loadedScenarios = MISSIONS;
+      try {
+        const res = await fetch("/api/scenarios");
+        if (res.ok) {
+          const data = (await res.json()) as {
+            source?: "supabase" | "local";
+            scenarios?: MissionProfile[];
+          };
+          if (active && Array.isArray(data.scenarios) && data.scenarios.length > 0) {
+            loadedScenarios = data.scenarios;
+            setScenarios(data.scenarios);
+            setDbSource(data.source === "supabase" ? "supabase" : "local");
           }
         }
+      } catch {
+        // Keep local MISSIONS fallback
       }
-    } catch {
-      // Ignore storage read errors
+
+      if (!active) return;
+
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.missionId && loadedScenarios.some((m) => m.id === parsed.missionId)) {
+            const found = loadedScenarios.find((m) => m.id === parsed.missionId) ?? loadedScenarios[0];
+            setMissionIdState(found.id);
+            setLinkOnline(found.environment.linkOnlineDefault);
+            setDtnQueue(buildInitialDtnForMission(found));
+            if (parsed.activeCharacterId && found.crew.some((c) => c.id === parsed.activeCharacterId)) {
+              setActiveCharacterIdState(parsed.activeCharacterId);
+            } else if (found.crew[0]) {
+              setActiveCharacterIdState(found.crew[0].id);
+            }
+          }
+        }
+      } catch {
+        // Ignore storage read errors
+      }
     }
+    loadScenarios();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const persistSession = (nextMissionId: string, nextCharacterId: string) => {
@@ -102,7 +159,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const mission = MISSIONS.find((m) => m.id === missionId) ?? MISSIONS[0];
+  const mission = scenarios.find((m) => m.id === missionId) ?? scenarios[0];
   const activeCharacter = mission.crew.find((c) => c.id === activeCharacterId) ?? mission.crew[0];
   const role: UserRole = activeCharacter.isLeadSlot ? "lead" : "member";
   const selectedMemberId = activeCharacter.isLeadSlot
@@ -117,15 +174,62 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     setShelterConfirmations(initial);
   }, [mission]);
 
-  const setMissionId = useCallback((id: string) => {
-    const found = MISSIONS.find((m) => m.id === id) ?? MISSIONS[0];
-    const defaultChar = found.crew[0];
-    setMissionIdState(found.id);
-    setActiveCharacterIdState(defaultChar.id);
-    setLinkOnline(found.environment.linkOnlineDefault);
-    setDtnQueue(buildInitialDtnForMission(found));
-    persistSession(found.id, defaultChar.id);
-  }, []);
+  useEffect(() => {
+    let active = true;
+    async function loadHazardData() {
+      try {
+        const res = await fetch(
+          `/api/hazard-data?scenarioId=${encodeURIComponent(mission.id)}&characterId=${encodeURIComponent(
+            activeCharacter.id
+          )}`
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          source?: "supabase" | "local";
+          records?: HazardDataRecord[];
+        };
+        if (!active) return;
+        if (data.source) {
+          setDbSource(data.source);
+        }
+        const recs = Array.isArray(data.records) ? data.records : [];
+        setHazardRecords(recs);
+        if (recs.length > 0) {
+          setActorInputs((prev) => {
+            const existing = prev[activeCharacter.id] ?? {};
+            const hydrated: Record<string, string> = { ...existing };
+            recs.forEach((rec) => {
+              if (!hydrated[rec.streamName] && rec.rawValue) {
+                hydrated[rec.streamName] = rec.rawValue;
+              }
+            });
+            return { ...prev, [activeCharacter.id]: hydrated };
+          });
+        }
+      } catch {
+        // Fallback to local state when offline
+      }
+    }
+    loadHazardData();
+    return () => {
+      active = false;
+    };
+  }, [mission.id, activeCharacter.id]);
+
+  const setMissionId = useCallback(
+    (id: string) => {
+      const found = scenarios.find((m) => m.id === id) ?? scenarios[0];
+      const defaultChar = found.crew[0];
+      setMissionIdState(found.id);
+      if (defaultChar) {
+        setActiveCharacterIdState(defaultChar.id);
+        persistSession(found.id, defaultChar.id);
+      }
+      setLinkOnline(found.environment.linkOnlineDefault);
+      setDtnQueue(buildInitialDtnForMission(found));
+    },
+    [scenarios]
+  );
 
   const setActiveCharacterId = useCallback(
     (charId: string) => {
@@ -156,8 +260,131 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     [setActiveCharacterId]
   );
 
+  const createScenario = useCallback(async (input: CreateScenarioInput) => {
+    try {
+      const res = await fetch("/api/scenarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const data = (await res.json()) as {
+        source?: "supabase" | "local";
+        scenario?: MissionProfile;
+        error?: string;
+      };
+      if (data.scenario) {
+        setScenarios((prev) =>
+          prev.some((s) => s.id === data.scenario!.id) ? prev : [...prev, data.scenario!]
+        );
+        if (data.source) setDbSource(data.source);
+        const nextSource: "supabase" | "local" =
+          data.source === "supabase" ? "supabase" : "local";
+        return {
+          scenario: data.scenario,
+          source: nextSource,
+          error: data.error,
+        };
+      }
+      throw new Error(data.error || "Failed to create scenario");
+    } catch (err) {
+      const fallbackId = `local-${Date.now().toString(36)}`;
+      const fallbackScenario: MissionProfile = {
+        id: fallbackId,
+        name: input.name,
+        phase: input.phase,
+        durationContext: `Here is: Local scenario (${input.phase})`,
+        commsDelayLabel: input.commsDelayLabel,
+        activeHazardsHighlight: ["Space Radiation", "Isolation & Confinement", "Distance from Earth"],
+        scenarioDescriptionSlot: input.scenarioDescriptionSlot,
+        environment: {
+          commsDelaySlot: input.commsDelayLabel,
+          linkOnlineDefault: false,
+          radiationStatusSlot: "Add your info: Compartment radiation status here",
+          atmosphereStatusSlot: "Add your info: Cabin CO₂ / O₂ / pressure here",
+          acousticsStatusSlot: "Add your info: Sleep quarter acoustic level here",
+          isolationStatusSlot: "Add your info: Confinement / circadian status here",
+          gravityStatusSlot: "Add your info: Conditioning / EVA schedule status here",
+        },
+        crew: [
+          {
+            id: `${fallbackId}-lead`,
+            callsign: input.leaderCallsign || "Leader — Commander",
+            assignedRoleTitle: "Crew Captain / Mission Commander",
+            isLeadSlot: true,
+            readinessState: "GO",
+            evaGateState: "GO",
+            shelterConfirmed: true,
+            publicStatusSummary: "Here is: Duty readiness & shelter oversight status",
+            privateMemberNotesSlot: "Add your info: Personal private reflection slot here",
+            metrics: {
+              etaSlot: "Add your info: Next command review ETA here",
+              doseSlot: "Add your info: Personal cumulative dose (Gy / Sv) here",
+              sleepSlot: "Add your info: Personal sleep duration slot here",
+              fatigueSlot: "Add your info: 60s self-check slot here",
+              exerciseAdherenceSlot: "Add your info: Daily 2.5h exercise adherence slot here",
+              blockers: [],
+              actions: ["Here is: Action 1 — Verify crew readiness."],
+            },
+          },
+        ],
+      };
+      setScenarios((prev) => [...prev, fallbackScenario]);
+      return {
+        scenario: fallbackScenario,
+        source: "local" as const,
+        error: err instanceof Error ? err.message : "Offline local fallback",
+      };
+    }
+  }, []);
+
+  const createCharacter = useCallback(async (input: CreateCharacterInput) => {
+    try {
+      const res = await fetch("/api/characters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const data = (await res.json()) as {
+        source?: "supabase" | "local";
+        character?: CrewSlot;
+        error?: string;
+      };
+      if (data.character) {
+        setScenarios((prev) =>
+          prev.map((s) =>
+            s.id === input.scenarioId
+              ? {
+                  ...s,
+                  crew: s.crew.some((c) => c.id === data.character!.id)
+                    ? s.crew
+                    : [...s.crew, data.character!],
+                }
+              : s
+          )
+        );
+        if (data.source) setDbSource(data.source);
+        const nextSource: "supabase" | "local" =
+          data.source === "supabase" ? "supabase" : "local";
+        return {
+          character: data.character,
+          source: nextSource,
+          error: data.error,
+        };
+      }
+      return {
+        source: "local" as const,
+        error: data.error || "Failed to create character",
+      };
+    } catch (err) {
+      return {
+        source: "local" as const,
+        error: err instanceof Error ? err.message : "Network error",
+      };
+    }
+  }, []);
+
   const saveActorInput = useCallback(
-    (streamName: string, value: string) => {
+    async (streamName: string, value: string, hazardSlug?: HazardSlug) => {
       setActorInputs((prev) => ({
         ...prev,
         [activeCharacter.id]: {
@@ -165,8 +392,42 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
           [streamName]: value,
         },
       }));
+
+      if (!hazardSlug) return;
+
+      try {
+        const res = await fetch("/api/hazard-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scenarioId: mission.id,
+            characterId: activeCharacter.id,
+            hazardSlug,
+            streamName,
+            rawValue: value,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            source?: "supabase" | "local";
+            record?: HazardDataRecord;
+          };
+          if (data.source) setDbSource(data.source);
+          if (data.record) {
+            const savedRecord = data.record;
+            setHazardRecords((prev) => {
+              const filtered = prev.filter(
+                (r) => !(r.hazardSlug === savedRecord.hazardSlug && r.streamName === savedRecord.streamName)
+              );
+              return [...filtered, savedRecord];
+            });
+          }
+        }
+      } catch {
+        // Local actorInputs already updated above
+      }
     },
-    [activeCharacter.id]
+    [activeCharacter.id, mission.id]
   );
 
   const queueDtnReport = useCallback(
@@ -269,6 +530,10 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   return (
     <MissionContext.Provider
       value={{
+        scenarios,
+        dbSource,
+        createScenario,
+        createCharacter,
         mission,
         setMissionId,
         activeCharacter,
@@ -282,6 +547,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         reentryMode,
         setReentryMode,
         actorInputs,
+        hazardRecords,
         saveActorInput,
         dtnQueue,
         queueDtnReport,

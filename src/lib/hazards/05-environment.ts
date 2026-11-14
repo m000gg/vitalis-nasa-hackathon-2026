@@ -1,12 +1,25 @@
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
 
 /**
+ * ============================================================================
  * HAZARD 5: HOSTILE / CLOSED ENVIRONMENTS
- * Owner: Teammate 5 — Edit ONLY this file to change Hazard 5 logic, formulas, inputs, or outputs.
+ * Owner: Teammate 5 — Edit ONLY this file (src/lib/hazards/05-environment.ts).
+ * ============================================================================
  */
+
+// [SECTION 1: HAZARD 5 VALUES & THRESHOLD SLOTS]
+// Replace or extend constants here for Hostile/Closed Environments only.
+export const ENVIRONMENT_PIPELINE_VALUES = {
+  // Add your info: NASA OCHMO CO2, O2, pressure & noise limit constants here
+  supportedStreams: ["Cabin Atmosphere & Pressure", "Module Acoustics & Thermal", "OSDR EDA Telemetry Replay"],
+};
+
+// [SECTION 2: HAZARD 5 FORMULAS & EVALUATION PIPELINE]
+// Write generalized cabin atmosphere / headache / relocation formulas here.
 export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, reentryMode } = input;
-  const atmosphereInput = actorInputs["Cabin Atmosphere & Pressure"];
+  const { mission, actor, actorInputs, hazardRecords, reentryMode } = input;
+  const dbAtmosphere = hazardRecords.find((r) => r.streamName === "Cabin Atmosphere & Pressure")?.rawValue;
+  const atmosphereInput = actorInputs["Cabin Atmosphere & Pressure"] || dbAtmosphere;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status =
@@ -33,6 +46,7 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
   };
 }
 
+// [SECTION 3: HAZARD 5 UI METADATA, INPUT STREAMS & ALARMS]
 export const environmentHazard: HazardSpec = {
   slug: "environment",
   number: 5,
@@ -105,10 +119,8 @@ export const environmentHazard: HazardSpec = {
     ],
   },
   proposedEndpoints: [
-    { method: "POST", path: "/api/environment/replay/start", purpose: "Start OSDR EDA cabin telemetry replay" },
-    { method: "GET", path: "/api/environment/modules", purpose: "Module weather map (green/yellow/red)" },
-    { method: "GET", path: "/api/environment/headache-risk", purpose: "CO₂ headache risk forecast slot" },
-    { method: "GET", path: "/api/environment/recommendations/relocation", purpose: "Where-to-go crew relocation advice" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=environment", purpose: "Fetch persisted environment records for scenario + character" },
+    { method: "POST", path: "/api/hazard-data", purpose: "Upsert cabin atmosphere or acoustics telemetry into Supabase" },
   ],
   alarmPreset: {
     title: "CLOSED HABITAT ATMOSPHERE BREACH — CO₂ / O₂ / PRESSURE ALERT",

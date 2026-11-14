@@ -1,16 +1,24 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Users } from "lucide-react";
-import { MISSIONS, MissionProfile } from "@/lib/domain";
+import { ArrowRight, Database, Plus, Users } from "lucide-react";
+import { MissionProfile } from "@/lib/domain";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
 
 export default function GreetingScenarioPage() {
   const router = useRouter();
-  const { setMissionId } = useMission();
+  const { scenarios, dbSource, setMissionId, createScenario } = useMission();
   const { pushToast } = useAlerts();
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [phase, setPhase] = useState("");
+  const [scenarioDescriptionSlot, setScenarioDescriptionSlot] = useState("");
+  const [commsDelayLabel, setCommsDelayLabel] = useState("");
+  const [leaderCallsign, setLeaderCallsign] = useState("");
 
   const handleSelectScenario = (m: MissionProfile) => {
     setMissionId(m.id);
@@ -22,26 +30,136 @@ export default function GreetingScenarioPage() {
     router.push(`/character?scenario=${encodeURIComponent(m.id)}`);
   };
 
+  const handleCreateScenario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setCreating(true);
+    const result = await createScenario({
+      name: name.trim(),
+      phase: phase.trim() || "Add your info: Mission phase here",
+      scenarioDescriptionSlot:
+        scenarioDescriptionSlot.trim() || "Add your info: Scenario description here",
+      commsDelayLabel: commsDelayLabel.trim() || "Add your info: Comms delay here",
+      leaderCallsign: leaderCallsign.trim() || undefined,
+    });
+    setCreating(false);
+
+    pushToast({
+      title: result.error ? "Scenario Saved Locally" : "Scenario Created",
+      message: `Here is: ${result.scenario.name} (${
+        result.source === "supabase" ? "Supabase Remote" : "Local Fallback"
+      }).`,
+      variant: result.error ? "warning" : "success",
+    });
+
+    setName("");
+    setPhase("");
+    setScenarioDescriptionSlot("");
+    setCommsDelayLabel("");
+    setLeaderCallsign("");
+    setShowCreateForm(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <span className="text-sm font-bold tracking-tight text-slate-900">Vitalis+ App</span>
-          <span className="text-xs text-slate-500">Step 1 · Choose Scenario</span>
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                dbSource === "supabase"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              <Database className="h-3 w-3" />
+              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"}
+            </span>
+            <span className="text-xs text-slate-500">Step 1 · Choose Scenario</span>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-4xl space-y-8 px-6 py-12">
-        <section className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome to Vitalis+</h1>
-          <p className="text-sm text-slate-600">
-            Here is: Select a mission scenario to feed its telemetry and crew roster into the dashboard, then pick your
-            character (Leader or Member).
-          </p>
+        <section className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome to Vitalis+</h1>
+            <p className="text-sm text-slate-600">
+              Here is: Select a mission scenario to feed its telemetry and crew roster into the dashboard, then pick your
+              character (Leader or Member).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateForm((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {showCreateForm ? "Close Form" : "Create Scenario"}
+          </button>
         </section>
 
+        {showCreateForm && (
+          <form
+            onSubmit={handleCreateScenario}
+            className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs"
+          >
+            <h2 className="text-sm font-bold text-slate-900">
+              Add New Scenario ({dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"})
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Add your info: Scenario name here"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+              />
+              <input
+                type="text"
+                value={phase}
+                onChange={(e) => setPhase(e.target.value)}
+                placeholder="Add your info: Mission phase here"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+              />
+              <input
+                type="text"
+                value={commsDelayLabel}
+                onChange={(e) => setCommsDelayLabel(e.target.value)}
+                placeholder="Add your info: One-way comms delay label here"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+              />
+              <input
+                type="text"
+                value={leaderCallsign}
+                onChange={(e) => setLeaderCallsign(e.target.value)}
+                placeholder="Add your info: Initial leader callsign here"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+              />
+            </div>
+            <input
+              type="text"
+              value={scenarioDescriptionSlot}
+              onChange={(e) => setScenarioDescriptionSlot(e.target.value)}
+              placeholder="Add your info: Scenario description here"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+            />
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={creating}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {creating ? "Saving..." : "Save Scenario"}
+              </button>
+            </div>
+          </form>
+        )}
+
         <section className="grid gap-5 md:grid-cols-2">
-          {MISSIONS.map((m) => (
+          {scenarios.map((m) => (
             <button
               key={m.id}
               type="button"

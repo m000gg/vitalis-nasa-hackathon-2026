@@ -10,8 +10,17 @@ import { TEAM_BUFFS_SLOTS, TEAM_DEBUFFS_SLOTS } from "@/lib/domain";
 import { evaluateCharacterDashboard, evaluateHazardForActor, evaluateLeaderDashboard } from "@/lib/evaluator";
 
 export default function DashboardOverviewPage() {
-  const { mission, activeCharacter, role, linkOnline, reentryMode, dtnQueue, shelterConfirmations, actorInputs } =
-    useMission();
+  const {
+    mission,
+    activeCharacter,
+    role,
+    linkOnline,
+    reentryMode,
+    dtnQueue,
+    shelterConfirmations,
+    actorInputs,
+    hazardRecords,
+  } = useMission();
 
   const characterModel = evaluateCharacterDashboard(activeCharacter, {
     shelterConfirmed: !!shelterConfirmations[activeCharacter.id],
@@ -223,6 +232,7 @@ export default function DashboardOverviewPage() {
           {HAZARDS.map((h) => {
             const snap = evaluateHazardForActor(mission, activeCharacter, h, {
               actorInputs: actorInputs[activeCharacter.id] ?? {},
+              hazardRecords,
               linkOnline,
               reentryMode,
             });

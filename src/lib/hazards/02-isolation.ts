@@ -1,12 +1,25 @@
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
 
 /**
+ * ============================================================================
  * HAZARD 2: ISOLATION & CONFINEMENT
- * Owner: Teammate 2 — Edit ONLY this file to change Hazard 2 logic, formulas, inputs, or outputs.
+ * Owner: Teammate 2 — Edit ONLY this file (src/lib/hazards/02-isolation.ts).
+ * ============================================================================
  */
+
+// [SECTION 1: HAZARD 2 VALUES & THRESHOLD SLOTS]
+// Replace or extend constants here for Isolation & Confinement only.
+export const ISOLATION_PIPELINE_VALUES = {
+  // Add your info: Sleep-debt, Martian sol drift & NC-40 acoustic thresholds here
+  supportedStreams: ["Wearable / Actigraphy", "Habitat Acoustics & Lighting", "60-Second Self-Check (Private)"],
+};
+
+// [SECTION 2: HAZARD 2 FORMULAS & EVALUATION PIPELINE]
+// Write generalized isolation/sleep formulas here using (actor, actorInputs, hazardRecords).
 export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, reentryMode } = input;
-  const sleepInput = actorInputs["Wearable / Actigraphy"];
+  const { mission, actor, actorInputs, hazardRecords, reentryMode } = input;
+  const dbSleep = hazardRecords.find((r) => r.streamName === "Wearable / Actigraphy")?.rawValue;
+  const sleepInput = actorInputs["Wearable / Actigraphy"] || dbSleep;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status =
@@ -33,6 +46,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   };
 }
 
+// [SECTION 3: HAZARD 2 UI METADATA, INPUT STREAMS & ALARMS]
 export const isolationHazard: HazardSpec = {
   slug: "isolation",
   number: 2,
@@ -110,7 +124,8 @@ export const isolationHazard: HazardSpec = {
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/hazards", purpose: "Load Hazard 2 privacy boundaries & CONNECT countermeasure slots" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=isolation", purpose: "Fetch persisted isolation/sleep records for scenario + character" },
+    { method: "POST", path: "/api/hazard-data", purpose: "Upsert actigraphy or self-check stream into Supabase" },
   ],
   alarmPreset: {
     title: "CIRCADIAN & VIGILANCE DEBUFF — PRE-TASK HOLD",

@@ -1,12 +1,25 @@
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
 
 /**
+ * ============================================================================
  * HAZARD 1: SPACE RADIATION
- * Owner: Teammate 1 — Edit ONLY this file to change Hazard 1 logic, formulas, inputs, or outputs.
+ * Owner: Teammate 1 — Edit ONLY this file (src/lib/hazards/01-radiation.ts).
+ * ============================================================================
  */
+
+// [SECTION 1: HAZARD 1 VALUES & THRESHOLD SLOTS]
+// Replace or extend constants here for Space Radiation only.
+export const RADIATION_PIPELINE_VALUES = {
+  // Add your info: Mission-specific dose-rate & acknowledgement thresholds here
+  supportedStreams: ["Personal Dosimeter", "Compartment Sensors", "Space Weather (DONKI)", "Shielding & BioShield Lab (Experimental)"],
+};
+
+// [SECTION 2: HAZARD 1 FORMULAS & EVALUATION PIPELINE]
+// Write generalized radiation formulas here using (actor, actorInputs, hazardRecords).
 export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, reentryMode } = input;
-  const dosimeterInput = actorInputs["Personal Dosimeter"];
+  const { mission, actor, actorInputs, hazardRecords, reentryMode } = input;
+  const dbDosimeter = hazardRecords.find((r) => r.streamName === "Personal Dosimeter")?.rawValue;
+  const dosimeterInput = actorInputs["Personal Dosimeter"] || dbDosimeter;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status =
@@ -33,6 +46,7 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
   };
 }
 
+// [SECTION 3: HAZARD 1 UI METADATA, INPUT STREAMS & ALARMS]
 export const radiationHazard: HazardSpec = {
   slug: "radiation",
   number: 1,
@@ -120,8 +134,8 @@ export const radiationHazard: HazardSpec = {
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/hazards", purpose: "Fetch hazard metadata and input/output schema slots" },
-    { method: "POST", path: "/api/emergency/events", purpose: "Trigger or record simulated SEP / radiation alarm event" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=radiation", purpose: "Fetch persisted radiation records for scenario + character" },
+    { method: "POST", path: "/api/hazard-data", purpose: "Upsert radiation telemetry stream into Supabase" },
   ],
   alarmPreset: {
     title: "SOLAR ENERGETIC PARTICLE (SEP) EVENT — SHELTER PROTOCOL",

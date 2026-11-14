@@ -1,12 +1,25 @@
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
 
 /**
+ * ============================================================================
  * HAZARD 4: GRAVITY FIELDS
- * Owner: Teammate 4 — Edit ONLY this file to change Hazard 4 logic, formulas, inputs, or outputs.
+ * Owner: Teammate 4 — Edit ONLY this file (src/lib/hazards/04-gravity.ts).
+ * ============================================================================
  */
+
+// [SECTION 1: HAZARD 4 VALUES & THRESHOLD SLOTS]
+// Replace or extend constants here for Gravity Fields only.
+export const GRAVITY_PIPELINE_VALUES = {
+  // Add your info: EVA gate schedule rules & ASSUMPTION conditioning thresholds here
+  supportedStreams: ["Handgrip & Calf Volume", "Daily Exercise Log", "EVA Readiness Chain"],
+};
+
+// [SECTION 2: HAZARD 4 FORMULAS & EVALUATION PIPELINE]
+// Write generalized EVA-gate & atrophy/adherence formulas here.
 export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, reentryMode } = input;
-  const exerciseInput = actorInputs["Daily Exercise Log"];
+  const { mission, actor, actorInputs, hazardRecords, reentryMode } = input;
+  const dbExercise = hazardRecords.find((r) => r.streamName === "Daily Exercise Log")?.rawValue;
+  const exerciseInput = actorInputs["Daily Exercise Log"] || dbExercise;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status =
@@ -35,6 +48,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
   };
 }
 
+// [SECTION 3: HAZARD 4 UI METADATA, INPUT STREAMS & ALARMS]
 export const gravityHazard: HazardSpec = {
   slug: "gravity",
   number: 4,
@@ -107,8 +121,8 @@ export const gravityHazard: HazardSpec = {
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/hazards", purpose: "Retrieve EVA gate schedule rules and ASSUMPTION parameter labels" },
-    { method: "POST", path: "/api/emergency/events", purpose: "Record audit-logged Commander emergency unlock event" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=gravity", purpose: "Fetch persisted gravity/EVA records for scenario + character" },
+    { method: "POST", path: "/api/hazard-data", purpose: "Upsert exercise, grip, calf, or EVA gate records into Supabase" },
   ],
   alarmPreset: {
     title: "EVA READINESS GATE HOLD — SCHEDULE / PRE-TEST BLOCKER",
