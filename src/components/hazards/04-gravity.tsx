@@ -20,9 +20,11 @@ import {
   ConditioningStatusLabel,
   evaluateGravityCrewOverview,
   evaluateGravityDiagnostics,
+  formatTrendCiRange,
   GRAVITY_PIPELINE_VALUES,
   GravityActorDiagnostics,
   GravityCrewOverview,
+  LinearTrendResult,
   PreTestConditionCheckItem,
 } from "@/lib/hazards/04-gravity";
 import type { HazardScreenProps } from "./types";
@@ -49,9 +51,22 @@ function formatSignedPct(val: number): string {
   return `${val >= 0 ? "+" : ""}${val.toFixed(1)}%`;
 }
 
-function formatTrendCi(etaMin: number | null, etaMax: number | null): string {
-  if (etaMin === null || etaMax === null) return "";
-  return ` [CI: ${etaMin}–${etaMax}d]`;
+function renderTrendForecast(trend: LinearTrendResult, thresholdPct: number): string | null {
+  if (trend.latestPctChange <= thresholdPct) {
+    return `Crossed ${thresholdPct}% [ASSUMPTION] threshold at latest reading (FD${trend.latestFlightDay})`;
+  }
+  if (trend.isThresholdProjectedCrossed && trend.projectedCrossFlightDay !== null) {
+    const crossFd = Math.round(trend.projectedCrossFlightDay);
+    const projPart =
+      trend.projectedPctAtCurrentDay !== null
+        ? ` (~${trend.projectedPctAtCurrentDay.toFixed(1)}% projected today)`
+        : "";
+    return `Projected crossed ${thresholdPct}% [ASSUMPTION] ~FD${crossFd}${projPart}${formatTrendCiRange(trend)}`;
+  }
+  if (trend.etaDaysToThreshold !== null) {
+    return `Reaches ${thresholdPct}% [ASSUMPTION] in ~${trend.etaDaysToThreshold}d${formatTrendCiRange(trend)}`;
+  }
+  return null;
 }
 
 export function GravityHazardScreen({
@@ -71,6 +86,7 @@ export function GravityHazardScreen({
     hazardRecords,
     hazardSamples,
     allHazardRecords: scenarioHazardRecords.filter((r) => r.characterId === activeCharacter.id),
+    missionContext: `${mission.name} ${mission.durationContext}`,
   });
 
   const crewOverview =
@@ -82,7 +98,8 @@ export function GravityHazardScreen({
         )
       : null;
 
-  const charts = snapshot.charts ?? [];
+  // Exclude generic sample-* fallback charts so dedicated normalized Calf %, Grip %, Exercise min, or RBAC Crew charts render cleanly
+  const charts = (snapshot.charts ?? []).filter((c) => !c.id.startsWith("sample-"));
 
   return (
     <div className="space-y-4">
@@ -550,7 +567,7 @@ function MemberGravitySection({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-900">Calf Volume (MEDB 5.4)</span>
-              {atrophy.calfDaysOverdue !== null && (
+              {atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0 && (
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
                   Overdue {atrophy.calfDaysOverdue}d
                 </span>
@@ -562,14 +579,19 @@ function MemberGravitySection({
                   {formatSignedPct(atrophy.calfTrend.latestPctChange)}
                 </div>
                 <div className="text-[11px] text-slate-600">
-                  vs L+14 baseline · N={atrophy.calfTrend.sampleSize} · Slope{" "}
+                  vs L+14 baseline (FD{atrophy.calfTrend.latestFlightDay}) · N=
+                  {atrophy.calfTrend.sampleSize} · Slope{" "}
                   {(atrophy.calfTrend.slopePctPerDay * 7).toFixed(2)}%/wk
                 </div>
-                {atrophy.calfTrend.etaDaysToThreshold !== null && (
-                  <div className="text-[11px] font-medium text-amber-800">
-                    Reaches {A.calfAtrophyAlertPct}% [ASSUMPTION] in ~
-                    {atrophy.calfTrend.etaDaysToThreshold}d
-                    {formatTrendCi(atrophy.calfTrend.etaMinDays, atrophy.calfTrend.etaMaxDays)}
+                {renderTrendForecast(atrophy.calfTrend, A.calfAtrophyAlertPct) && (
+                  <div
+                    className={`text-[11px] font-medium ${
+                      atrophy.calfTrend.isThresholdProjectedCrossed
+                        ? "text-red-700"
+                        : "text-amber-800"
+                    }`}
+                  >
+                    {renderTrendForecast(atrophy.calfTrend, A.calfAtrophyAlertPct)}
                   </div>
                 )}
               </div>
@@ -589,7 +611,7 @@ function MemberGravitySection({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-900">Handgrip (MR081L)</span>
-              {atrophy.gripDaysOverdue !== null && (
+              {atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0 && (
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
                   Overdue {atrophy.gripDaysOverdue}d
                 </span>
@@ -601,14 +623,19 @@ function MemberGravitySection({
                   {formatSignedPct(atrophy.gripTrend.latestPctChange)}
                 </div>
                 <div className="text-[11px] text-slate-600">
-                  vs FD14 baseline · N={atrophy.gripTrend.sampleSize} · Slope{" "}
+                  vs FD14 baseline (FD{atrophy.gripTrend.latestFlightDay}) · N=
+                  {atrophy.gripTrend.sampleSize} · Slope{" "}
                   {(atrophy.gripTrend.slopePctPerDay * 7).toFixed(2)}%/wk
                 </div>
-                {atrophy.gripTrend.etaDaysToThreshold !== null && (
-                  <div className="text-[11px] font-medium text-amber-800">
-                    Reaches {A.gripDeclineAlertPct}% [ASSUMPTION] in ~
-                    {atrophy.gripTrend.etaDaysToThreshold}d
-                    {formatTrendCi(atrophy.gripTrend.etaMinDays, atrophy.gripTrend.etaMaxDays)}
+                {renderTrendForecast(atrophy.gripTrend, A.gripDeclineAlertPct) && (
+                  <div
+                    className={`text-[11px] font-medium ${
+                      atrophy.gripTrend.isThresholdProjectedCrossed
+                        ? "text-red-700"
+                        : "text-amber-800"
+                    }`}
+                  >
+                    {renderTrendForecast(atrophy.gripTrend, A.gripDeclineAlertPct)}
                   </div>
                 )}
               </div>
@@ -633,8 +660,11 @@ function MemberGravitySection({
                   %
                 </div>
                 <div className="text-[11px] text-slate-600">
-                  Avg {atrophy.adherenceSummary.avgTotalMinutes} min/d · Aerobic{" "}
-                  {atrophy.adherenceSummary.aerobicPct}% · Resist{" "}
+                  Avg {atrophy.adherenceSummary.avgTotalMinutes} min/d (
+                  {atrophy.adherenceSummary.reconditioningDayRPlus !== null
+                    ? `target 120 min/d MR026L R+${atrophy.adherenceSummary.reconditioningDayRPlus}`
+                    : "target 150 min/d MEDB 5.2"}
+                  ) · Aerobic {atrophy.adherenceSummary.aerobicPct}% · Resist{" "}
                   {atrophy.adherenceSummary.resistancePct}%
                 </div>
                 {atrophy.adherenceSummary.loadRatioPct !== null && (
