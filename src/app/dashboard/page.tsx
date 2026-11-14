@@ -7,7 +7,7 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { useMission } from "@/context/MissionContext";
 import { HAZARDS } from "@/lib/hazards";
 import { TEAM_BUFFS_SLOTS, TEAM_DEBUFFS_SLOTS } from "@/lib/domain";
-import { evaluateCharacterDashboard, evaluateLeaderDashboard } from "@/lib/evaluator";
+import { evaluateCharacterDashboard, evaluateHazardForActor, evaluateLeaderDashboard } from "@/lib/evaluator";
 
 export default function DashboardOverviewPage() {
   const { mission, activeCharacter, role, linkOnline, reentryMode, dtnQueue, shelterConfirmations, actorInputs } =
@@ -220,28 +220,49 @@ export default function DashboardOverviewPage() {
       <section className="space-y-4">
         <h2 className="text-base font-bold text-slate-900">All 5 Hazards ({role === "lead" ? "Lead" : "Member"} View)</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {HAZARDS.map((h) => (
-            <div
-              key={h.slug}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5"
-            >
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-sky-700">Hazard {h.number}</p>
-                <h3 className="text-base font-bold text-slate-900">{h.title}</h3>
-                <p className="text-xs leading-relaxed text-slate-600">
-                  {role === "lead" ? h.leadView.summary : h.memberView.summary}
-                </p>
+          {HAZARDS.map((h) => {
+            const snap = evaluateHazardForActor(mission, activeCharacter, h, {
+              actorInputs: actorInputs[activeCharacter.id] ?? {},
+              linkOnline,
+              reentryMode,
+            });
+            return (
+              <div
+                key={h.slug}
+                className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-sky-700">Hazard {h.number}</p>
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                        snap.status === "CRITICAL"
+                          ? "bg-red-100 text-red-800"
+                          : snap.status === "ELEVATED"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {snap.status}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">{h.title}</h3>
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    {role === "lead" ? h.leadView.summary : h.memberView.summary}
+                  </p>
+                  <p className="font-mono text-[11px] text-slate-400">{h.ownerSlot}</p>
+                </div>
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <Link
+                    href={`/dashboard/hazards/${h.slug}`}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
+                  >
+                    Open Hazard Page <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
               </div>
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <Link
-                  href={`/dashboard/hazards/${h.slug}`}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
-                >
-                  Open Hazard Page <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </DashboardShell>

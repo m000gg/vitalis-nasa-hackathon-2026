@@ -13,7 +13,7 @@ import { evaluateHazardForActor } from "@/lib/evaluator";
 export default function HazardDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const hazard = getHazardBySlug(slug);
-  const { mission, activeCharacter, role, actorInputs, saveActorInput } = useMission();
+  const { mission, activeCharacter, role, linkOnline, reentryMode, actorInputs, saveActorInput } = useMission();
   const { pushToast } = useAlerts();
 
   const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
@@ -24,7 +24,11 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
   }
 
   const roleConfig = role === "lead" ? hazard.leadView : hazard.memberView;
-  const snapshot = evaluateHazardForActor(mission, activeCharacter, hazard, currentActorInputs);
+  const snapshot = evaluateHazardForActor(mission, activeCharacter, hazard, {
+    actorInputs: currentActorInputs,
+    linkOnline,
+    reentryMode,
+  });
 
   const handleSaveSlot = (streamName: string) => {
     const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? "").trim();
@@ -49,13 +53,26 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to Overview
           </Link>
-          <span className="text-xs text-slate-400">Doc: {hazard.sourceDoc}</span>
+          <span className="font-mono text-xs text-slate-400">
+            Logic: {hazard.ownerSlot} · Doc: {hazard.sourceDoc}
+          </span>
         </div>
 
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-block rounded-md bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
               Hazard {hazard.number} of 5 · {role.toUpperCase()} View
+            </span>
+            <span
+              className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
+                snapshot.status === "CRITICAL"
+                  ? "bg-red-100 text-red-800"
+                  : snapshot.status === "ELEVATED"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-emerald-100 text-emerald-800"
+              }`}
+            >
+              Status: {snapshot.status}
             </span>
             <span className="rounded-md bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
               {snapshot.actorStatusLabel}
@@ -96,7 +113,7 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
         </div>
       </section>
 
-      {/* Input Slots + Output Slots */}
+      {/* Input Slots + Evaluated Output Slots */}
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-base font-bold text-slate-900">Input Ingestion Slots</h2>
@@ -132,23 +149,29 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
         </section>
 
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-base font-bold text-slate-900">Outputs &amp; Guidance Slots</h2>
+          <h2 className="text-base font-bold text-slate-900">Evaluated Outputs &amp; Guidance</h2>
           <div className="space-y-2.5 text-xs">
             <div className="rounded-xl bg-slate-50 p-3.5">
               <p className="font-semibold text-red-700">Immediate Horizon</p>
-              <p className="mt-1 text-slate-600">{hazard.outputSlots.immediateHorizon}</p>
+              <p className="mt-1 text-slate-600">{snapshot.immediateHorizon}</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3.5">
               <p className="font-semibold text-amber-700">Prolonged Horizon</p>
-              <p className="mt-1 text-slate-600">{hazard.outputSlots.prolongedHorizon}</p>
+              <p className="mt-1 text-slate-600">{snapshot.prolongedHorizon}</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3.5">
               <p className="font-semibold text-sky-700">Estimated Time of Action</p>
-              <p className="mt-1 text-slate-600">{hazard.outputSlots.etaSlot}</p>
+              <p className="mt-1 text-slate-600">{snapshot.eta}</p>
             </div>
             <div className="rounded-xl bg-slate-50 p-3.5">
-              <p className="font-semibold text-emerald-700">1–2 Actionable Solutions</p>
-              <p className="mt-1 text-slate-600">{hazard.outputSlots.solutionsSlot}</p>
+              <p className="font-semibold text-emerald-700">
+                {reentryMode ? "1 Actionable Solution (Re-Entry Cap)" : "1–2 Actionable Solutions"}
+              </p>
+              <div className="mt-1 space-y-1 text-slate-600">
+                {snapshot.solutions.map((sol, idx) => (
+                  <p key={idx}>{sol}</p>
+                ))}
+              </div>
             </div>
           </div>
 

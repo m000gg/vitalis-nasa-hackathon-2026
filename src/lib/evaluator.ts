@@ -1,13 +1,11 @@
 import { CrewSlot, MissionProfile, ReadinessState } from "@/lib/domain";
-import { HazardSpec } from "@/lib/hazards";
+import { HazardEvaluationResult, HazardSpec } from "@/lib/hazards";
 
 /**
  * Info-agnostic dashboard evaluation layer.
  *
- * Anyone on the team can replace or extend these generalized functions/formulas
- * without changing UI components or adding scenario-specific if/else branches.
- * Every UI page simply passes the selected (mission, actor, inputs) into these
- * functions and renders the returned generic view model.
+ * Character & Leader overview evaluators live here, while each individual
+ * hazard's logic lives in its own isolated file: src/lib/hazards/01..05-*.ts
  */
 
 export interface CharacterDashboardModel {
@@ -47,17 +45,12 @@ export interface LeaderDashboardModel {
   derivedTeamAlerts: string[];
 }
 
-export interface HazardActorSnapshot {
+export interface HazardActorSnapshot extends HazardEvaluationResult {
   hazardSlug: HazardSpec["slug"];
   actorStatusLabel: string;
-  scenarioStatusSlot: string;
   actorInputOverrides: Record<string, string>;
 }
 
-/**
- * Computes a generalized, info-agnostic view model for any selected character
- * (Leader or Member) in any scenario.
- */
 export function evaluateCharacterDashboard(
   actor: CrewSlot,
   options: {
@@ -69,8 +62,6 @@ export function evaluateCharacterDashboard(
   const maxActions = options.reentryMode ? 1 : 2;
   const actions = actor.metrics.actions.slice(0, maxActions);
 
-  // Teammates can plug generalized formulas here (e.g., recomputing readinessState
-  // or ETA from actor.metrics and options.customInputs).
   return {
     actorId: actor.id,
     callsign: actor.callsign,
@@ -90,10 +81,6 @@ export function evaluateCharacterDashboard(
   };
 }
 
-/**
- * Computes a privacy-preserving, scenario-agnostic Commander/Lead overview
- * strictly from the scenario's crew list and shelter confirmations.
- */
 export function evaluateLeaderDashboard(
   mission: MissionProfile,
   shelterConfirmations: Record<string, boolean>
@@ -139,27 +126,31 @@ export function evaluateLeaderDashboard(
 }
 
 /**
- * Maps any (mission, actor, hazard) tuple to generalized status & telemetry slots
- * without scenario-specific branching.
+ * Delegates directly to the hazard's own isolated evaluate() function
+ * inside src/lib/hazards/01..05-*.ts.
  */
 export function evaluateHazardForActor(
   mission: MissionProfile,
   actor: CrewSlot,
   hazard: HazardSpec,
-  customInputs: Record<string, string>
+  options: {
+    actorInputs: Record<string, string>;
+    linkOnline: boolean;
+    reentryMode: boolean;
+  }
 ): HazardActorSnapshot {
-  const scenarioMap: Record<HazardSpec["slug"], string> = {
-    radiation: mission.environment.radiationStatusSlot,
-    isolation: mission.environment.isolationStatusSlot,
-    distance: mission.environment.commsDelaySlot,
-    gravity: mission.environment.gravityStatusSlot,
-    environment: mission.environment.atmosphereStatusSlot,
-  };
+  const result = hazard.evaluate({
+    mission,
+    actor,
+    actorInputs: options.actorInputs,
+    linkOnline: options.linkOnline,
+    reentryMode: options.reentryMode,
+  });
 
   return {
+    ...result,
     hazardSlug: hazard.slug,
     actorStatusLabel: `${actor.callsign} — Readiness: ${actor.readinessState} (EVA: ${actor.evaGateState})`,
-    scenarioStatusSlot: scenarioMap[hazard.slug],
-    actorInputOverrides: customInputs,
+    actorInputOverrides: options.actorInputs,
   };
 }
