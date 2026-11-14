@@ -70,25 +70,30 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] text-slate-900">
-      {/* Standalone App Header (distinct from public website.com) */}
+      {/* Standalone App Header */}
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link href="/dashboard" className="text-sm font-bold tracking-tight text-slate-900">
               Vitalis+ App
             </Link>
             <span className="text-slate-300">/</span>
             <span className="text-sm font-medium text-slate-700">{mission.name}</span>
             <Link
-              href="/missions"
+              href="/"
               className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
             >
-              Switch Mission
+              Scenarios
+            </Link>
+            <Link
+              href={`/character?scenario=${encodeURIComponent(mission.id)}`}
+              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+            >
+              Characters
             </Link>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Simple Role Switcher */}
             <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
               <button
                 type="button"
@@ -244,12 +249,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-
-          <div className="px-3 pt-2">
-            <Link href="/" className="text-xs text-slate-500 hover:text-slate-800">
-              ← Back to Landing Page
-            </Link>
-          </div>
         </aside>
 
         <main className="min-w-0 space-y-6">{children}</main>
