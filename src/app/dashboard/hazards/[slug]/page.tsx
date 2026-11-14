@@ -3,7 +3,7 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertOctagon, ArrowLeft, Bell, Lock, Server, ShieldAlert } from "lucide-react";
+import { AlertOctagon, ArrowLeft, Bell, Lock } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { getHazardBySlug, HAZARDS } from "@/lib/hazards";
 import { useMission } from "@/context/MissionContext";
@@ -26,42 +26,33 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
   const handleSaveSlot = (streamName: string) => {
     const val = inputValues[streamName]?.trim();
     pushToast({
-      title: `${hazard.shortTitle}: Input Slot Recorded`,
+      title: `${hazard.shortTitle}: Input Recorded`,
       message: val
-        ? `Here is: "${val}" captured into ${streamName} ingestion slot.`
-        : `Here is: ${streamName} slot flagged (empty — add your info to populate).`,
+        ? `Here is: "${val}" captured in ${streamName}.`
+        : `Here is: ${streamName} slot opened (add your info to populate).`,
       variant: val ? "success" : "info",
     });
   };
 
   return (
     <DashboardShell>
-      {/* Breadcrumb + Header */}
-      <div className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/50 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white">
+      {/* Header Card */}
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900">
             <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Dashboard Overview
+            Back to Overview
           </Link>
-          <span className="font-mono text-[11px] text-slate-500">Source: {hazard.sourceDoc}</span>
+          <span className="text-xs text-slate-400">Doc: {hazard.sourceDoc}</span>
         </div>
 
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-sky-950 px-2 py-0.5 font-mono text-[11px] font-bold text-sky-300">
-                HAZARD {hazard.number} OF 5
-              </span>
-              <span
-                className={`rounded px-2 py-0.5 text-[11px] font-bold uppercase ${
-                  role === "lead" ? "bg-sky-900/60 text-sky-200" : "bg-emerald-900/60 text-emerald-200"
-                }`}
-              >
-                {role} perspective
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold text-white">{hazard.title}</h1>
-            <p className="max-w-3xl text-xs leading-relaxed text-slate-300">{hazard.overviewSlot}</p>
+          <div className="space-y-1.5">
+            <span className="inline-block rounded-md bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
+              Hazard {hazard.number} of 5 · {role.toUpperCase()} View
+            </span>
+            <h1 className="text-2xl font-bold text-slate-900">{hazard.title}</h1>
+            <p className="max-w-3xl text-sm text-slate-600">{hazard.overviewSlot}</p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -70,14 +61,14 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
               onClick={() =>
                 pushToast({
                   title: `Hazard ${hazard.number} Toast`,
-                  message: `Here is: ${hazard.title} alert preview for ${role.toUpperCase()} role.`,
+                  message: `Here is: ${hazard.title} notification for ${role.toUpperCase()}.`,
                   variant: "warning",
                 })
               }
-              className="inline-flex items-center gap-1.5 rounded border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
             >
-              <Bell className="h-3.5 w-3.5 text-amber-400" />
-              Trigger Hazard Toast
+              <Bell className="h-3.5 w-3.5 text-amber-600" />
+              Hazard Toast
             </button>
             <button
               type="button"
@@ -88,82 +79,65 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
                   ...hazard.alarmPreset,
                 })
               }
-              className="inline-flex items-center gap-1.5 rounded border border-red-600/70 bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-900/70"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-red-700"
             >
               <AlertOctagon className="h-3.5 w-3.5" />
-              Trigger Full-Screen Alarm
+              Screen Alarm
             </button>
           </div>
         </div>
+      </section>
 
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {hazard.nasaReferences.map((ref) => (
-            <span key={ref} className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] text-slate-400">
-              {ref}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Role-Tailored View & Privacy Rule */}
-      <section className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+      {/* Role-Specific Modules */}
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-bold text-white">
-            {role === "lead" ? "Lead / Commander Modules" : "Member / Crew Astronaut Modules"}
+          <h2 className="text-base font-bold text-slate-900">
+            {role === "lead" ? "Lead Controls & Matrix" : "Member Controls & Personal View"}
           </h2>
-          <span className="inline-flex items-center gap-1.5 rounded border border-slate-700 bg-slate-950 px-2.5 py-1 text-[11px] text-slate-300">
-            <Lock className="h-3 w-3 text-sky-400" />
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-1 text-xs text-slate-600">
+            <Lock className="h-3.5 w-3.5 text-sky-600" />
             {roleConfig.privacyRule}
           </span>
         </div>
 
-        <p className="text-xs text-slate-300">{roleConfig.summary}</p>
+        <p className="text-sm text-slate-600">{roleConfig.summary}</p>
 
         <div className="grid gap-4 md:grid-cols-2">
           {roleConfig.modules.map((mod) => (
-            <div key={mod.title} className="space-y-2 rounded border border-slate-800 bg-slate-950 p-4 text-xs">
-              <h3 className="font-semibold text-white">{mod.title}</h3>
-              <p className="leading-relaxed text-slate-300">{mod.detail}</p>
-              <p className="rounded border border-dashed border-slate-700 bg-slate-900/50 p-2 text-[11px] text-slate-400">
-                {mod.actionSlot}
-              </p>
+            <div key={mod.title} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
+              <h3 className="text-sm font-semibold text-slate-900">{mod.title}</h3>
+              <p className="text-slate-600">{mod.detail}</p>
+              <p className="text-slate-400">{mod.actionSlot}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Normalized Input Slots (Interactive) + Deterministic Output Slots */}
+      {/* Input Slots + Output Slots */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-sky-300">
-            Normalized Input Ingestion Slots
-          </h2>
-          <p className="text-xs text-slate-400">
-            Here is: Manual / simulated / dataset-replay fields documented in {hazard.sourceDoc} (no fake hardcoded
-            numbers or formulas).
-          </p>
-
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-base font-bold text-slate-900">Input Ingestion Slots</h2>
           <div className="space-y-3">
             {hazard.inputSlots.map((slot) => (
-              <div key={slot.streamName} className="space-y-2 rounded border border-slate-800 bg-slate-950 p-3.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-white">{slot.streamName}</span>
-                  <span className="text-[10px] text-slate-500">{slot.sourceRef}</span>
+              <div key={slot.streamName} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-900">{slot.streamName}</span>
+                  <span className="text-slate-400">{slot.sourceRef}</span>
                 </div>
                 <input
                   type="text"
                   value={inputValues[slot.streamName] ?? ""}
                   onChange={(e) => setInputValues((prev) => ({ ...prev, [slot.streamName]: e.target.value }))}
                   placeholder={slot.inputPrompt}
-                  className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
                 />
                 <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => handleSaveSlot(slot.streamName)}
-                    className="rounded border border-sky-700/60 bg-sky-950/50 px-2.5 py-1 text-[11px] font-medium text-sky-200 hover:bg-sky-900/60"
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
                   >
-                    Submit Slot Input
+                    Submit Slot
                   </button>
                 </div>
               </div>
@@ -171,78 +145,60 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           </div>
         </section>
 
-        <section className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-300">
-            Deterministic Output &amp; Guidance Slots
-          </h2>
-          <p className="text-xs text-slate-400">
-            Here is: Dual-horizon output structure (Immediate vs. Prolonged), Estimated Time of Action, and 1–2
-            constrained solutions.
-          </p>
-
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-base font-bold text-slate-900">Outputs &amp; Guidance Slots</h2>
           <div className="space-y-2.5 text-xs">
-            <div className="rounded border border-slate-800 bg-slate-950 p-3">
-              <p className="font-semibold text-red-300">Immediate Horizon (Minutes–Hours)</p>
-              <p className="mt-1 text-slate-300">{hazard.outputSlots.immediateHorizon}</p>
+            <div className="rounded-xl bg-slate-50 p-3.5">
+              <p className="font-semibold text-red-700">Immediate Horizon</p>
+              <p className="mt-1 text-slate-600">{hazard.outputSlots.immediateHorizon}</p>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-950 p-3">
-              <p className="font-semibold text-amber-300">Prolonged Horizon (Days–Weeks)</p>
-              <p className="mt-1 text-slate-300">{hazard.outputSlots.prolongedHorizon}</p>
+            <div className="rounded-xl bg-slate-50 p-3.5">
+              <p className="font-semibold text-amber-700">Prolonged Horizon</p>
+              <p className="mt-1 text-slate-600">{hazard.outputSlots.prolongedHorizon}</p>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-950 p-3">
-              <p className="font-semibold text-sky-300">Estimated Time of Action (ETA)</p>
-              <p className="mt-1 text-slate-300">{hazard.outputSlots.etaSlot}</p>
+            <div className="rounded-xl bg-slate-50 p-3.5">
+              <p className="font-semibold text-sky-700">Estimated Time of Action</p>
+              <p className="mt-1 text-slate-600">{hazard.outputSlots.etaSlot}</p>
             </div>
-            <div className="rounded border border-slate-800 bg-slate-950 p-3">
-              <p className="font-semibold text-emerald-300">1–2 Constrained Actionable Solutions</p>
-              <p className="mt-1 text-slate-300">{hazard.outputSlots.solutionsSlot}</p>
+            <div className="rounded-xl bg-slate-50 p-3.5">
+              <p className="font-semibold text-emerald-700">1–2 Actionable Solutions</p>
+              <p className="mt-1 text-slate-600">{hazard.outputSlots.solutionsSlot}</p>
             </div>
           </div>
 
-          <div className="pt-2">
-            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              <Server className="h-3.5 w-3.5" />
-              Proposed Fullstack Endpoints
-            </p>
-            <div className="space-y-1.5">
-              {hazard.proposedEndpoints.map((ep) => (
-                <div
-                  key={`${ep.method}-${ep.path}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950 px-3 py-2 text-[11px]"
-                >
-                  <span className="font-mono text-sky-300">
-                    {ep.method} {ep.path}
-                  </span>
-                  <span className="text-slate-400">{ep.purpose}</span>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-1.5 pt-2">
+            <p className="text-xs font-semibold text-slate-500">Proposed API Endpoints</p>
+            {hazard.proposedEndpoints.map((ep) => (
+              <div
+                key={`${ep.method}-${ep.path}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs"
+              >
+                <span className="font-mono text-sky-700">
+                  {ep.method} {ep.path}
+                </span>
+                <span className="text-slate-500">{ep.purpose}</span>
+              </div>
+            ))}
           </div>
         </section>
       </div>
 
-      {/* Quick Switch to Other Hazards */}
-      <section className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/30 p-4 text-xs">
-        <span className="inline-flex items-center gap-1.5 text-slate-400">
-          <ShieldAlert className="h-4 w-4 text-sky-400" />
-          Navigate all 5 hazards:
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {HAZARDS.map((h) => (
-            <Link
-              key={h.slug}
-              href={`/dashboard/hazards/${h.slug}`}
-              className={`rounded border px-2.5 py-1 ${
-                h.slug === hazard.slug
-                  ? "border-sky-500 bg-sky-950 text-sky-200"
-                  : "border-slate-700 bg-slate-950 text-slate-400 hover:text-white"
-              }`}
-            >
-              {h.number}. {h.shortTitle}
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* Quick Switcher */}
+      <div className="flex flex-wrap gap-2">
+        {HAZARDS.map((h) => (
+          <Link
+            key={h.slug}
+            href={`/dashboard/hazards/${h.slug}`}
+            className={`rounded-xl border px-3 py-1.5 text-xs font-medium ${
+              h.slug === hazard.slug
+                ? "border-sky-300 bg-sky-50 text-sky-800"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {h.number}. {h.shortTitle}
+          </Link>
+        ))}
+      </div>
     </DashboardShell>
   );
 }

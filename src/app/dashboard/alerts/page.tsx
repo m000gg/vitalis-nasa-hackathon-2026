@@ -18,84 +18,61 @@ export default function AlertsAndAlarmsPage() {
 
   return (
     <DashboardShell>
-      <section className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/50 p-5">
-        <h1 className="text-xl font-bold text-white">
-          Toast Popups, All-Over-the-Screen Alarms &amp; Buddy-Rescue Console
-        </h1>
-        <p className="text-xs text-slate-400">
-          Here is: Dual-horizon local notification system working completely offline. Use the triggers below to verify
-          toast popups and full-viewport emergency alarms across Lead and Member roles.
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h1 className="text-xl font-bold text-slate-900">Toasts, Full-Screen Alarms &amp; Buddy-Rescue</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Here is: Offline local alert controls. Trigger toast popups or full-screen emergency alarms tailored to your
+          active role ({role.toUpperCase()}).
         </p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Toast Triggers */}
-        <section className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <div className="flex items-center gap-2 text-sky-300">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-2 text-sky-700">
             <Bell className="h-4 w-4" />
-            <h2 className="text-sm font-bold uppercase tracking-wider">1. Toast Popup Triggers</h2>
+            <h2 className="text-sm font-bold">Toast Popups</h2>
           </div>
-          <p className="text-xs text-slate-400">
-            Here is: Non-blocking toast notifications for prolonged hazards, check-in confirmations, and DTN syncs.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() =>
-                fireVariantToast("info", "Info Toast", "Here is: Baseline update or mission-phase calibration notice.")
-              }
-              className="rounded border border-sky-700/60 bg-sky-950/40 px-3 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-900/50"
+              onClick={() => fireVariantToast("info", "Info Toast", "Here is: Baseline or phase notice.")}
+              className="rounded-xl bg-slate-100 px-3 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-200"
             >
-              Trigger Info Toast
+              Info Toast
+            </button>
+            <button
+              type="button"
+              onClick={() => fireVariantToast("success", "Success Toast", "Here is: Check-in or shelter confirmed.")}
+              className="rounded-xl bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+            >
+              Success Toast
             </button>
             <button
               type="button"
               onClick={() =>
-                fireVariantToast("success", "Success Toast", "Here is: Shelter check or self-check confirmed.")
+                fireVariantToast("warning", "Prolonged Hazard Toast", "Here is: Elevated CO₂ / sleep debt trend.")
               }
-              className="rounded border border-emerald-700/60 bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/50"
+              className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
             >
-              Trigger Success Toast
+              Warning Toast
             </button>
             <button
               type="button"
               onClick={() =>
-                fireVariantToast(
-                  "warning",
-                  "Prolonged Hazard Toast",
-                  "Here is: Sleep debt / CO₂ rising trend (Estimated Time of Action slot)."
-                )
+                fireVariantToast("hazard", "Immediate Hazard Toast", "Here is: Urgent hazard threshold crossed.")
               }
-              className="rounded border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-900/50"
+              className="rounded-xl bg-red-50 px-3 py-2.5 text-xs font-semibold text-red-800 hover:bg-red-100"
             >
-              Trigger Warning Toast
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                fireVariantToast(
-                  "hazard",
-                  "Immediate Hazard Toast",
-                  "Here is: Urgent hazard threshold crossed — prepare action."
-                )
-              }
-              className="rounded border border-red-700/60 bg-red-950/40 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-900/50"
-            >
-              Trigger Hazard Toast
+              Hazard Toast
             </button>
           </div>
         </section>
 
-        {/* Full-Screen Alarm Triggers */}
-        <section className="space-y-3 rounded-lg border border-red-900/50 bg-slate-900/40 p-5">
-          <div className="flex items-center gap-2 text-red-300">
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-2 text-red-700">
             <AlertOctagon className="h-4 w-4" />
-            <h2 className="text-sm font-bold uppercase tracking-wider">2. All-Over-the-Screen Alarm Triggers</h2>
+            <h2 className="text-sm font-bold">All-Over-the-Screen Alarms</h2>
           </div>
-          <p className="text-xs text-slate-400">
-            Here is: Full-screen emergency takeover tailored to your active role ({role.toUpperCase()}) with optional
-            alarm tone, Captain override, and Buddy-Rescue mode.
-          </p>
           <div className="grid gap-2">
             {HAZARDS.map((h) => (
               <button
@@ -108,65 +85,52 @@ export default function AlertsAndAlarmsPage() {
                     ...h.alarmPreset,
                   })
                 }
-                className="flex items-center justify-between rounded border border-red-700/50 bg-red-950/30 px-3 py-2 text-left text-xs text-red-100 hover:bg-red-900/40"
+                className="flex items-center justify-between rounded-xl bg-red-50 px-3.5 py-2.5 text-left text-xs font-medium text-red-900 hover:bg-red-100"
               >
                 <span>
                   <strong>Hazard {h.number}:</strong> {h.alarmPreset.title}
                 </span>
-                <ShieldAlert className="h-4 w-4 shrink-0 text-red-400" />
+                <ShieldAlert className="h-4 w-4 shrink-0 text-red-600" />
               </button>
             ))}
           </div>
         </section>
       </div>
 
-      {/* Buddy-Rescue Standalone Protocol + Audit Log */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3 rounded-lg border border-amber-800/50 bg-slate-900/40 p-5">
-          <div className="flex items-center gap-2 text-amber-300">
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-2 text-amber-700">
             <HeartPulse className="h-4 w-4" />
-            <h2 className="text-sm font-bold uppercase tracking-wider">
-              Buddy-Rescue Stabilization Mode (Non-Physician Crew)
-            </h2>
+            <h2 className="text-sm font-bold">Buddy-Rescue Stabilization Steps</h2>
           </div>
-          <p className="text-xs text-slate-400">
-            Here is: Step-by-step stabilization mode for non-physician crewmates when an astronaut becomes
-            unresponsive during comms blackout.
-          </p>
           <div className="space-y-2">
             {BUDDY_RESCUE_STEPS.map((s) => (
-              <div key={s.step} className="rounded border border-slate-800 bg-slate-950 p-3 text-xs">
-                <p className="font-semibold text-amber-200">
+              <div key={s.step} className="rounded-xl bg-slate-50 p-3.5 text-xs">
+                <p className="font-semibold text-slate-900">
                   Step {s.step}: {s.title}
                 </p>
-                <p className="mt-1 text-slate-300">{s.detail}</p>
+                <p className="mt-1 text-slate-600">{s.detail}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-            Commander Emergency Access Audit Log
-          </h2>
-          <p className="text-xs text-slate-400">
-            Here is: Every emergency medical detail unlock triggered by Lead is recorded here and notified to the crew
-            member.
-          </p>
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="text-sm font-bold text-slate-900">Emergency Unlock Audit Log</h2>
           {auditLog.length === 0 ? (
-            <div className="rounded border border-dashed border-slate-700 bg-slate-950 p-4 text-xs text-slate-500">
-              No emergency medical unlocks logged yet. (Lead can trigger one in Crew Matrix &amp; Privacy.)
-            </div>
+            <p className="rounded-xl bg-slate-50 p-4 text-xs text-slate-500">
+              No emergency medical detail unlocks logged yet.
+            </p>
           ) : (
             <div className="space-y-2 text-xs">
               {auditLog.map((a) => (
-                <div key={a.id} className="rounded border border-slate-800 bg-slate-950 p-3">
-                  <p className="font-semibold text-amber-300">
+                <div key={a.id} className="rounded-xl bg-slate-50 p-3.5">
+                  <p className="font-semibold text-slate-900">
                     {a.action} — {a.targetCallsign}
                   </p>
-                  <p className="mt-0.5 text-slate-300">{a.reason}</p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">
-                    Actor: {a.actorRole.toUpperCase()} • {a.timestamp}
+                  <p className="mt-0.5 text-slate-600">{a.reason}</p>
+                  <p className="mt-0.5 text-slate-400">
+                    {a.actorRole.toUpperCase()} · {a.timestamp}
                   </p>
                 </div>
               ))}

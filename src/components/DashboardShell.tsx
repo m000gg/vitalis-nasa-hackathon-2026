@@ -5,8 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertOctagon,
-  BellRing,
-  Compass,
+  Bell,
   LayoutDashboard,
   Radio,
   Shield,
@@ -45,18 +44,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     },
     {
       href: "/dashboard/crew",
-      label: role === "lead" ? "Crew Matrix & Privacy" : "60s Check-In & Private Log",
+      label: role === "lead" ? "Crew Matrix" : "60s Check-In & EVA",
       icon: Users,
     },
     {
       href: "/dashboard/comms",
-      label: `DTN Comms & Med Kit (${pendingDtnCount})`,
+      label: `DTN Comms (${pendingDtnCount})`,
       icon: Radio,
     },
     {
       href: "/dashboard/alerts",
-      label: "Toasts, Alarms & Buddy-Rescue",
-      icon: BellRing,
+      label: "Alarms & Buddy-Rescue",
+      icon: Bell,
     },
   ];
 
@@ -70,61 +69,58 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0c10] text-slate-100">
-      {/* Top Operational Bar */}
-      <header className="sticky top-0 z-30 border-b border-slate-800 bg-[#0d1017]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <div className="min-h-screen bg-[#f1f5f9] text-slate-900">
+      {/* Standalone App Header (distinct from public website.com) */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/" className="font-mono text-sm font-bold tracking-wider text-sky-400">
-              VITALIS+
+            <Link href="/dashboard" className="text-sm font-bold tracking-tight text-slate-900">
+              Vitalis+ App
             </Link>
-            <span className="text-slate-700">|</span>
-            <div>
-              <p className="text-xs font-semibold text-white">{mission.name}</p>
-              <p className="text-[11px] text-slate-400">Phase: {reentryMode ? "POST_ISOLATION_REENTRY" : mission.phase}</p>
-            </div>
+            <span className="text-slate-300">/</span>
+            <span className="text-sm font-medium text-slate-700">{mission.name}</span>
             <Link
               href="/missions"
-              className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-white"
+              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
             >
-              Change Mission
+              Switch Mission
             </Link>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Role Switcher */}
-            <div className="flex items-center rounded-md border border-slate-700 bg-slate-900 p-0.5 text-xs">
+            {/* Simple Role Switcher */}
+            <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
               <button
                 type="button"
                 onClick={() => {
                   setRole("lead");
                   pushToast({
-                    title: "Role Switched: LEAD",
-                    message: "Here is: Commander Readiness Matrix & privacy firewall active.",
+                    title: "Role: Lead",
+                    message: "Here is: Commander Matrix & privacy firewall active.",
                     variant: "info",
                   });
                 }}
-                className={`rounded px-2.5 py-1 font-medium transition ${
-                  role === "lead" ? "bg-sky-600 text-white" : "text-slate-400 hover:text-white"
+                className={`rounded-md px-3 py-1 font-medium transition ${
+                  role === "lead" ? "bg-white text-sky-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Lead (Commander)
+                Lead
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setRole("member");
                   pushToast({
-                    title: "Role Switched: MEMBER",
-                    message: "Here is: Personal Ready-to-Act view & private logs active.",
+                    title: "Role: Member",
+                    message: "Here is: Personal dashboard & private logs active.",
                     variant: "info",
                   });
                 }}
-                className={`rounded px-2.5 py-1 font-medium transition ${
-                  role === "member" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
+                className={`rounded-md px-3 py-1 font-medium transition ${
+                  role === "member" ? "bg-white text-emerald-700 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Member (Crew)
+                Member
               </button>
             </div>
 
@@ -133,7 +129,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 value={activeMember.id}
                 onChange={(e) => setSelectedMemberId(e.target.value)}
                 aria-label="Select crew member slot"
-                className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200"
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700"
               >
                 {mission.crew
                   .filter((c) => !c.isLeadSlot)
@@ -145,86 +141,65 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               </select>
             )}
 
-            {/* Earth Link Toggle */}
             <button
               type="button"
               onClick={() => {
                 const next = !linkOnline;
                 setLinkOnline(next);
                 pushToast({
-                  title: next ? "Earth Link Restored" : "Earth Link Blackout",
-                  message: next
-                    ? "Here is: Deep Space Network link available for DTN sync."
-                    : "Here is: Offline-first mode active. Reports will queue locally.",
+                  title: next ? "Earth Link Online" : "Earth Link Blackout",
+                  message: next ? "Here is: DTN sync available." : "Here is: Offline-first local mode active.",
                   variant: next ? "success" : "warning",
                 });
               }}
-              className={`inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs ${
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
                 linkOnline
-                  ? "border-emerald-700/60 bg-emerald-950/40 text-emerald-300"
-                  : "border-amber-700/60 bg-amber-950/40 text-amber-300"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
               }`}
             >
               {linkOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-              {linkOnline ? "Link: Online" : "Link: Blackout"}
+              {linkOnline ? "Online" : "Blackout"}
             </button>
 
-            {/* Re-Entry Phase Toggle */}
             <button
               type="button"
               onClick={() => {
                 const next = !reentryMode;
                 setReentryMode(next);
                 pushToast({
-                  title: next ? "Re-Entry Mode Enabled" : "Standard Ops Mode",
-                  message: next
-                    ? "Here is: Non-critical notifications throttled & actions capped to 1 step (Hazard 2 rule)."
-                    : "Here is: Full operational telemetry & 1–2 solution cards restored.",
+                  title: next ? "Re-Entry Mode" : "Operational Mode",
+                  message: next ? "Here is: 1-step action cap enabled." : "Here is: Standard 1–2 action mode.",
                   variant: "info",
                 });
               }}
-              className={`rounded border px-2.5 py-1 text-xs ${
+              className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
                 reentryMode
-                  ? "border-indigo-500 bg-indigo-950/60 text-indigo-200"
-                  : "border-slate-700 bg-slate-900 text-slate-300"
+                  ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                  : "border-slate-200 bg-white text-slate-600"
               }`}
             >
               {reentryMode ? "Phase: Re-Entry" : "Phase: Ops"}
             </button>
 
-            {/* Quick Toast & Full-Screen Alarm Buttons */}
-            <button
-              type="button"
-              onClick={() =>
-                pushToast({
-                  title: "Sample Toast Popup",
-                  message: "Here is: Dual-horizon local notification slot (toast mechanism).",
-                  variant: "warning",
-                })
-              }
-              className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-800"
-            >
-              Test Toast
-            </button>
             <button
               type="button"
               onClick={handleQuickAlarm}
-              className="inline-flex items-center gap-1 rounded border border-red-500/70 bg-red-950/60 px-2.5 py-1 text-xs font-semibold text-red-200 hover:bg-red-900/70"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
             >
               <AlertOctagon className="h-3.5 w-3.5" />
-              Trigger Screen Alarm
+              Screen Alarm
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Body Layout */}
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[240px_1fr]">
-        {/* Sidebar Navigation */}
+      {/* Workspace Body */}
+      <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[230px_1fr]">
         <aside className="space-y-6">
           <nav className="space-y-1">
-            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              {role === "lead" ? "Commander Workspace" : "Crew Member Workspace"}
+            <p className="px-3 pb-1.5 text-xs font-semibold text-slate-400">
+              {role === "lead" ? "Lead Workspace" : "Member Workspace"}
             </p>
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -233,13 +208,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2.5 rounded-md border px-3 py-2 text-xs font-medium transition ${
+                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
                     active
-                      ? "border-sky-500/60 bg-sky-950/40 text-white"
-                      : "border-transparent text-slate-400 hover:border-slate-800 hover:bg-slate-900/60 hover:text-slate-200"
+                      ? "bg-white text-slate-900 shadow-2xs ring-1 ring-slate-200"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
                   }`}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className="h-4 w-4 shrink-0 text-slate-500" />
                   <span>{item.label}</span>
                 </Link>
               );
@@ -247,9 +222,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <nav className="space-y-1">
-            <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              All 5 NASA HRP Hazards
-            </p>
+            <p className="px-3 pb-1.5 text-xs font-semibold text-slate-400">5 NASA HRP Hazards</p>
             {HAZARDS.map((h) => {
               const href = `/dashboard/hazards/${h.slug}`;
               const active = pathname === href;
@@ -257,35 +230,28 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={h.slug}
                   href={href}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 text-xs transition ${
+                  className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
                     active
-                      ? "border-sky-500/60 bg-sky-950/40 font-semibold text-white"
-                      : "border-transparent text-slate-400 hover:border-slate-800 hover:bg-slate-900/60 hover:text-slate-200"
+                      ? "bg-white font-semibold text-slate-900 shadow-2xs ring-1 ring-slate-200"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
                   }`}
                 >
                   <span className="truncate">
-                    {h.number}. {h.title}
+                    {h.number}. {h.shortTitle}
                   </span>
-                  <Shield className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  <Shield className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                 </Link>
               );
             })}
           </nav>
 
-          <div className="rounded-md border border-slate-800 bg-slate-900/50 p-3 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5 font-semibold text-slate-300">
-              <Compass className="h-3.5 w-3.5 text-sky-400" />
-              Role Scope Note
-            </div>
-            <p className="mt-1 leading-relaxed">
-              {role === "lead"
-                ? "Lead view displays crew readiness, shared buffs/debuffs, and overrides while blocking private personal notes."
-                : "Member view displays your personal baselines, 60s self-check, private journal, and 1–2 constrained actions."}
-            </p>
+          <div className="px-3 pt-2">
+            <Link href="/" className="text-xs text-slate-500 hover:text-slate-800">
+              ← Back to Landing Page
+            </Link>
           </div>
         </aside>
 
-        {/* Page Content */}
         <main className="min-w-0 space-y-6">{children}</main>
       </div>
     </div>
