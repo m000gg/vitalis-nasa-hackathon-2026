@@ -1,152 +1,168 @@
-import { HazardChartSpec, HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
+import {
+  HazardChartSpec,
+  HazardChartThreshold,
+  HazardDataRecord,
+  HazardEvaluationInput,
+  HazardEvaluationResult,
+  HazardSampleRecord,
+  HazardSpec,
+} from "./types";
 
 /**
  * ============================================================================
  * HAZARD 5: HOSTILE / CLOSED ENVIRONMENTS
  * Owner: Teammate 5 — Edit ONLY this file (src/lib/hazards/05-environment.ts).
+ * Spec: docs/hazards/05-hostile-closed-environments.md §4 (Shared simulation, Feature 1 Habitat Map,
+ * Feature 2 Air Risk Forecast).
  * ============================================================================
  */
 
 // [SECTION 1: HAZARD 5 VALUES & THRESHOLD SLOTS]
 // Every value below carries a tag:
 //   [2] [4] [5]   NASA source number (docs/hazards/05-hostile-closed-environments.md, Sources)
-//   [REAL]        real NASA data (only the ISS cabin CO2 from the OSDR Environmental Data App, once the CSV exists)
+//   [REAL]        real NASA data (only the ISS cabin CO2 from the OSDR Environmental Data App)
 //   [DEMO]        a demo input or demo setting, not data and not a research claim
 //   [ARITHMETIC]  plain math, not a research claim
-// Nothing here is invented: each number comes from the Hazard 5 spec or from the demo values you approved.
 export const ENVIRONMENT_PIPELINE_VALUES = {
-  supportedStreams: [
-    "Lab Air Readings",
-    "Habitat Air Readings",
-    "Galley Air Readings",
-    "Airlock Air Readings",
-    "Demo Scenario",
-    "Simulated Minutes Elapsed",
-  ],
+  supportedStreams: ["Cabin CO2 Replay", "Demo Scenario", "Simulated Minutes Elapsed"],
 
-  // --- Input stream names (one per module, plus the two demo inputs) ---
+  // --- Input stream names (DB-driven: written by the EDA seeder / simulation clock, never by astronauts) ---
   streams: {
+    // [REAL] one sample per EDA CSV row: numericValue = CO2, samplePayload { unit, temperatureC, humidityPct, rowIndex }
+    cabinCo2: "Cabin CO2 Replay",
+    // [DEMO] rawValue = demo scenario id, payload { startedAtMin } = simulated minute the demo button was pressed
     demoScenario: "Demo Scenario",
+    // [DEMO] rawValue = simulated minutes since replay start (advanced by the 1x / 60x / 600x clock, 0 = reset)
     simulatedMinutes: "Simulated Minutes Elapsed",
   },
 
   // --- NASA limits (research) ---
   limits: {
-    co2TargetMmhg: 4, // [2] CO2 at or below 4 mmHg is within the target
-    o2YellowBelowMmhg: 130, // [4] below 130 mmHg supplemental O2 may not maintain tissue oxygenation
+    co2TargetMmhg: 4, // [2] NASA target: CO2 at or below 4 mmHg
+    o2GreenFromMmhg: 130, // [4] green at 130 mmHg or more, yellow from 122 to 130
     o2RedBelowMmhg: 122, // [4] absolute lower limit, 1-hour time-weighted average
     pressureMinPsia: 5.0, // [4] total pressure for indefinite crew exposure
     pressureMaxPsia: 15.0, // [4]
     noiseHazardDba: 85, // [5] hazardous noise: below 85 dBA regardless of duration
-    noiseReferenceText: "work areas NC-50, sleep areas NC-40", // [5] information only, no status is computed from it
+    noiseReferenceText: "sleep areas on missions over 30 days: NC-40", // [5] information only, no status is computed from it
   },
 
-  // --- Unit conversion and trend band ---
+  // --- Headache odds [2] ---
+  risk: {
+    oddsFactorPerMmhg: 2, // [2] each +1 mmHg of CO2 doubles the odds of a headache
+    weeklyOddsAtTarget: 0.0163, // [2] anchors the illustrative weekly risk at 1.6% for 4 mmHg
+  },
+
+  // --- Unit conversion and forecast arithmetic ---
   arithmetic: {
     co2PpmToMmhg: 0.00076, // [ARITHMETIC] mmHg = ppm * 0.00076 (1 mmHg = 1/760 atm)
     co2PercentToMmhg: 7.6, // [ARITHMETIC] mmHg = percent * 7.6
-    trendSlopeBandMmhgPerMin: 0.001, // [ARITHMETIC] above +0.001 rising, below -0.001 falling, in between stable
+    ppmFromValue: 100, // [ARITHMETIC] a CO2 value without a unit of 100 or more can only be ppm (100 mmHg = 13% CO2)
+    slopeThresholdMmhgPerMin: 0.001, // [ARITHMETIC] above +0.001 rising, below -0.001 falling, in between stable
   },
 
   // --- Demo settings ---
   demoSettings: {
-    trendWindowMin: 30, // [DEMO] trend uses the last 30 simulated minutes
-    trendAlertHorizonMin: 120, // [DEMO] trend alert when the target is reached within 120 minutes
-    historyWindowMin: 120, // [DEMO] charts and history: the last 2 simulated hours
+    forecastWindowMin: 30, // [DEMO] the line is fitted to the last 30 simulated minutes
+    forecastHorizonMin: 120, // [DEMO] yellow / elevated when the 4 mmHg limit is reached within 2 h
+    historyWindowMin: 120, // [DEMO] charts show the last 2 simulated hours
+    projectionStepMin: 30, // [DEMO] spacing of the dashed projection points
+    replayStepMin: 10, // [DEMO] one CSV row (or demo point) = 10 simulated minutes
+    replaySpeeds: [1, 60, 600], // [DEMO] simulated minutes per real minute (1x / 60x / 600x)
+    maxSimulatedMin: 1_000_000, // [DEMO] safety cap on the simulated clock (about 1.9 simulated years)
+    // [DEMO] amplitude of the "small noise" on simulated values (deterministic, see jitter())
+    sensorNoise: { o2Mmhg: 0.5, pressurePsia: 0.05, noiseDba: 1 },
   },
 
-  // --- Modules and their DEMO defaults ---
-  // co2OffsetMmhg is added to the cabin CO2. Everything else is a fixed demo input (no noise added).
+  // --- Modules (shared map config: other layers key on these ids) ---
+  // co2OffsetMmhg is added to the cabin CO2 [DEMO]. O2, pressure and noise are simulated baselines [DEMO].
   modules: [
-    { id: "lab", name: "Lab", streamName: "Lab Air Readings", co2OffsetMmhg: 0, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 62 },
-    { id: "habitat", name: "Habitat", streamName: "Habitat Air Readings", co2OffsetMmhg: 0.4, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 45 },
-    { id: "galley", name: "Galley", streamName: "Galley Air Readings", co2OffsetMmhg: 0.2, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 58 },
-    { id: "airlock", name: "Airlock", streamName: "Airlock Air Readings", co2OffsetMmhg: -0.4, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 52 },
+    { id: "lab", name: "Lab", co2OffsetMmhg: 0, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 62 },
+    { id: "habitat", name: "Habitat", co2OffsetMmhg: 0.4, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 45 },
+    { id: "galley", name: "Galley", co2OffsetMmhg: 0.2, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 58 },
+    { id: "airlock", name: "Airlock", co2OffsetMmhg: -0.4, o2Mmhg: 149, pressurePsia: 14.7, noiseDba: 52 },
   ],
 
-  // --- Demo scenarios (the "demo buttons", entered through the "Demo Scenario" input) ---
-  // [DEMO] values from the approved demo set. Ramps are applied in a straight line over the stated time.
+  // --- Demo scenarios (the spec's demo buttons, entered through the "Demo Scenario" stream) ---
   demoScenarios: {
-    ids: ["none", "co2-scrubber-failure", "o2-leak-lab", "noisy-galley"], // "none" = Clear
-    co2ScrubberFailure: { co2RiseMmhgPerMin: 0.04, co2RiseCapMmhg: 3, appliesTo: "all modules" },
-    o2LeakLab: { moduleId: "lab", o2FallsToMmhg: 118, overMin: 20 },
-    noisyGalley: { moduleId: "galley", noiseRisesToDba: 90, overMin: 10 },
+    ids: ["none", "co2-scrubber-failure", "o2-leak-lab", "noisy-galley"],
+    labels: {
+      none: "Clear",
+      "co2-scrubber-failure": "CO2 scrubber failure",
+      "o2-leak-lab": "O2 leak in Lab",
+      "noisy-galley": "Noisy equipment in Galley",
+    } as Record<string, string>,
+    co2ScrubberFailure: { co2RiseMmhgPerMin: 0.04, co2RiseCapMmhg: 3 }, // [DEMO] all modules
+    o2LeakLab: { moduleId: "lab", o2FallsToMmhg: 118, overMin: 20 }, // [DEMO]
+    noisyGalley: { moduleId: "galley", noiseRisesToDba: 90, overMin: 10 }, // [DEMO]
   },
 
-  // --- Fake CO2 series, used only when there is no data ---
+  // --- Fake cabin CO2, used only when no EDA samples are in the DB ---
   // [DEMO] a straight ramp from 3.0 mmHg that crosses the 4 mmHg target. NOT NASA DATA.
-  // To be replaced with real CSV values (cabin CO2 from the OSDR Environmental Data App).
-  // Rule: +0.1 mmHg every 10 simulated minutes (0.01 mmHg per minute); 19 points, minute 0 to minute 180.
-  demoCo2Series: [
-    { tMin: 0, co2Mmhg: 3.0 },
-    { tMin: 10, co2Mmhg: 3.1 },
-    { tMin: 20, co2Mmhg: 3.2 },
-    { tMin: 30, co2Mmhg: 3.3 },
-    { tMin: 40, co2Mmhg: 3.4 },
-    { tMin: 50, co2Mmhg: 3.5 },
-    { tMin: 60, co2Mmhg: 3.6 },
-    { tMin: 70, co2Mmhg: 3.7 },
-    { tMin: 80, co2Mmhg: 3.8 },
-    { tMin: 90, co2Mmhg: 3.9 },
-    { tMin: 100, co2Mmhg: 4.0 },
-    { tMin: 110, co2Mmhg: 4.1 },
-    { tMin: 120, co2Mmhg: 4.2 },
-    { tMin: 130, co2Mmhg: 4.3 },
-    { tMin: 140, co2Mmhg: 4.4 },
-    { tMin: 150, co2Mmhg: 4.5 },
-    { tMin: 160, co2Mmhg: 4.6 },
-    { tMin: 170, co2Mmhg: 4.7 },
-    { tMin: 180, co2Mmhg: 4.8 },
-  ],
+  // +0.1 mmHg per row (one row = 10 simulated minutes), 19 rows, loops at the end like the CSV replay.
+  demoCo2SeriesMmhg: [3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8],
   demoDataBadge: "SIMULATED DATA - NOT NASA",
 
   // --- Fixed texts (verbatim from the spec) ---
   messages: {
-    withinTarget: "CO2 is within the NASA target of 4 mmHg.",
-    overTarget: "CO2 is above the NASA target of 4 mmHg. Each +1 mmHg doubles the odds of a headache.",
+    low: "CO2 is within the NASA target.",
+    elevated: "At this rate CO2 reaches the 4 mmHg limit in about {n} min.",
+    high: "CO2 is above the NASA limit of 4 mmHg. Each extra 1 mmHg doubles headache odds.",
     collecting: "Collecting data...",
+  },
+  // [DEMO] alert actions are demo placeholders, not NASA procedures
+  alertActions: {
+    warning: ["Check the CO2 scrubber for {Module}", "Limit time in {Module} until CO2 stabilizes"],
+    critical: ["Check the CO2 scrubber for {Module} now", "Move non-essential work out of {Module}. Lowest CO2 now: {Lowest}"],
+  },
+  // [DEMO] the team's existing wording for non-CO2 problems (O2, pressure, noise), module level
+  otherActions: {
+    o2: "Dispatch Flight Engineer to inspect CO₂ scrubber / O₂ supply loop ({Module})",
+    isolate: "Evacuate/isolate affected module ({Module})",
   },
   // [2] study facts, not computed
   studyFactsText:
     "Weekly headache risk was about 3.3% without a CO2 cap and about 1.6% with CO2 at or below 4 mmHg. Below 1% would need CO2 under 2 mmHg.",
   limitsTooltipLines: [
-    "Only the cabin CO2 is real data. Everything else is a demo input.",
-    "The doubling rule is a statistical finding from ISS crews, not an exact law.",
-    "The trend and time to target are plain arithmetic, not research.",
+    "Only the cabin CO2 is real data. Per-module differences, O2, pressure and noise are simulated around NASA limits.",
+    "The doubling rule is an estimate from ISS crew data, not an exact law. The weekly percent is illustrative.",
+    "Alert actions are demo placeholders.",
   ],
-  chartTitleNote: "NASA target 4 mmHg", // goes into the CO2 chart title (no reference-line field on this branch)
+  chart: {
+    limitLabel: "NASA limit",
+    limitColor: "#ef4444",
+    projectionLabel: "Projected +2 h",
+    projectionColor: "#f59e0b",
+  },
 };
 
 // [SECTION 2: HAZARD 5 FORMULAS & EVALUATION PIPELINE]
-// Pure functions: the same input always gives the same output. No hidden state, no clock, no randomness.
+// Pure functions: the same input always gives the same output. No hidden state, no clock, no Math.random.
 // Time is "simulated minutes". Tags: [2] [4] [5] NASA sources, [DEMO] demo input, [ARITHMETIC] plain math.
 const V = ENVIRONMENT_PIPELINE_VALUES;
 
 // Presentation only: how many decimals are printed. Not data and not a research claim.
-const FORMAT = { co2Decimals: 2, otherDecimals: 1, slopeDecimals: 3, floatGuardDecimals: 6 };
-
-// Tag printed next to CO2 values. It becomes "[REAL]" when the EDA CSV replaces the demo series.
-const CO2_SOURCE_TAG = "[DEMO]";
-
-// Action texts: the team's existing wording in this file, with the sleep, relocation and
-// crew-redistribution parts removed. Module level only.
-const ACTION_TEXTS = {
-  inspectScrubber: "Inspect CO₂ scrubber / ECLSS ventilation loop",
-  inspectO2Supply: "Dispatch Flight Engineer to inspect CO₂ scrubber / O₂ supply loop",
-  isolateModule: "Evacuate/isolate affected module",
-};
+const FORMAT = { co2Decimals: 2, otherDecimals: 1, slopeDecimals: 3, storeDecimals: 2, floatGuardDecimals: 6 };
 
 export type AirStatus = "green" | "yellow" | "red";
 export type AirMetric = "co2" | "o2" | "pressure" | "noise";
 export type Co2Unit = "ppm" | "percent" | "mmHg";
 export type TrendLabel = "rising" | "stable" | "falling";
+export type Co2Level = "low" | "elevated" | "high";
+export type AlertSeverity = "warning" | "critical";
+/** REAL = NASA OSDR EDA data, SIM = simulated around NASA limits. */
+export type DataTag = "REAL" | "SIM";
 
-/** One module reading at one moment. Temperature and humidity are not used (no NASA health limit). */
+/** One module reading at one moment. */
 export interface ModuleReading {
   co2Mmhg: number;
   o2Mmhg: number;
   pressurePsia: number;
   noiseDba: number;
+  /** From the EDA CSV if present. Information only (no NASA health limit). */
+  temperatureC: number | null;
+  /** From the EDA CSV if present. Information only (no NASA health limit). */
+  humidityPct: number | null;
 }
 
 /** One CO2 reading. `tMin` = simulated minutes since the start. */
@@ -160,8 +176,20 @@ export interface MetricStatus {
   value: number;
   unit: string;
   status: AirStatus;
+  tag: DataTag;
   /** For example "O2 118 mmHg". */
   text: string;
+  /** Extra provenance, e.g. "cabin CO2 REAL, module offset SIM". */
+  tagNote?: string;
+}
+
+/** Temperature / humidity rows of the module table (no status). */
+export interface InfoMetric {
+  key: "temperature" | "humidity";
+  label: string;
+  value: number;
+  unit: string;
+  tag: DataTag;
 }
 
 export interface ModuleAirStatus {
@@ -177,28 +205,119 @@ export interface AirLayerEntry {
   worstMetric: MetricStatus;
 }
 
-export type Co2Trend =
+export type Co2Forecast =
   | { state: "collecting" }
-  | { state: "ready"; slopeMmhgPerMin: number; label: TrendLabel };
+  | {
+      state: "ready";
+      /** [ARITHMETIC] least-squares slope over the last 30 simulated minutes. */
+      slopeMmhgPerMin: number;
+      trend: TrendLabel;
+      /** [ARITHMETIC] (4 - CO2) / slope, only when rising and not above 4 mmHg. */
+      minutesToLimit: number | null;
+      /** [ARITHMETIC] CO2 + slope * 120. */
+      projectedCo2Mmhg: number;
+    };
 
 export interface ModuleLedger {
-  /** [ARITHMETIC] simulated minutes spent above the 4 mmHg target. */
-  minutesAboveTarget: number;
-  /** [ARITHMETIC] maximum CO2 seen. */
+  /** [ARITHMETIC] simulated minutes spent above the 4 mmHg limit since the replay start. */
+  minutesAboveLimit: number;
+  /** [ARITHMETIC] maximum CO2 seen since the replay start. */
   maxCo2Mmhg: number;
 }
 
-export interface ModuleSimulation {
+export interface ModuleAlert {
+  /** Stable while the alert lasts: `${moduleId}@${startedAtMin}`. */
+  id: string;
+  /** Changes when a warning escalates to critical, so the screen asks for a new Acknowledge. */
+  ackKey: string;
   moduleId: string;
   moduleName: string;
-  history: Co2Sample[];
+  severity: AlertSeverity;
+  title: string;
+  startedAtMin: number;
+  /** Minutes until CO2 reaches 4 mmHg (warning) or 0 (critical: already above). */
+  etaMin: number;
+  /** 1-2 demo placeholder actions. */
+  actions: string[];
+}
+
+export interface ModuleModel {
+  moduleId: string;
+  moduleName: string;
   reading: ModuleReading;
+  /** Feature 1: module status = worst metric status (CO2 uses the forecast for yellow). */
+  air: ModuleAirStatus;
+  infoMetrics: InfoMetric[];
+  /** CO2 samples of the last 2 simulated hours. */
+  history: Co2Sample[];
+  /** Dashed projection for the next 2 hours (empty while collecting data). */
+  projection: Co2Sample[];
+  forecast: Co2Forecast;
+  level: Co2Level;
+  /** [2] 2 ^ (CO2 - 4). */
+  multiplier: number;
+  /** "x2.0 vs target" */
+  multiplierText: string;
+  /** [2] illustrative weekly headache risk (0..1). */
+  weeklyRisk: number;
+  /** "1.6% weekly headache risk (illustrative)" */
+  weeklyRiskText: string;
+  message: string;
+  alert: ModuleAlert | null;
+  ledger: ModuleLedger;
+}
+
+export interface EnvironmentModel {
+  nowMin: number;
+  scenarioId: string;
+  scenarioLabel: string;
+  /** Tag of the cabin CO2 source. */
+  dataTag: DataTag;
+  /** "SIMULATED DATA - NOT NASA" when no EDA samples exist, otherwise null. */
+  dataBadge: string | null;
+  modules: ModuleModel[];
+  counts: Record<AirStatus, number>;
+  /** "Modules: N green, N yellow, N red" */
+  banner: string;
+  /** Active alerts, critical first. */
+  alerts: ModuleAlert[];
+  lowestCo2ModuleId: string;
+}
+
+/** One cabin row (EDA CSV row or demo point). */
+export interface CabinRow {
+  co2Mmhg: number;
+  temperatureC: number | null;
+  humidityPct: number | null;
+}
+
+export interface CabinCo2Source {
+  tag: DataTag;
+  rows: CabinRow[];
+}
+
+export interface EnvironmentState {
+  elapsedMin: number;
+  scenarioId: string;
+  /** Simulated minute the demo scenario started. */
+  scenarioStartMin: number;
+  cabin: CabinCo2Source;
+}
+
+/** Anything that carries the DB-synced Hazard 5 streams (HazardEvaluationInput or the screen props). */
+export interface EnvironmentStateSource {
+  actorInputs?: Record<string, string>;
+  hazardRecords?: readonly HazardDataRecord[];
+  hazardSamples?: readonly HazardSampleRecord[];
+  scenarioHazardRecords?: readonly HazardDataRecord[];
+  scenarioHazardSamples?: readonly HazardSampleRecord[];
 }
 
 type ModuleConfig = (typeof ENVIRONMENT_PIPELINE_VALUES.modules)[number];
 
 const STATUS_SEVERITY: Record<AirStatus, number> = { green: 0, yellow: 1, red: 2 };
 const HAZARD_SEVERITY: Record<HazardEvaluationResult["status"], number> = { NOMINAL: 0, ELEVATED: 1, CRITICAL: 2 };
+const LEVEL_TO_STATUS: Record<Co2Level, AirStatus> = { low: "green", elevated: "yellow", high: "red" };
 
 function fmt(value: number, decimals: number): string {
   return String(Number(value.toFixed(decimals)));
@@ -209,12 +328,36 @@ function cleanFloat(value: number): number {
   return Number(value.toFixed(FORMAT.floatGuardDecimals));
 }
 
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Deterministic "small noise" in [-1, 1] from integer seeds (keeps evaluate() pure: no Math.random).
+ * Same module, same sample index, same metric -> same value on every evaluation.
+ */
+function jitter(a: number, b: number, c: number): number {
+  let h = Math.imul(a + 1, 374761393) ^ Math.imul(b + 1, 668265263) ^ Math.imul(c + 1, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return ((h >>> 0) / 4294967295) * 2 - 1;
+}
+
 // ---------------------------------------------------------------------------
 // Unit conversion [ARITHMETIC]
 // ---------------------------------------------------------------------------
 
 /**
- * CSV CO2 value to mmHg.
+ * CSV CO2 value to mmHg (internal unit).
  *   ppm:     mmHg = ppm * 0.00076   e.g. 5000 ppm -> 3.8 mmHg
  *   percent: mmHg = percent * 7.6   e.g. 0.5 %    -> 3.8 mmHg
  *   mmHg:    unchanged
@@ -225,19 +368,116 @@ export function co2ToMmhg(value: number, unit: Co2Unit): number {
   return value;
 }
 
+/** Unit from the sample payload; without one, 100 or more can only be ppm, otherwise mmHg. */
+function resolveCo2Unit(value: number, rawUnit: unknown): Co2Unit {
+  const unit = typeof rawUnit === "string" ? rawUnit.trim().toLowerCase() : "";
+  if (unit === "ppm") return "ppm";
+  if (unit === "percent" || unit === "%") return "percent";
+  if (unit === "mmhg") return "mmHg";
+  return value >= V.arithmetic.ppmFromValue ? "ppm" : "mmHg";
+}
+
 // ---------------------------------------------------------------------------
-// Statuses from NASA limits only
+// Feature 2: headache odds [2]
 // ---------------------------------------------------------------------------
 
-/** [2] CO2: green at 4 mmHg or less, red above. No yellow.   3.9 -> green, 4.0 -> green, 4.1 -> red */
-export function co2Status(co2Mmhg: number): AirStatus {
-  return co2Mmhg > V.limits.co2TargetMmhg ? "red" : "green";
+/** [2] Risk multiplier vs the target = 2 ^ (CO2 - 4).   4 -> 1.0,  5 -> 2.0,  3 -> 0.5 */
+export function co2RiskMultiplier(co2Mmhg: number): number {
+  return Math.pow(V.risk.oddsFactorPerMmhg, co2Mmhg - V.limits.co2TargetMmhg);
+}
+
+/**
+ * [2] Illustrative weekly headache risk: odds = 0.0163 * 2 ^ (CO2 - 4), risk = odds / (1 + odds).
+ * Anchored at 1.6% for 4 mmHg. Always label it "illustrative".   4 -> 0.0160,  5 -> 0.0316
+ */
+export function illustrativeWeeklyRisk(co2Mmhg: number): number {
+  const odds = V.risk.weeklyOddsAtTarget * co2RiskMultiplier(co2Mmhg);
+  return odds / (1 + odds);
+}
+
+// ---------------------------------------------------------------------------
+// Feature 2: forecast and level [ARITHMETIC]
+// ---------------------------------------------------------------------------
+
+/**
+ * Fits a straight line to the samples of the last 30 simulated minutes.
+ * Needs 30 simulated minutes of history since `historyStartMin`, otherwise "collecting".
+ *   t 0,10,20,30 with CO2 3.0,3.1,3.2,3.3 -> slope 0.01, rising, minutesToLimit 70, projected 4.5
+ *   t 0,10,20 only                         -> collecting
+ */
+export function co2Forecast(history: readonly Co2Sample[], historyStartMin = history[0]?.tMin ?? 0): Co2Forecast {
+  if (history.length < 2) return { state: "collecting" };
+  const latest = history[history.length - 1];
+  if (latest.tMin - historyStartMin < V.demoSettings.forecastWindowMin) return { state: "collecting" };
+
+  const fromMin = latest.tMin - V.demoSettings.forecastWindowMin;
+  let start = history.length - 1;
+  while (start > 0 && history[start - 1].tMin >= fromMin) start--;
+  const count = history.length - start;
+  if (count < 2) return { state: "collecting" };
+
+  let sumT = 0;
+  let sumY = 0;
+  for (let i = start; i < history.length; i++) {
+    sumT += history[i].tMin;
+    sumY += history[i].co2Mmhg;
+  }
+  const meanT = sumT / count;
+  const meanY = sumY / count;
+  let num = 0;
+  let den = 0;
+  for (let i = start; i < history.length; i++) {
+    const dt = history[i].tMin - meanT;
+    num += dt * (history[i].co2Mmhg - meanY);
+    den += dt * dt;
+  }
+  if (den === 0) return { state: "collecting" };
+
+  const slope = num / den;
+  const threshold = V.arithmetic.slopeThresholdMmhgPerMin;
+  const co2 = latest.co2Mmhg;
+  return {
+    state: "ready",
+    slopeMmhgPerMin: slope,
+    trend: slope > threshold ? "rising" : slope < -threshold ? "falling" : "stable",
+    // At exactly 4 mmHg and rising the limit is reached now (0 min), so the alert does not flicker off for one sample.
+    minutesToLimit: slope > threshold && co2 <= V.limits.co2TargetMmhg ? (V.limits.co2TargetMmhg - co2) / slope : null,
+    projectedCo2Mmhg: co2 + slope * V.demoSettings.forecastHorizonMin,
+  };
+}
+
+/** high if CO2 is above 4; elevated if minutesToLimit is 120 or less; otherwise low. */
+export function co2Level(co2Mmhg: number, forecast: Co2Forecast): Co2Level {
+  if (co2Mmhg > V.limits.co2TargetMmhg) return "high";
+  if (forecast.state === "ready" && forecast.minutesToLimit !== null && forecast.minutesToLimit <= V.demoSettings.forecastHorizonMin) {
+    return "elevated";
+  }
+  return "low";
+}
+
+/** Per-module message (spec texts). */
+export function co2Message(level: Co2Level, forecast: Co2Forecast): string {
+  if (level === "high") return V.messages.high;
+  if (level === "elevated" && forecast.state === "ready" && forecast.minutesToLimit !== null) {
+    return fill(V.messages.elevated, { n: String(Math.round(forecast.minutesToLimit)) });
+  }
+  if (forecast.state === "collecting") return V.messages.collecting;
+  return V.messages.low;
+}
+
+// ---------------------------------------------------------------------------
+// Feature 1: statuses from NASA limits
+// ---------------------------------------------------------------------------
+
+/** CO2: red above 4 mmHg [2], yellow when the forecast reaches 4 mmHg within 2 h, otherwise green. */
+export function co2Status(co2Mmhg: number, forecast: Co2Forecast = { state: "collecting" }): AirStatus {
+  return LEVEL_TO_STATUS[co2Level(co2Mmhg, forecast)];
 }
 
 /** [4] O2: green at 130 or more, yellow from 122 to below 130, red below 122.   149 -> green, 125 -> yellow, 118 -> red */
 export function o2Status(o2Mmhg: number): AirStatus {
   if (o2Mmhg < V.limits.o2RedBelowMmhg) return "red";
-  if (o2Mmhg < V.limits.o2YellowBelowMmhg) return "yellow";
+  if (o2Mmhg < V.limits.o2GreenFromMmhg) return "yellow";
   return "green";
 }
 
@@ -262,15 +502,35 @@ function formatMetric(metric: AirMetric, value: number): string {
  * Status of every metric, and the module status = the worst one.
  * On equal severity the first in this order wins: CO2, O2, pressure, noise.
  * When everything is green the first metric (CO2) is reported as the worst one.
- *   { co2 4.4, o2 118, pressure 14.7, noise 62 } -> red, worst "CO2 4.4 mmHg"
- *   { co2 3.2, o2 125, pressure 14.7, noise 62 } -> yellow, worst "O2 125 mmHg"
+ *   { co2 4.4, o2 118, ... }                -> red, worst "CO2 4.4 mmHg"
+ *   { co2 3.2 (no forecast), o2 125, ... }  -> yellow, worst "O2 125 mmHg"
  */
-export function evaluateModuleAir(reading: ModuleReading): ModuleAirStatus {
+export function evaluateModuleAir(
+  reading: Pick<ModuleReading, "co2Mmhg" | "o2Mmhg" | "pressurePsia" | "noiseDba">,
+  forecast: Co2Forecast = { state: "collecting" },
+  co2Tag: DataTag = "SIM",
+  co2TagNote?: string
+): ModuleAirStatus {
   const metrics: MetricStatus[] = [
-    { metric: "co2", value: reading.co2Mmhg, unit: "mmHg", status: co2Status(reading.co2Mmhg), text: formatMetric("co2", reading.co2Mmhg) },
-    { metric: "o2", value: reading.o2Mmhg, unit: "mmHg", status: o2Status(reading.o2Mmhg), text: formatMetric("o2", reading.o2Mmhg) },
-    { metric: "pressure", value: reading.pressurePsia, unit: "psia", status: pressureStatus(reading.pressurePsia), text: formatMetric("pressure", reading.pressurePsia) },
-    { metric: "noise", value: reading.noiseDba, unit: "dBA", status: noiseStatus(reading.noiseDba), text: formatMetric("noise", reading.noiseDba) },
+    {
+      metric: "co2",
+      value: reading.co2Mmhg,
+      unit: "mmHg",
+      status: co2Status(reading.co2Mmhg, forecast),
+      tag: co2Tag,
+      text: formatMetric("co2", reading.co2Mmhg),
+      ...(co2TagNote ? { tagNote: co2TagNote } : {}),
+    },
+    { metric: "o2", value: reading.o2Mmhg, unit: "mmHg", status: o2Status(reading.o2Mmhg), tag: "SIM", text: formatMetric("o2", reading.o2Mmhg) },
+    {
+      metric: "pressure",
+      value: reading.pressurePsia,
+      unit: "psia",
+      status: pressureStatus(reading.pressurePsia),
+      tag: "SIM",
+      text: formatMetric("pressure", reading.pressurePsia),
+    },
+    { metric: "noise", value: reading.noiseDba, unit: "dBA", status: noiseStatus(reading.noiseDba), tag: "SIM", text: formatMetric("noise", reading.noiseDba) },
   ];
   let worst = metrics[0];
   for (const m of metrics) {
@@ -279,316 +539,446 @@ export function evaluateModuleAir(reading: ModuleReading): ModuleAirStatus {
   return { status: worst.status, worstMetric: worst, metrics };
 }
 
+function countStatuses(statuses: readonly AirStatus[]): Record<AirStatus, number> {
+  const counts: Record<AirStatus, number> = { green: 0, yellow: 0, red: 0 };
+  for (const s of statuses) counts[s]++;
+  return counts;
+}
+
 /** "Modules: N green, N yellow, N red". */
-export function formatBanner(statuses: AirStatus[]): string {
-  const count = (s: AirStatus) => statuses.filter((x) => x === s).length;
-  return `Modules: ${count("green")} green, ${count("yellow")} yellow, ${count("red")} red`;
+export function formatBanner(statuses: readonly AirStatus[]): string {
+  const c = countStatuses(statuses);
+  return `Modules: ${c.green} green, ${c.yellow} yellow, ${c.red} red`;
 }
 
 // ---------------------------------------------------------------------------
-// CO2 and headache odds [2]
+// Shared simulation: reading the DB streams [DEMO] / [REAL]
 // ---------------------------------------------------------------------------
 
-/**
- * Headache odds multiplier vs 4 mmHg = 2 ^ (CO2 - 4), only when CO2 is above 4 mmHg [2].
- * No percentage is computed.   5 -> 2,  6 -> 4,  4.5 -> 1.414...,  4 -> null,  3 -> null
- */
-export function headacheOddsMultiplier(co2Mmhg: number): number | null {
-  if (co2Mmhg <= V.limits.co2TargetMmhg) return null;
-  return Math.pow(2, co2Mmhg - V.limits.co2TargetMmhg);
+/** Clock helper for the seeder / replay controls: play at 1x, 60x or 600x; pause = speed 0; reset = 0. */
+export function advanceSimulatedMinutes(currentMin: number, realSecondsElapsed: number, speed: number): number {
+  const next = currentMin + (Math.max(0, realSecondsElapsed) / 60) * Math.max(0, speed);
+  return Math.min(Math.max(0, next), V.demoSettings.maxSimulatedMin);
 }
 
-/** "headache odds x{2 ^ (CO2 - 4)} compared to 4 mmHg", only above the target.   5 -> "headache odds x2 compared to 4 mmHg" */
-export function headacheOddsText(co2Mmhg: number): string | null {
-  const m = headacheOddsMultiplier(co2Mmhg);
-  if (m === null) return null;
-  return `headache odds x${fmt(m, FORMAT.co2Decimals)} compared to ${V.limits.co2TargetMmhg} mmHg`;
-}
-
-// ---------------------------------------------------------------------------
-// Trend, time to target, ledger [ARITHMETIC]
-// ---------------------------------------------------------------------------
-
-/**
- * Least-squares slope (mmHg per minute) through the samples of the last 30 simulated minutes.
- * Needs at least 30 simulated minutes of history, otherwise "collecting" ("Collecting data...").
- * Label uses the 0.001 mmHg/min band in both directions.
- *   t 0,10,20,30 with CO2 3.0,3.1,3.2,3.3 -> slope 0.01, rising
- *   t 0,10,20 only                         -> collecting
- *   flat CO2 for 40 min                    -> slope 0, stable
- */
-export function co2Trend(history: Co2Sample[]): Co2Trend {
-  if (history.length < 2) return { state: "collecting" };
-  const latest = history[history.length - 1];
-  if (latest.tMin - history[0].tMin < V.demoSettings.trendWindowMin) return { state: "collecting" };
-
-  const win = history.filter((s) => s.tMin >= latest.tMin - V.demoSettings.trendWindowMin);
-  if (win.length < 2) return { state: "collecting" };
-
-  const meanT = win.reduce((sum, s) => sum + s.tMin, 0) / win.length;
-  const meanY = win.reduce((sum, s) => sum + s.co2Mmhg, 0) / win.length;
-  let num = 0;
-  let den = 0;
-  for (const s of win) {
-    num += (s.tMin - meanT) * (s.co2Mmhg - meanY);
-    den += (s.tMin - meanT) * (s.tMin - meanT);
-  }
-  if (den === 0) return { state: "collecting" };
-
-  const slope = num / den;
-  const band = V.arithmetic.trendSlopeBandMmhgPerMin;
-  const label: TrendLabel = slope > band ? "rising" : slope < -band ? "falling" : "stable";
-  return { state: "ready", slopeMmhgPerMin: slope, label };
+/** The fake cabin CO2 (badge "SIMULATED DATA - NOT NASA"). */
+export function demoCabinSource(): CabinCo2Source {
+  return { tag: "SIM", rows: V.demoCo2SeriesMmhg.map((co2Mmhg) => ({ co2Mmhg, temperatureC: null, humidityPct: null })) };
 }
 
 /**
- * Minutes to the 4 mmHg target, only when rising (slope above 0.001) and CO2 is below 4:
- * (4 - CO2) / slope.   co2 3.0, slope 0.01 -> 100;  co2 3.0, slope 0.001 -> null;  co2 4.0 -> null
+ * EDA CSV rows ingested as "Cabin CO2 Replay" samples -> cabin source in mmHg, ordered by
+ * samplePayload.rowIndex when every sample has one, otherwise by recordedAt. Null when no usable rows.
  */
-export function minutesToTarget(co2Mmhg: number, slopeMmhgPerMin: number): number | null {
-  if (slopeMmhgPerMin > V.arithmetic.trendSlopeBandMmhgPerMin && co2Mmhg < V.limits.co2TargetMmhg) {
-    return (V.limits.co2TargetMmhg - co2Mmhg) / slopeMmhgPerMin;
+export function cabinSourceFromSamples(samples: readonly HazardSampleRecord[]): CabinCo2Source | null {
+  const ordered = [...samples];
+  const allIndexed = ordered.length > 0 && ordered.every((s) => toFiniteNumber(s.samplePayload?.rowIndex) !== null);
+  ordered.sort((a, b) => {
+    const byKey = allIndexed
+      ? (toFiniteNumber(a.samplePayload.rowIndex) as number) - (toFiniteNumber(b.samplePayload.rowIndex) as number)
+      : Date.parse(a.recordedAt) - Date.parse(b.recordedAt);
+    return byKey || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+
+  const rows: CabinRow[] = [];
+  for (const s of ordered) {
+    const payload = s.samplePayload ?? {};
+    const raw = s.numericValue ?? toFiniteNumber(payload.co2);
+    if (raw === null || !Number.isFinite(raw) || raw < 0) continue;
+    rows.push({
+      co2Mmhg: cleanFloat(co2ToMmhg(raw, resolveCo2Unit(raw, payload.unit))),
+      temperatureC: toFiniteNumber(payload.temperatureC),
+      humidityPct: toFiniteNumber(payload.humidityPct),
+    });
   }
-  return null;
+  return rows.length > 0 ? { tag: "REAL", rows } : null;
 }
 
-/** "If the current trend continues, CO2 reaches 4 mmHg in about {n} min (trend estimate)."   100.4 -> "... about 100 min ..." */
-export function trendMessage(minutes: number): string {
-  return `If the current trend continues, CO2 reaches ${V.limits.co2TargetMmhg} mmHg in about ${Math.round(minutes)} min (trend estimate).`;
+/** Accepts a scenario id or its button label ("Clear", "O2 leak in Lab", ...). Unknown -> "none". */
+function normalizeScenario(raw: string): string {
+  const key = raw.trim().toLowerCase();
+  for (const id of V.demoScenarios.ids) {
+    if (id === key || V.demoScenarios.labels[id].toLowerCase() === key) return id;
+  }
+  return "none";
+}
+
+function latestRecord(records: readonly HazardDataRecord[], streamName: string): HazardDataRecord | undefined {
+  let best: HazardDataRecord | undefined;
+  for (const r of records) {
+    if (r.hazardSlug !== "environment" || r.streamName !== streamName) continue;
+    if (!best || Date.parse(r.updatedAt) > Date.parse(best.updatedAt)) best = r;
+  }
+  return best;
+}
+
+/** The character's own cabin samples; otherwise the scenario-wide samples of one character (no interleaved copies). */
+function pickCabinSamples(src: EnvironmentStateSource): HazardSampleRecord[] {
+  const isCabin = (s: HazardSampleRecord) => s.hazardSlug === "environment" && s.streamName === V.streams.cabinCo2;
+  const own = (src.hazardSamples ?? []).filter(isCabin);
+  if (own.length > 0) return own;
+
+  const byCharacter = new Map<string, HazardSampleRecord[]>();
+  for (const s of src.scenarioHazardSamples ?? []) {
+    if (!isCabin(s)) continue;
+    const list = byCharacter.get(s.characterId) ?? [];
+    list.push(s);
+    byCharacter.set(s.characterId, list);
+  }
+  let best: HazardSampleRecord[] = [];
+  byCharacter.forEach((list) => {
+    if (list.length > best.length) best = list;
+  });
+  return best;
 }
 
 /**
- * Ledger per module: simulated minutes above 4 mmHg and the maximum CO2.
- * A sample above the target counts the minutes since the previous sample.
- *   t 0,10,20,30 with CO2 3.9,4.1,4.2,3.8 -> 20 min above (t=10 and t=20), max 4.2
+ * Reads the shared simulation inputs from the DB-synced streams (actorInputs first, then the newest record
+ * of this character or of the scenario). Missing EDA samples -> demo cabin CO2 (SIM).
  */
-export function buildLedger(history: Co2Sample[]): ModuleLedger {
-  let minutes = 0;
-  let max = history.length > 0 ? history[0].co2Mmhg : 0;
-  for (let i = 1; i < history.length; i++) {
-    max = Math.max(max, history[i].co2Mmhg);
-    if (co2Status(history[i].co2Mmhg) === "red") minutes += history[i].tMin - history[i - 1].tMin;
-  }
-  return { minutesAboveTarget: minutes, maxCo2Mmhg: max };
-}
+export function readEnvironmentState(src: EnvironmentStateSource): EnvironmentState {
+  const records = [...(src.hazardRecords ?? []), ...(src.scenarioHazardRecords ?? [])];
+  const read = (streamName: string) => {
+    const record = latestRecord(records, streamName);
+    const direct = src.actorInputs?.[streamName]?.trim();
+    return { raw: direct || record?.rawValue || "", payload: record?.payload ?? {} };
+  };
 
-// ---------------------------------------------------------------------------
-// Deterministic demo simulation [DEMO]
-// ---------------------------------------------------------------------------
-
-/**
- * Builds one module's CO2 history and its current reading from:
- *   the demo series (loops at the end), the module offset, the elapsed simulated minutes
- *   and the active demo scenario. Nothing is stored between calls.
- *
- * Samples sit on the series step (10 min). Elapsed minutes are rounded down to that step.
- * A scenario is treated as active from simulated minute 0.
- *   - co2-scrubber-failure: CO2 + min(0.04 * t, 3) in every module
- *   - o2-leak-lab: Lab O2 falls in a straight line from its default to 118 mmHg over 20 min
- *   - noisy-galley: Galley noise rises in a straight line from its default to 90 dBA over 10 min
- * Example (Lab, no scenario, elapsed 30): samples t 0,10,20,30 = 3.0, 3.1, 3.2, 3.3
- * Example (Habitat, offset +0.4, elapsed 20): 3.4, 3.5, 3.6
- */
-export function buildModuleSimulation(module: ModuleConfig, elapsedMin: number, scenarioId: string): ModuleSimulation {
-  const series = V.demoCo2Series;
-  const stepMin = series[1].tMin - series[0].tMin;
-  const lastIndex = Math.floor(Math.max(0, elapsedMin) / stepMin);
-
-  const history: Co2Sample[] = [];
-  for (let k = 0; k <= lastIndex; k++) {
-    const tMin = k * stepMin;
-    const cabinCo2 = series[k % series.length].co2Mmhg;
-    const scrubberRise =
-      scenarioId === "co2-scrubber-failure"
-        ? Math.min(V.demoScenarios.co2ScrubberFailure.co2RiseMmhgPerMin * tMin, V.demoScenarios.co2ScrubberFailure.co2RiseCapMmhg)
-        : 0;
-    history.push({ tMin, co2Mmhg: cleanFloat(cabinCo2 + module.co2OffsetMmhg + scrubberRise) });
-  }
-
-  const nowMin = history[history.length - 1].tMin;
-  let o2Mmhg = module.o2Mmhg;
-  if (scenarioId === "o2-leak-lab" && module.id === V.demoScenarios.o2LeakLab.moduleId) {
-    const done = Math.min(nowMin / V.demoScenarios.o2LeakLab.overMin, 1);
-    o2Mmhg = cleanFloat(module.o2Mmhg - (module.o2Mmhg - V.demoScenarios.o2LeakLab.o2FallsToMmhg) * done);
-  }
-  let noiseDba = module.noiseDba;
-  if (scenarioId === "noisy-galley" && module.id === V.demoScenarios.noisyGalley.moduleId) {
-    const done = Math.min(nowMin / V.demoScenarios.noisyGalley.overMin, 1);
-    noiseDba = cleanFloat(module.noiseDba + (V.demoScenarios.noisyGalley.noiseRisesToDba - module.noiseDba) * done);
-  }
+  const scenario = read(V.streams.demoScenario);
+  const elapsed = toFiniteNumber(read(V.streams.simulatedMinutes).raw);
+  const start = toFiniteNumber(scenario.payload.startedAtMin);
 
   return {
-    moduleId: module.id,
-    moduleName: module.name,
+    elapsedMin: elapsed !== null && elapsed > 0 ? Math.min(elapsed, V.demoSettings.maxSimulatedMin) : 0,
+    scenarioId: normalizeScenario(scenario.raw),
+    scenarioStartMin: start !== null && start > 0 ? start : 0,
+    cabin: cabinSourceFromSamples(pickCabinSamples(src)) ?? demoCabinSource(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared simulation: per-module replay (one pass, constant memory per module)
+// ---------------------------------------------------------------------------
+
+interface ModuleRun {
+  history: Co2Sample[];
+  forecast: Co2Forecast;
+  level: Co2Level;
+  ledger: ModuleLedger;
+  /** Start of the current non-low episode, null when level is low. */
+  alertStartMin: number | null;
+  reading: ModuleReading;
+}
+
+/**
+ * Replays the cabin rows (looping at the end) for one module from minute 0 to now:
+ *   CO2 = cabin + module offset (+ min(0.04 * minutes since the scrubber failure, 3))
+ * and on the way updates the 30-min forecast window, the alert episode (created on low -> elevated/high,
+ * kept while it lasts, resolved when low again) and the ledger. Only the last 2 h are kept for the chart.
+ * O2 / pressure / noise for "now": baseline + demo ramp + deterministic small noise.
+ */
+function runModule(module: ModuleConfig, moduleIndex: number, state: EnvironmentState, lastIndex: number): ModuleRun {
+  const step = V.demoSettings.replayStepMin;
+  const nowMin = lastIndex * step;
+  const rows = state.cabin.rows;
+  const scrubber = V.demoScenarios.co2ScrubberFailure;
+  const scrubberOn = state.scenarioId === "co2-scrubber-failure";
+
+  const window: Co2Sample[] = [];
+  const history: Co2Sample[] = [];
+  let forecast: Co2Forecast = { state: "collecting" };
+  let level: Co2Level = "low";
+  let alertStartMin: number | null = null;
+  let minutesAboveLimit = 0;
+  let maxCo2Mmhg = -Infinity;
+
+  for (let k = 0; k <= lastIndex; k++) {
+    const tMin = k * step;
+    const rise = scrubberOn ? Math.min(scrubber.co2RiseMmhgPerMin * Math.max(0, tMin - state.scenarioStartMin), scrubber.co2RiseCapMmhg) : 0;
+    const sample: Co2Sample = { tMin, co2Mmhg: cleanFloat(rows[k % rows.length].co2Mmhg + module.co2OffsetMmhg + rise) };
+
+    window.push(sample);
+    while (window[0].tMin < tMin - V.demoSettings.forecastWindowMin) window.shift();
+    forecast = co2Forecast(window, 0);
+    level = co2Level(sample.co2Mmhg, forecast);
+    if (level === "low") alertStartMin = null;
+    else if (alertStartMin === null) alertStartMin = tMin;
+
+    // A sample above the limit counts the minutes since the previous sample.
+    if (k > 0 && sample.co2Mmhg > V.limits.co2TargetMmhg) minutesAboveLimit += step;
+    maxCo2Mmhg = Math.max(maxCo2Mmhg, sample.co2Mmhg);
+    if (tMin >= nowMin - V.demoSettings.historyWindowMin) history.push(sample);
+  }
+
+  const elapsedInScenario = Math.max(0, nowMin - state.scenarioStartMin);
+  const noise = V.demoSettings.sensorNoise;
+  const round = (v: number) => Number(v.toFixed(FORMAT.storeDecimals));
+
+  let o2Mmhg = module.o2Mmhg;
+  const leak = V.demoScenarios.o2LeakLab;
+  if (state.scenarioId === "o2-leak-lab" && module.id === leak.moduleId) {
+    o2Mmhg -= (module.o2Mmhg - leak.o2FallsToMmhg) * Math.min(elapsedInScenario / leak.overMin, 1);
+  }
+  let noiseDba = module.noiseDba;
+  const noisy = V.demoScenarios.noisyGalley;
+  if (state.scenarioId === "noisy-galley" && module.id === noisy.moduleId) {
+    noiseDba += (noisy.noiseRisesToDba - module.noiseDba) * Math.min(elapsedInScenario / noisy.overMin, 1);
+  }
+
+  const cabinNow = rows[lastIndex % rows.length];
+  return {
     history,
+    forecast,
+    level,
+    ledger: { minutesAboveLimit, maxCo2Mmhg },
+    alertStartMin,
     reading: {
       co2Mmhg: history[history.length - 1].co2Mmhg,
-      o2Mmhg,
-      pressurePsia: module.pressurePsia,
-      noiseDba,
+      o2Mmhg: round(o2Mmhg + noise.o2Mmhg * jitter(moduleIndex, lastIndex, 1)),
+      pressurePsia: round(module.pressurePsia + noise.pressurePsia * jitter(moduleIndex, lastIndex, 2)),
+      noiseDba: round(noiseDba + noise.noiseDba * jitter(moduleIndex, lastIndex, 3)),
+      temperatureC: cabinNow.temperatureC,
+      humidityPct: cabinNow.humidityPct,
     },
   };
 }
 
-/** Keeps only known scenario ids ("none" = Clear). */
-function normalizeScenario(raw: string): string {
-  const id = raw.trim();
-  return V.demoScenarios.ids.includes(id) ? id : "none";
+function buildProjection(nowMin: number, co2Mmhg: number, forecast: Co2Forecast): Co2Sample[] {
+  if (forecast.state !== "ready") return [];
+  const points: Co2Sample[] = [];
+  for (let dt = 0; dt <= V.demoSettings.forecastHorizonMin; dt += V.demoSettings.projectionStepMin) {
+    points.push({ tMin: nowMin + dt, co2Mmhg: cleanFloat(co2Mmhg + forecast.slopeMmhgPerMin * dt) });
+  }
+  return points;
 }
 
-/** Elapsed minutes from the input: a number of 0 or more, otherwise 0. */
-function parseElapsed(raw: string): number {
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+function buildAlert(
+  module: ModuleConfig,
+  run: ModuleRun,
+  lowestOther: ModuleConfig | undefined
+): ModuleAlert | null {
+  if (run.level === "low" || run.alertStartMin === null) return null;
+  const severity: AlertSeverity = run.level === "high" ? "critical" : "warning";
+  const values = { Module: module.name, Lowest: lowestOther?.name ?? module.name };
+  const id = `${module.id}@${run.alertStartMin}`;
+  const minutesToLimit = run.forecast.state === "ready" ? run.forecast.minutesToLimit : null;
+  return {
+    id,
+    ackKey: `${id}:${severity}`,
+    moduleId: module.id,
+    moduleName: module.name,
+    severity,
+    title:
+      severity === "critical"
+        ? `${module.name}: CO2 above the NASA limit of ${V.limits.co2TargetMmhg} mmHg`
+        : `${module.name}: CO2 will reach the ${V.limits.co2TargetMmhg} mmHg limit`,
+    startedAtMin: run.alertStartMin,
+    etaMin: severity === "critical" || minutesToLimit === null ? 0 : Math.round(minutesToLimit),
+    actions: V.alertActions[severity].map((text) => fill(text, values)),
+  };
+}
+
+/** Builds the full shared model behind Feature 1 (Habitat Map) and Feature 2 (Air Risk Forecast). */
+export function simulateEnvironment(state: EnvironmentState): EnvironmentModel {
+  const step = V.demoSettings.replayStepMin;
+  const lastIndex = Math.floor(Math.max(0, Math.min(state.elapsedMin, V.demoSettings.maxSimulatedMin)) / step);
+  const nowMin = lastIndex * step;
+  const runs = V.modules.map((module, i) => runModule(module, i, state, lastIndex));
+
+  let lowestIndex = 0;
+  runs.forEach((run, i) => {
+    if (run.reading.co2Mmhg < runs[lowestIndex].reading.co2Mmhg) lowestIndex = i;
+  });
+  const lowestOtherThan = (index: number): ModuleConfig | undefined => {
+    let best = -1;
+    for (let i = 0; i < runs.length; i++) {
+      if (i !== index && (best < 0 || runs[i].reading.co2Mmhg < runs[best].reading.co2Mmhg)) best = i;
+    }
+    return best < 0 ? undefined : V.modules[best];
+  };
+
+  const modules: ModuleModel[] = V.modules.map((module, i) => {
+    const run = runs[i];
+    const co2 = run.reading.co2Mmhg;
+    const co2TagNote =
+      state.cabin.tag === "REAL" && module.co2OffsetMmhg !== 0 ? "cabin CO2 REAL, module offset SIM" : undefined;
+    const multiplier = co2RiskMultiplier(co2);
+    const weeklyRisk = illustrativeWeeklyRisk(co2);
+    const infoMetrics: InfoMetric[] = [];
+    if (run.reading.temperatureC !== null) {
+      infoMetrics.push({ key: "temperature", label: "Temperature", value: run.reading.temperatureC, unit: "°C", tag: state.cabin.tag });
+    }
+    if (run.reading.humidityPct !== null) {
+      infoMetrics.push({ key: "humidity", label: "Humidity", value: run.reading.humidityPct, unit: "%RH", tag: state.cabin.tag });
+    }
+    return {
+      moduleId: module.id,
+      moduleName: module.name,
+      reading: run.reading,
+      air: evaluateModuleAir(run.reading, run.forecast, state.cabin.tag, co2TagNote),
+      infoMetrics,
+      history: run.history,
+      projection: buildProjection(nowMin, co2, run.forecast),
+      forecast: run.forecast,
+      level: run.level,
+      multiplier,
+      multiplierText: `x${multiplier.toFixed(1)} vs target`,
+      weeklyRisk,
+      weeklyRiskText: `${(weeklyRisk * 100).toFixed(1)}% weekly headache risk (illustrative)`,
+      message: co2Message(run.level, run.forecast),
+      alert: buildAlert(module, run, lowestOtherThan(i)),
+      ledger: run.ledger,
+    };
+  });
+
+  const statuses = modules.map((m) => m.air.status);
+  const alerts = modules
+    .map((m) => m.alert)
+    .filter((a): a is ModuleAlert => a !== null)
+    .sort((a, b) => (a.severity === b.severity ? a.etaMin - b.etaMin : a.severity === "critical" ? -1 : 1));
+
+  return {
+    nowMin,
+    scenarioId: state.scenarioId,
+    scenarioLabel: V.demoScenarios.labels[state.scenarioId] ?? state.scenarioId,
+    dataTag: state.cabin.tag,
+    dataBadge: state.cabin.tag === "REAL" ? null : V.demoDataBadge,
+    modules,
+    counts: countStatuses(statuses),
+    banner: formatBanner(statuses),
+    alerts,
+    lowestCo2ModuleId: V.modules[lowestIndex].id,
+  };
+}
+
+/** Convenience for the screen: DB-synced props -> full model. */
+export function buildEnvironmentModel(src: EnvironmentStateSource): EnvironmentModel {
+  return simulateEnvironment(readEnvironmentState(src));
 }
 
 /**
  * getAirLayer(): `{ moduleId, status, worstMetric }` per module, so other layers can plug into the same map.
- * Pure: pass the simulated minutes and the scenario id (defaults: minute 0, no scenario).
+ * Pass the DB-synced streams (same shape as the hazard screen props) or an already built model.
+ * Without arguments it returns minute 0 of the demo replay.
  */
-export function getAirLayer(simulatedMinutes = 0, scenarioId = "none"): AirLayerEntry[] {
-  const scenario = normalizeScenario(scenarioId);
-  return V.modules.map((module) => {
-    const sim = buildModuleSimulation(module, simulatedMinutes, scenario);
-    const { status, worstMetric } = evaluateModuleAir(sim.reading);
-    return { moduleId: module.id, status, worstMetric };
-  });
+export function getAirLayer(source: EnvironmentStateSource | EnvironmentModel = {}): AirLayerEntry[] {
+  const model = "modules" in source ? source : buildEnvironmentModel(source);
+  return model.modules.map((m) => ({ moduleId: m.moduleId, status: m.air.status, worstMetric: m.air.worstMetric }));
 }
 
 // ---------------------------------------------------------------------------
 // evaluate()
 // ---------------------------------------------------------------------------
 
-interface ModuleAnalysis {
-  sim: ModuleSimulation;
-  air: ModuleAirStatus;
-  trend: Co2Trend;
-  minutesToTarget: number | null;
-  ledger: ModuleLedger;
-}
-
-function analyzeModule(sim: ModuleSimulation): ModuleAnalysis {
-  const trend = co2Trend(sim.history);
-  return {
-    sim,
-    air: evaluateModuleAir(sim.reading),
-    trend,
-    minutesToTarget: trend.state === "ready" ? minutesToTarget(sim.reading.co2Mmhg, trend.slopeMmhgPerMin) : null,
-    ledger: buildLedger(sim.history),
-  };
-}
-
-/** A trend warning: the trend estimate reaches the target within 120 minutes (CO2 still within the target). */
-function hasTrendWarning(a: ModuleAnalysis): boolean {
-  return a.minutesToTarget !== null && a.minutesToTarget <= V.demoSettings.trendAlertHorizonMin;
-}
-
-/** One action per problem, module level. Priority: red modules, yellow modules, trend warnings. */
-function buildSolutions(analyses: ModuleAnalysis[], maxSolutions: number): string[] {
-  const rank = (a: ModuleAnalysis) => (a.air.status === "red" ? 0 : a.air.status === "yellow" ? 1 : 2);
-  const problems = analyses.filter((a) => a.air.status !== "green" || hasTrendWarning(a)).sort((a, b) => rank(a) - rank(b));
+/** One entry per problem: CO2 alerts use the spec actions, other red/yellow metrics use the team wording. */
+function buildSolutions(model: EnvironmentModel, maxSolutions: number): string[] {
+  const problems: { rank: number; actions: string[] }[] = [];
+  // model.alerts is already ordered (critical first, then nearest ETA); the sort below is stable.
+  for (const a of model.alerts) problems.push({ rank: a.severity === "critical" ? 0 : 2, actions: a.actions });
+  for (const m of model.modules) {
+    for (const metric of m.air.metrics) {
+      if (metric.metric === "co2" || metric.status === "green") continue;
+      const text = metric.metric === "o2" ? V.otherActions.o2 : V.otherActions.isolate;
+      problems.push({ rank: metric.status === "red" ? 1 : 3, actions: [fill(text, { Module: m.moduleName })] });
+    }
+  }
+  problems.sort((a, b) => a.rank - b.rank);
 
   const actions: string[] = [];
-  const add = (text: string, moduleName: string) => {
-    const line = `${text} (${moduleName})`;
-    if (!actions.includes(line)) actions.push(line);
-  };
-  for (const a of problems) {
-    const metric = a.air.status === "green" ? "co2" : a.air.worstMetric.metric;
-    add(metric === "o2" ? ACTION_TEXTS.inspectO2Supply : metric === "co2" ? ACTION_TEXTS.inspectScrubber : ACTION_TEXTS.isolateModule, a.sim.moduleName);
-    if (a.air.status === "red") add(ACTION_TEXTS.isolateModule, a.sim.moduleName);
+  for (const p of problems) {
+    for (const a of p.actions) if (!actions.includes(a)) actions.push(a);
   }
   return actions.slice(0, maxSolutions);
 }
 
+function chartFor(m: ModuleModel, tag: DataTag): HazardChartSpec {
+  const thresholds: HazardChartThreshold[] = [
+    { label: V.chart.limitLabel, value: V.limits.co2TargetMmhg, color: V.chart.limitColor },
+  ];
+  if (m.forecast.state === "ready") {
+    thresholds.push({
+      label: V.chart.projectionLabel,
+      value: Number(m.forecast.projectedCo2Mmhg.toFixed(FORMAT.co2Decimals)),
+      color: V.chart.projectionColor,
+    });
+  }
+  return {
+    id: `co2-${m.moduleId}`,
+    title: `${m.moduleName} CO2 — last 2 h [${tag}]`,
+    unit: "mmHg",
+    series: m.history.map((s) => ({ label: `${s.tMin} min`, value: s.co2Mmhg })),
+    thresholds,
+  };
+}
+
 export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { actor, actorInputs, hazardRecords, reentryMode } = input;
-  const maxSolutions = reentryMode ? 1 : 2;
-
-  const readStream = (streamName: string) =>
-    actorInputs[streamName] || hazardRecords.find((r) => r.streamName === streamName)?.rawValue || "";
-  const scenarioId = normalizeScenario(readStream(V.streams.demoScenario));
-  const elapsedMin = parseElapsed(readStream(V.streams.simulatedMinutes));
-
-  const analyses = V.modules.map((module) => analyzeModule(buildModuleSimulation(module, elapsedMin, scenarioId)));
-  const statuses = analyses.map((a) => a.air.status);
-  const nowMin = analyses[0].sim.history[analyses[0].sim.history.length - 1].tMin;
+  const { actor, reentryMode } = input;
+  const model = buildEnvironmentModel(input);
+  const tag = `[${model.dataTag}]`;
 
   // Hazard status = the worse of the module air statuses and the actor readiness (same way as 02).
-  const airStatus: HazardEvaluationResult["status"] = statuses.includes("red")
-    ? "CRITICAL"
-    : statuses.includes("yellow")
-    ? "ELEVATED"
-    : "NOMINAL";
+  const airStatus: HazardEvaluationResult["status"] =
+    model.counts.red > 0 ? "CRITICAL" : model.counts.yellow > 0 ? "ELEVATED" : "NOMINAL";
   const readinessStatus: HazardEvaluationResult["status"] =
     actor.readinessState === "HOLD" ? "CRITICAL" : actor.readinessState === "CONDITIONAL" ? "ELEVATED" : "NOMINAL";
   const status = HAZARD_SEVERITY[airStatus] >= HAZARD_SEVERITY[readinessStatus] ? airStatus : readinessStatus;
 
-  // Immediate: critical alerts (CO2 above target), trend warnings, then every module that is not green.
-  const immediateLines: string[] = [];
-  for (const a of analyses) {
-    if (co2Status(a.sim.reading.co2Mmhg) === "red") {
-      immediateLines.push(
-        `CRITICAL ${a.sim.moduleName} (${formatMetric("co2", a.sim.reading.co2Mmhg)} ${CO2_SOURCE_TAG}): ${V.messages.overTarget}`
-      );
-    }
-  }
-  for (const a of analyses) {
-    if (hasTrendWarning(a) && a.minutesToTarget !== null) {
-      immediateLines.push(`WARNING ${a.sim.moduleName}: ${trendMessage(a.minutesToTarget)} [ARITHMETIC]`);
-    }
-  }
-  for (const a of analyses) {
-    if (a.air.status !== "green") {
-      immediateLines.push(`${a.sim.moduleName}: ${a.air.status} - ${a.air.worstMetric.text} [DEMO]`);
+  // Immediate: CO2 alerts (critical first), then non-CO2 metrics that are not green.
+  const immediateLines: string[] = model.alerts.map((a) => {
+    const m = model.modules.find((x) => x.moduleId === a.moduleId) as ModuleModel;
+    const eta = a.severity === "critical" ? "now" : `in about ${a.etaMin} min`;
+    return `${a.severity.toUpperCase()} ${a.title} (${m.air.metrics[0].text} ${tag}, ETA ${eta}): ${a.actions.join("; ")} [DEMO actions]`;
+  });
+  for (const m of model.modules) {
+    for (const metric of m.air.metrics) {
+      if (metric.metric !== "co2" && metric.status !== "green") {
+        immediateLines.push(`${m.moduleName}: ${metric.status} - ${metric.text} [${metric.tag}]`);
+      }
     }
   }
 
-  // Prolonged: per-module CO2 picture, then the ledger, then the fixed study facts.
-  const moduleLines = analyses.map((a) => {
-    const co2 = a.sim.reading.co2Mmhg;
+  // Prolonged: per-module CO2 risk picture, then the ledger, then the fixed study facts.
+  const moduleLines = model.modules.map((m) => {
     const parts = [
-      `${a.sim.moduleName}: ${formatMetric("co2", co2)} ${CO2_SOURCE_TAG}`,
-      co2Status(co2) === "red" ? V.messages.overTarget : V.messages.withinTarget,
+      `${m.moduleName}: ${m.level} - ${m.air.metrics[0].text} ${tag}`,
+      `${m.multiplierText} [2]`,
+      m.weeklyRiskText,
     ];
-    const odds = headacheOddsText(co2);
-    if (odds) parts.push(`${odds} [2]`);
-    if (a.trend.state === "collecting") {
-      parts.push(V.messages.collecting);
-    } else {
-      const sign = a.trend.slopeMmhgPerMin > 0 ? "+" : "";
-      parts.push(`trend ${a.trend.label} (${sign}${fmt(a.trend.slopeMmhgPerMin, FORMAT.slopeDecimals)} mmHg/min) [ARITHMETIC]`);
+    if (m.forecast.state === "ready") {
+      const sign = m.forecast.slopeMmhgPerMin > 0 ? "+" : "";
+      parts.push(`trend ${m.forecast.trend} (${sign}${fmt(m.forecast.slopeMmhgPerMin, FORMAT.slopeDecimals)} mmHg/min) [ARITHMETIC]`);
+      if (m.forecast.minutesToLimit !== null) parts.push(`${Math.round(m.forecast.minutesToLimit)} min to limit`);
     }
+    parts.push(m.message);
     return parts.join("; ");
   });
-  const ledgerLines = analyses.map(
-    (a) =>
-      `${a.sim.moduleName}: ${fmt(a.ledger.minutesAboveTarget, FORMAT.otherDecimals)} min above ${V.limits.co2TargetMmhg} mmHg, max CO2 ${fmt(a.ledger.maxCo2Mmhg, FORMAT.co2Decimals)} mmHg [ARITHMETIC]`
+  const ledgerLines = model.modules.map(
+    (m) =>
+      `${m.moduleName}: ${m.ledger.minutesAboveLimit} min above ${V.limits.co2TargetMmhg} mmHg, max CO2 ${fmt(m.ledger.maxCo2Mmhg, FORMAT.co2Decimals)} mmHg`
   );
 
-  // ETA: the nearest time to target among the modules, otherwise the existing slot text.
-  const eta = analyses
-    .filter((a) => a.minutesToTarget !== null)
-    .sort((a, b) => (a.minutesToTarget as number) - (b.minutesToTarget as number))
-    .map((a) => `${a.sim.moduleName}: ${trendMessage(a.minutesToTarget as number)} [ARITHMETIC]`)[0];
+  // ETA: critical modules act now; otherwise the nearest time to the limit; otherwise the actor slot.
+  const critical = model.alerts.filter((a) => a.severity === "critical");
+  const nearest = model.modules
+    .map((m) => ({ name: m.moduleName, min: m.forecast.state === "ready" ? m.forecast.minutesToLimit : null }))
+    .filter((x): x is { name: string; min: number } => x.min !== null)
+    .sort((a, b) => a.min - b.min)[0];
+  const eta =
+    critical.length > 0
+      ? `Now: CO2 above ${V.limits.co2TargetMmhg} mmHg in ${critical.map((a) => a.moduleName).join(", ")}`
+      : nearest
+      ? `${nearest.name}: ${fill(V.messages.elevated, { n: String(Math.round(nearest.min)) })} [ARITHMETIC]`
+      : actor.metrics.etaSlot;
 
-  const charts: HazardChartSpec[] = analyses.map((a) => ({
-    id: `co2-${a.sim.moduleId}`,
-    title: `${a.sim.moduleName} CO2 (${V.chartTitleNote}) ${CO2_SOURCE_TAG}`,
-    unit: "mmHg",
-    series: a.sim.history
-      .filter((s) => s.tMin >= nowMin - V.demoSettings.historyWindowMin)
-      .map((s) => ({ label: `${s.tMin} min`, value: s.co2Mmhg })),
-  }));
-
+  const badge = model.dataBadge ? ` ${model.dataBadge}` : "";
   return {
     status,
-    scenarioStatusSlot: `${formatBanner(statuses)} | ${CO2_SOURCE_TAG} ${V.demoDataBadge} | simulated minute ${nowMin} | scenario: ${scenarioId}`,
-    immediateHorizon: immediateLines.length > 0 ? immediateLines.join(" | ") : "No red or yellow modules.",
-    prolongedHorizon: `${moduleLines.join(" | ")} | Ledger: ${ledgerLines.join(" | ")} | ${V.studyFactsText} [2]`,
-    eta: eta ?? actor.metrics.etaSlot,
-    solutions: buildSolutions(analyses, maxSolutions),
-    charts,
+    scenarioStatusSlot: `${model.banner} | cabin CO2 ${tag}${badge} | simulated minute ${model.nowMin} | demo: ${model.scenarioLabel}`,
+    immediateHorizon: immediateLines.length > 0 ? immediateLines.join(" | ") : `No alerts. ${V.messages.low}`,
+    prolongedHorizon: `${moduleLines.join(" | ")} | Ledger: ${ledgerLines.join(" | ")} | ${V.studyFactsText} [2] | ${V.limitsTooltipLines.join(" ")}`,
+    eta,
+    solutions: buildSolutions(model, reentryMode ? 1 : 2),
+    charts: model.modules.map((m) => chartFor(m, model.dataTag)),
   };
 }
 
@@ -609,28 +999,47 @@ export const environmentHazard: HazardSpec = {
   ],
   overviewSlot:
     "Here is: Closed-ecosystem habitat telemetry linking cabin CO₂, O₂, pressure, humidity, acoustics, and microbial contact context to early crew symptom prevention.",
+  // Crew-wide module telemetry: no stream is private. Written by the EDA seeder / simulation clock, not by astronauts.
   inputSlots: [
     {
-      streamName: "Cabin Atmosphere & Pressure",
-      inputPrompt: "Add your info: Module CO₂ (mmHg vs 4 mmHg target), O₂ (mmHg vs 122 mmHg floor), total pressure (5.0–15.0 psia) here",
-      sourceRef: "OCHMO CO₂ & Habitable Atmosphere",
+      streamName: "Cabin CO2 Replay",
+      inputPrompt: "Add your info: ISS cabin CO₂ per OSDR EDA CSV row (ppm, percent or mmHg) here",
+      sourceRef: "OSDR Environmental Data App (EDA) [6][7]",
+      fieldType: "number",
+      unit: "mmHg",
+      recordSample: true,
+      isPrivate: false,
+      subfields: [
+        { key: "unit", label: "CO₂ unit", fieldType: "text", prompt: "Add your info: CSV CO₂ unit (ppm / percent / mmHg) here" },
+        { key: "rowIndex", label: "CSV row", fieldType: "number", prompt: "Add your info: CSV row number here" },
+        { key: "temperatureC", label: "Temperature", fieldType: "number", unit: "°C", prompt: "Add your info: cabin temperature here" },
+        { key: "humidityPct", label: "Humidity", fieldType: "number", unit: "%RH", prompt: "Add your info: cabin relative humidity here" },
+      ],
     },
     {
-      streamName: "Module Acoustics & Thermal",
-      inputPrompt: "Add your info: Noise level (dBA vs 85 dBA hazardous / NC-40 sleep limit), temperature, relative humidity here",
-      sourceRef: "OCHMO Acoustics / OSDR EDA",
+      streamName: "Demo Scenario",
+      inputPrompt: "Add your info: demo scenario (none, co2-scrubber-failure, o2-leak-lab, noisy-galley) here",
+      sourceRef: "05-hostile-closed-environments.md §4 Shared simulation (demo buttons)",
+      fieldType: "text",
+      isPrivate: false,
+      subfields: [
+        { key: "startedAtMin", label: "Started at", fieldType: "number", unit: "min", prompt: "Add your info: simulated minute the demo started here" },
+      ],
     },
     {
-      streamName: "OSDR EDA Telemetry Replay",
-      inputPrompt: "Add your info: ISS EDA mission_id & replay speed for cabin environment stream here",
-      sourceRef: "05-hostile-closed-environments.md §3 & §5",
+      streamName: "Simulated Minutes Elapsed",
+      inputPrompt: "Add your info: simulated minutes since replay start (1x / 60x / 600x clock, 0 = reset) here",
+      sourceRef: "05-hostile-closed-environments.md §4 Shared simulation (replay controls)",
+      fieldType: "number",
+      unit: "min",
+      isPrivate: false,
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Acute hypoxia / rapid pressure-change / hazardous noise alarm & module evacuation advice.",
-    prolongedHorizon: "Here is: CO₂ headache risk forecast, module weather map (green/yellow/red), and morning sleep-environment report.",
-    etaSlot: "Here is: Projected time until module CO₂ or O₂ crosses NASA OCHMO operational limit.",
-    solutionsSlot: "Here is: 1–2 actions (e.g., Sleep relocation to Module B tonight; Inspect CO₂ scrubber / ECLSS ducting).",
+    immediateHorizon: "Here is: CO₂ alerts per module (warning / critical, ETA, 1–2 demo actions) and red/yellow O₂, pressure or noise readings.",
+    prolongedHorizon: "Here is: Per-module CO₂ level, headache odds multiplier, illustrative weekly risk, trend, and the minutes-above-limit ledger.",
+    etaSlot: "Here is: Projected time until module CO₂ reaches the 4 mmHg NASA limit.",
+    solutionsSlot: "Here is: 1–2 actions (e.g., Check the CO2 scrubber for Habitat; Limit time in Habitat until CO2 stabilizes).",
   },
   leadView: {
     summary: "Module Weather Map (green/yellow/red across all spacecraft modules), crew-wide CO₂ headache forecast, and sleep-relocation orders.",
@@ -666,7 +1075,8 @@ export const environmentHazard: HazardSpec = {
   },
   proposedEndpoints: [
     { method: "GET", path: "/api/hazard-data?hazardSlug=environment", purpose: "Fetch persisted environment records for scenario + character" },
-    { method: "POST", path: "/api/hazard-data", purpose: "Upsert cabin atmosphere or acoustics telemetry into Supabase" },
+    { method: "POST", path: "/api/hazard-data", purpose: "Upsert demo scenario / simulated clock records into Supabase" },
+    { method: "POST", path: "/api/hazard-samples", purpose: "Append OSDR EDA cabin CO₂ rows as 'Cabin CO2 Replay' samples" },
   ],
   alarmPreset: {
     title: "CLOSED HABITAT ATMOSPHERE BREACH — CO₂ / O₂ / PRESSURE ALERT",
