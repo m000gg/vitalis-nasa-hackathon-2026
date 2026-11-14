@@ -153,6 +153,9 @@ on conflict (id) do nothing;
 
 insert into public.characters (id, scenario_id, callsign, assigned_role_title, is_lead_slot, readiness_state, eva_gate_state, shelter_confirmed, public_status_summary, private_member_notes, metrics)
 values
+  -- ==========================================================================
+  -- SCENARIO 1: mars-transit-126 (1 Leader + 4 Members)
+  -- ==========================================================================
   (
     'mt-cmdr',
     'mars-transit-126',
@@ -178,5 +181,113 @@ values
     'Here is: Anonymized duty readiness (pre-EVA / fatigue check pending)',
     'Add your info: Private journal / symptom & mood notes here',
     '{"etaSlot":"Add your info: Estimated Time of Action for pre-EVA / symptom check here","doseSlot":"Add your info: Personal cumulative dose (Gy / Sv) here","sleepSlot":"Add your info: Personal sleep duration (h) & quality slot here","fatigueSlot":"Add your info: Subjective fatigue (1–5) & PVT-B slot here","exerciseAdherenceSlot":"Add your info: Daily exercise log slot here","blockers":["Here is: Pending shelter confirmation","Here is: Pre-EVA health status check due"],"actions":["Here is: Action 1 — Complete 60s self-check and confirm shelter route.","Here is: Action 2 — Verify non-expired medical kit items for autonomous care."]}'::jsonb
+  ),
+  (
+    'mt-fe',
+    'mars-transit-126',
+    'Member 2 — Flight Engineer',
+    'ECLSS & Habitat Systems Engineer',
+    false,
+    'GO',
+    'GO',
+    true,
+    'Here is: Duty readiness & ECLSS module assignment',
+    'Add your info: Private sleep/journal notes here',
+    '{"etaSlot":"Add your info: Next ECLSS / habitat check window here","doseSlot":"Add your info: Personal cumulative dose (Gy / Sv) here","sleepSlot":"Add your info: Personal sleep duration (h) slot here","fatigueSlot":"Add your info: PVT-B vigilance baseline slot here","exerciseAdherenceSlot":"Add your info: Aerobic + resistance adherence slot here","blockers":[],"actions":["Here is: Action 1 — Log daily module CO₂ & acoustic check.","Here is: Action 2 — Maintain 2.5h daily exercise schedule."]}'::jsonb
+  ),
+  (
+    'mt-ps',
+    'mars-transit-126',
+    'Member 3 — Payload Specialist',
+    'Science & BioShield Specialist',
+    false,
+    'HOLD',
+    'NO-GO',
+    false,
+    'Here is: Non-clinical blocker category (overdue check / shelter pending)',
+    'Add your info: Private mood/medication notes here',
+    '{"etaSlot":"Add your info: Immediate action countdown before task hold review here","doseSlot":"Add your info: Personal cumulative dose (Gy / Sv) here","sleepSlot":"Add your info: Personal sleep duration (h) slot here","fatigueSlot":"Add your info: 60s self-check / fatigue score slot here","exerciseAdherenceSlot":"Add your info: Calf volume & exercise adherence slot here","blockers":["Here is: Overdue measurement / EVA gate hold","Here is: Shelter confirmation pending"],"actions":["Here is: Action 1 — Complete overdue pre-test check under valid conditions.","Here is: Action 2 — Confirm shelter assignment & log 10-min Veggie module check."]}'::jsonb
+  ),
+  (
+    'mt-ops',
+    'mars-transit-126',
+    'Member 4 — Habitat & Comms Officer',
+    'DTN Relay & Human Factors Specialist',
+    false,
+    'GO',
+    'GO',
+    true,
+    'Here is: Duty readiness & DTN queue watch status',
+    'Add your info: Private journal & circadian log here',
+    '{"etaSlot":"Add your info: Next DTN sync & lights-out window ETA here","doseSlot":"Add your info: Personal cumulative dose (Gy / Sv) here","sleepSlot":"Add your info: Personal sleep duration (h) & light exposure slot here","fatigueSlot":"Add your info: 60s self-check / mood slot here","exerciseAdherenceSlot":"Add your info: Daily exercise adherence slot here","blockers":[],"actions":["Here is: Action 1 — Monitor DTN outbound queue during link windows.","Here is: Action 2 — Log personal circadian & acoustic check."]}'::jsonb
+  ),
+
+  -- ==========================================================================
+  -- SCENARIO 2: chapea-surface-210 (1 Leader + 4 Members)
+  -- ==========================================================================
+  (
+    'ch-cmdr',
+    'chapea-surface-210',
+    'Leader — Habitat Commander',
+    'Surface Operations Lead',
+    true,
+    'GO',
+    'GO',
+    true,
+    'Here is: Commander readiness & team schedule oversight',
+    'Add your info: Private reflection slot here',
+    '{"etaSlot":"Add your info: Next sol crew briefing window here","doseSlot":"Add your info: Cumulative surface dose slot here","sleepSlot":"Add your info: Sol sleep alignment slot here","fatigueSlot":"Add your info: PVT-B check slot here","exerciseAdherenceSlot":"Add your info: Daily exercise slot here","blockers":[],"actions":["Here is: Action 1 — Review Third-Quarter team buffs & acoustic compliance.","Here is: Action 2 — Verify surface EVA gate statuses across crew."]}'::jsonb
+  ),
+  (
+    'ch-bio',
+    'chapea-surface-210',
+    'Member 1 — Medical & Bio Officer',
+    'Health & Plant-Module Lead',
+    false,
+    'GO',
+    'GO',
+    true,
+    'Here is: Duty readiness & Veggie module rotation',
+    'Add your info: Private wellness log here',
+    '{"etaSlot":"Add your info: Next Veggie / biomarker window here","doseSlot":"Add your info: Personal dose slot here","sleepSlot":"Add your info: Sleep duration slot here","fatigueSlot":"Add your info: Fatigue score slot here","exerciseAdherenceSlot":"Add your info: Exercise log slot here","blockers":[],"actions":["Here is: Action 1 — Complete habitat plant-module sensory care.","Here is: Action 2 — Verify onboard Med Kit expiry log."]}'::jsonb
+  ),
+  (
+    'ch-eng',
+    'chapea-surface-210',
+    'Member 2 — Rover & EVA Engineer',
+    'Surface Mobility & Suit Lead',
+    false,
+    'CONDITIONAL',
+    'CONDITIONAL',
+    false,
+    'Here is: Sleep/acoustic exposure flag (clinical details private)',
+    'Add your info: Private sleep & mood reflection here',
+    '{"etaSlot":"Add your info: Pre-EVA rest / acoustic mitigation ETA here","doseSlot":"Add your info: Rover vs. base dose slot here","sleepSlot":"Add your info: Sleep quarter duration & noise note here","fatigueSlot":"Add your info: PVT-B reaction delta slot here","exerciseAdherenceSlot":"Add your info: Resistance/aerobic log slot here","blockers":["Here is: Sleep-quarter acoustic check flagged"],"actions":["Here is: Action 1 — Use acoustic protection or relocate sleep bay tonight.","Here is: Action 2 — Run 3-min vigilance check before rover EVA."]}'::jsonb
+  ),
+  (
+    'ch-sci',
+    'chapea-surface-210',
+    'Member 3 — Geology Specialist',
+    'Field Science & Dosimetry',
+    false,
+    'GO',
+    'GO',
+    true,
+    'Here is: Duty readiness & surface EVA status',
+    'Add your info: Private reflection notes here',
+    '{"etaSlot":"Add your info: Next field EVA gate check here","doseSlot":"Add your info: Personal dosimeter slot here","sleepSlot":"Add your info: Sleep log slot here","fatigueSlot":"Add your info: 60s self-check slot here","exerciseAdherenceSlot":"Add your info: Daily conditioning slot here","blockers":[],"actions":["Here is: Action 1 — Log pre-EVA health status within 48h window.","Here is: Action 2 — Sync field dosimetry notes locally."]}'::jsonb
+  ),
+  (
+    'ch-ops',
+    'chapea-surface-210',
+    'Member 4 — Autonomous Systems Specialist',
+    'Life Support & Telemetry Analyst',
+    false,
+    'GO',
+    'GO',
+    true,
+    'Here is: Duty readiness & closed-environment watch status',
+    'Add your info: Private reflection notes here',
+    '{"etaSlot":"Add your info: Next habitat atmosphere audit window here","doseSlot":"Add your info: Personal dosimeter slot here","sleepSlot":"Add your info: Sol sleep log slot here","fatigueSlot":"Add your info: 60s self-check slot here","exerciseAdherenceSlot":"Add your info: Daily conditioning slot here","blockers":[],"actions":["Here is: Action 1 — Audit surface CO₂, O₂ & pressure telemetry.","Here is: Action 2 — Verify Buddy-Rescue offline cache integrity."]}'::jsonb
   )
 on conflict (id) do nothing;

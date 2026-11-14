@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CrewSlot } from "@/lib/domain";
-import { createCharacterInDb, fetchScenariosFromDb } from "@/lib/supabase/server";
+import {
+  createCharacterInDb,
+  fetchScenariosFromDb,
+  updateCharacterInDb,
+} from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const scenarioId = request.nextUrl.searchParams.get("scenarioId")?.trim();
@@ -110,6 +114,81 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create character in Supabase";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  let body: Partial<{
+    id: string;
+    callsign: string;
+    assignedRoleTitle: string;
+    isLeadSlot: boolean;
+    readinessState: CrewSlot["readinessState"];
+    evaGateState: CrewSlot["evaGateState"];
+    shelterConfirmed: boolean;
+    publicStatusSummary: string;
+    privateMemberNotesSlot: string;
+    metrics: CrewSlot["metrics"];
+  }>;
+
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON payload for character update" },
+      { status: 400 }
+    );
+  }
+
+  const id = body.id?.trim() ?? "";
+  if (!id) {
+    return NextResponse.json(
+      { error: "Missing required field: id" },
+      { status: 400 }
+    );
+  }
+
+  const validReadiness: CrewSlot["readinessState"][] = ["GO", "CONDITIONAL", "HOLD"];
+  const validEva: CrewSlot["evaGateState"][] = ["GO", "CONDITIONAL", "NO-GO"];
+
+  if (
+    body.readinessState !== undefined &&
+    !validReadiness.includes(body.readinessState)
+  ) {
+    return NextResponse.json(
+      { error: `Invalid readinessState '${body.readinessState}'` },
+      { status: 400 }
+    );
+  }
+
+  if (body.evaGateState !== undefined && !validEva.includes(body.evaGateState)) {
+    return NextResponse.json(
+      { error: `Invalid evaGateState '${body.evaGateState}'` },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { character } = await updateCharacterInDb({
+      id,
+      callsign: body.callsign?.trim(),
+      assignedRoleTitle: body.assignedRoleTitle?.trim(),
+      isLeadSlot: body.isLeadSlot,
+      readinessState: body.readinessState,
+      evaGateState: body.evaGateState,
+      shelterConfirmed: body.shelterConfirmed,
+      publicStatusSummary: body.publicStatusSummary?.trim(),
+      privateMemberNotesSlot: body.privateMemberNotesSlot?.trim(),
+      metrics: body.metrics,
+    });
+
+    return NextResponse.json({
+      source: "supabase",
+      character,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update character in Supabase";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

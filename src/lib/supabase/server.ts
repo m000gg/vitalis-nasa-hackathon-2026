@@ -168,6 +168,32 @@ export async function createScenarioInDb(input: {
     },
   };
 
+  const defaultMembers: CrewSlot[] = [1, 2, 3, 4].map((num) => ({
+    id: `${input.id}-m${num}`,
+    callsign: `Member ${num}`,
+    assignedRoleTitle: `Add your info: Member ${num} role title here`,
+    isLeadSlot: false,
+    readinessState: "GO",
+    evaGateState: "GO",
+    shelterConfirmed: false,
+    publicStatusSummary: `Here is: Duty readiness (GO) & EVA (GO) for Member ${num}`,
+    privateMemberNotesSlot: "Add your info: Private journal / personal notes here",
+    metrics: {
+      etaSlot: "Add your info: Character Estimated Time of Action here",
+      doseSlot: "Add your info: Personal cumulative dose (Gy / Sv) here",
+      sleepSlot: "Add your info: Sleep duration (h) & quality slot here",
+      fatigueSlot: "Add your info: Subjective fatigue (1–5) & PVT-B slot here",
+      exerciseAdherenceSlot: "Add your info: Daily exercise log slot here",
+      blockers: [],
+      actions: [
+        "Here is: Action 1 — Complete 60s guided self-check.",
+        "Here is: Action 2 — Confirm shelter & habitat readiness.",
+      ],
+    },
+  }));
+
+  const defaultCrew = [defaultLeader, ...defaultMembers];
+
   const scenario: MissionProfile = {
     id: input.id,
     name: input.name,
@@ -185,7 +211,7 @@ export async function createScenarioInDb(input: {
       isolationStatusSlot: "Add your info: Confinement / circadian status here",
       gravityStatusSlot: "Add your info: Conditioning / EVA schedule status here",
     },
-    crew: [defaultLeader],
+    crew: defaultCrew,
   };
 
   const { error: sErr } = await client.from("scenarios").insert({
@@ -203,22 +229,24 @@ export async function createScenarioInDb(input: {
     throw new Error(`Supabase error inserting into public.scenarios: ${sErr.message}`);
   }
 
-  const { error: cErr } = await client.from("characters").insert({
-    id: defaultLeader.id,
-    scenario_id: scenario.id,
-    callsign: defaultLeader.callsign,
-    assigned_role_title: defaultLeader.assignedRoleTitle,
-    is_lead_slot: defaultLeader.isLeadSlot,
-    readiness_state: defaultLeader.readinessState,
-    eva_gate_state: defaultLeader.evaGateState,
-    shelter_confirmed: defaultLeader.shelterConfirmed,
-    public_status_summary: defaultLeader.publicStatusSummary,
-    private_member_notes: defaultLeader.privateMemberNotesSlot,
-    metrics: defaultLeader.metrics,
-  });
+  const { error: cErr } = await client.from("characters").insert(
+    defaultCrew.map((member) => ({
+      id: member.id,
+      scenario_id: scenario.id,
+      callsign: member.callsign,
+      assigned_role_title: member.assignedRoleTitle,
+      is_lead_slot: member.isLeadSlot,
+      readiness_state: member.readinessState,
+      eva_gate_state: member.evaGateState,
+      shelter_confirmed: member.shelterConfirmed,
+      public_status_summary: member.publicStatusSummary,
+      private_member_notes: member.privateMemberNotesSlot,
+      metrics: member.metrics,
+    }))
+  );
 
   if (cErr) {
-    throw new Error(`Supabase error inserting default leader into public.characters: ${cErr.message}`);
+    throw new Error(`Supabase error inserting default crew into public.characters: ${cErr.message}`);
   }
 
   return { scenario };
@@ -278,6 +306,47 @@ export async function createCharacterInDb(input: {
   }
 
   return { character };
+}
+
+export async function updateCharacterInDb(input: {
+  id: string;
+  callsign?: string;
+  assignedRoleTitle?: string;
+  isLeadSlot?: boolean;
+  readinessState?: CrewSlot["readinessState"];
+  evaGateState?: CrewSlot["evaGateState"];
+  shelterConfirmed?: boolean;
+  publicStatusSummary?: string;
+  privateMemberNotesSlot?: string;
+  metrics?: CrewSlot["metrics"];
+}): Promise<{ character: CrewSlot }> {
+  const client = getSupabaseServerClient();
+
+  const updates: Record<string, unknown> = {};
+  if (input.callsign !== undefined) updates.callsign = input.callsign;
+  if (input.assignedRoleTitle !== undefined) updates.assigned_role_title = input.assignedRoleTitle;
+  if (input.isLeadSlot !== undefined) updates.is_lead_slot = input.isLeadSlot;
+  if (input.readinessState !== undefined) updates.readiness_state = input.readinessState;
+  if (input.evaGateState !== undefined) updates.eva_gate_state = input.evaGateState;
+  if (input.shelterConfirmed !== undefined) updates.shelter_confirmed = input.shelterConfirmed;
+  if (input.publicStatusSummary !== undefined) updates.public_status_summary = input.publicStatusSummary;
+  if (input.privateMemberNotesSlot !== undefined) updates.private_member_notes = input.privateMemberNotesSlot;
+  if (input.metrics !== undefined) updates.metrics = input.metrics;
+
+  const { data, error } = await client
+    .from("characters")
+    .update(updates)
+    .eq("id", input.id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      `Supabase error updating character '${input.id}' in public.characters: ${error?.message ?? "Not found"}`
+    );
+  }
+
+  return { character: mapCharacterRow(data as CharacterRow) };
 }
 
 export async function fetchHazardDataFromDb(params: {

@@ -36,6 +36,18 @@ export interface CreateCharacterInput {
   evaGateState?: CrewSlot["evaGateState"];
 }
 
+export interface UpdateCharacterInput {
+  scenarioId: string;
+  id: string;
+  callsign?: string;
+  assignedRoleTitle?: string;
+  isLeadSlot?: boolean;
+  readinessState?: CrewSlot["readinessState"];
+  evaGateState?: CrewSlot["evaGateState"];
+  shelterConfirmed?: boolean;
+  publicStatusSummary?: string;
+}
+
 export type DbStatus = "loading" | "connected" | "error";
 
 interface MissionContextValue {
@@ -45,6 +57,7 @@ interface MissionContextValue {
   refreshScenarios: () => Promise<void>;
   createScenario: (input: CreateScenarioInput) => Promise<MissionProfile>;
   createCharacter: (input: CreateCharacterInput) => Promise<CrewSlot>;
+  updateCharacter: (input: UpdateCharacterInput) => Promise<CrewSlot>;
   mission: MissionProfile | null;
   setMissionId: (id: string) => void;
   activeCharacter: CrewSlot | null;
@@ -407,6 +420,39 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     return created;
   }, []);
 
+  const updateCharacter = useCallback(async (input: UpdateCharacterInput) => {
+    const res = await fetch("/api/characters", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json()) as {
+      character?: CrewSlot;
+      error?: string;
+    };
+    if (!res.ok || !data.character) {
+      const msg = data.error || `HTTP ${res.status} updating character in Supabase`;
+      setDbStatus("error");
+      setDbError(msg);
+      throw new Error(msg);
+    }
+
+    const updated = data.character;
+    setScenarios((prev) =>
+      prev.map((s) =>
+        s.id === input.scenarioId
+          ? {
+              ...s,
+              crew: s.crew.map((c) => (c.id === updated.id ? updated : c)),
+            }
+          : s
+      )
+    );
+    setDbStatus("connected");
+    setDbError(null);
+    return updated;
+  }, []);
+
   const appendHazardSample = useCallback(
     async (input: {
       hazardSlug: HazardSlug;
@@ -609,6 +655,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         refreshScenarios,
         createScenario,
         createCharacter,
+        updateCharacter,
         mission,
         setMissionId,
         activeCharacter,
