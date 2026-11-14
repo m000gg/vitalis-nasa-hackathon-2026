@@ -28,10 +28,23 @@ This guide instructs both human teammates and AI coding agents on how to develop
 
 ---
 
-## 3. Supabase Remote Database Structure (3 Areas)
+## 3. Supabase Remote Database Setup & Schema (3 Areas)
 
-Database schema lives in `supabase/schema.sql` and server helpers live in `src/lib/supabase/server.ts`.
-When `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are not set in `.env.local`, the app automatically falls back to local `MISSIONS` data (`"local"` source) and never crashes.
+Database schema lives in `supabase/schema.sql` and all Supabase client/query logic lives on the server in `src/lib/supabase/server.ts`.
+
+### Environment Setup (`.env.local`, Gitignored)
+Copy `.env.example` to `.env.local` (never commit `.env.local`).
+`src/lib/supabase/server.ts` resolves credentials on the server in this exact order:
+- **URL:** `NEXT_PUBLIC_SUPABASE_URL`
+- **API Key:** `SUPABASE_SERVICE_ROLE_KEY` -> `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **Optional direct Postgres metadata/migrations (server-only):** `SUPABASE_DB_NAME`, `SUPABASE_DB_PASSWORD`
+
+Behavior & RLS notes:
+- **Automatic Local Fallback:** When `NEXT_PUBLIC_SUPABASE_URL` and a valid key are unset, or when remote tables are not yet initialized/empty, `fetchScenariosFromDb()` falls back to local `MISSIONS` (`source: "local"`) so offline development still works cleanly.
+- **Database Initialization:** Run `supabase/schema.sql` once in the Supabase SQL Editor to create the tables, indexes, and starter seed rows.
+- **RLS vs Server Key:** If Row Level Security (RLS) is enabled on those tables in Supabase, either add explicit RLS policies for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or provide `SUPABASE_SERVICE_ROLE_KEY` on the server.
+
+### 3-Area Table & API Split
 
 | Area | Table (`supabase/schema.sql`) | Purpose | API Route |
 | :--- | :--- | :--- | :--- |
