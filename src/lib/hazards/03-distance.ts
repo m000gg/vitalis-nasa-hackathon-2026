@@ -11,7 +11,7 @@ import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./typ
 // Replace or extend constants here for Distance from Earth only.
 export const DISTANCE_PIPELINE_VALUES = {
   speedOfLightKmPerSecond: 299792.458,
-  supportedStreams: ["Earth–Mars Ephemeris (JPL Horizons)", "DTN Outbound Medical Queue", "Onboard Medical Inventory"],
+  supportedStreams: ["Earth–Mars Ephemeris (JPL Horizons)", "Onboard Medical Inventory"],
 };
 
 function parseEarthDistanceKm(rawValue: unknown): number | null {
@@ -67,9 +67,8 @@ function calculateEarthCommsDelay(distanceKm: number) {
 }
 
 // [SECTION 2: HAZARD 3 FORMULAS & EVALUATION PIPELINE]
-// Write generalized comms-delay / DTN / inventory formulas here.
 export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { mission, actor, actorInputs, hazardRecords, linkOnline, reentryMode } = input;
+  const { mission, actor, actorInputs, hazardRecords } = input;
   const dbRecord = hazardRecords.find((r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)");
   const ephemerisInput =
     actorInputs["Earth–Mars Ephemeris (JPL Horizons)"] ||
@@ -78,33 +77,31 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
     dbRecord?.payload?.distance_km;
   const validatedDistanceKm = parseEarthDistanceKm(ephemerisInput);
   const delay = validatedDistanceKm !== null ? calculateEarthCommsDelay(validatedDistanceKm) : null;
-  const maxSolutions = reentryMode ? 1 : 2;
 
-  const status = !linkOnline ? "ELEVATED" : actor.readinessState === "HOLD" ? "CRITICAL" : "NOMINAL";
+  const status: HazardEvaluationResult["status"] =
+    delay !== null && delay.oneWaySeconds >= 600 ? "ELEVATED" : "NOMINAL";
 
   const immediateHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `Here is: ${delay.oneWayLabel} one-way light delay and ${delay.roundTripLabel} Earth round-trip delay for ${validatedDistanceKm.toLocaleString()} km; local action windows must plan around the blackout and DTN queue.`
+      ? `${delay.oneWayLabel} one-way light delay and ${delay.roundTripLabel} Earth round-trip delay for ${validatedDistanceKm.toLocaleString()} km; autonomous onboard procedures cover the latency window.`
       : distanceHazard.outputSlots.immediateHorizon;
 
   const prolongedHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `Here is: A ${delay.roundTripLabel} Earth round-trip delay means queued DTN reports await acknowledgment while local autonomy remains the primary response path.`
+      ? `A ${delay.roundTripLabel} Earth round-trip delay requires autonomous medical inventory tracking and pre-approved crew checklists.`
       : distanceHazard.outputSlots.prolongedHorizon;
 
   const eta =
     validatedDistanceKm !== null && delay !== null
-      ? `Here is: Earth round-trip delay = ${delay.roundTripLabel} for ${validatedDistanceKm.toLocaleString()} km at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
+      ? `RTT ${delay.roundTripLabel} (${delay.oneWayLabel} one-way) for ${validatedDistanceKm.toLocaleString()} km`
       : actor.metrics.etaSlot;
 
   const solutions = [
     delay
-      ? `Here is: One-way light-time is ${delay.oneWayLabel}; round-trip delay is ${delay.roundTripLabel} at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
-      : "Here is: Validate Earth–Mars distance in km before using the comms-delay model.",
-    linkOnline
-      ? "Here is: Earth link online — sync pending Store-and-Forward DTN medical reports."
-      : "Here is: Earth link offline — follow pre-approved local checklists & queue DTN reports locally.",
-  ].slice(0, maxSolutions);
+      ? `One-way light-time is ${delay.oneWayLabel}; round-trip delay is ${delay.roundTripLabel} at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
+      : "Validate Earth–Mars ephemeris distance in km in DB telemetry before using the comms-delay model.",
+    "Verify non-expired onboard medical kit supplies for autonomous crew response across the light-time window.",
+  ];
 
   return {
     status,
@@ -126,89 +123,82 @@ export const distanceHazard: HazardSpec = {
   sourceDoc: "docs/hazards/03-distance-from-earth.md",
   nasaReferences: [
     "NASA HRP Distance From Earth",
-    "NASA Delay/Disruption Tolerant Networking (DTN)",
     "NASA JPL Horizons API",
     "NASA Integrated Medical Model (IMM)",
     "NASA Deep Space Network (DSN Now)",
   ],
   overviewSlot:
-    "Here is: Deep Space Autonomy Mode — Earth–Mars light-time delay calculation using c = 299792.458 km/s, offline-first medical checklists, onboard supply/expiry tracking, and Store-and-Forward report queuing.",
+    "Deep Space Autonomy Mode — Earth–Mars light-time delay calculation using c = 299792.458 km/s, onboard medical checklists, and medical supply/expiry tracking.",
   inputSlots: [
     {
       streamName: "Earth–Mars Ephemeris (JPL Horizons)",
-      inputPrompt: "Add your info: Selected mission date, Earth–Mars distance in kilometers here",
+      inputPrompt: "Selected mission date & Earth–Mars distance in kilometers",
       sourceRef: "03-distance-from-earth.md §6",
       fieldType: "number",
       unit: "km",
       recordSample: true,
     },
     {
-      streamName: "DTN Outbound Medical Queue",
-      inputPrompt: "Add your info: Symptom/incident report title, severity, sender callsign, link state (ONLINE/BLACKOUT) here",
-      sourceRef: "DTN Store-and-Forward §5",
-    },
-    {
       streamName: "Onboard Medical Inventory",
-      inputPrompt: "Add your info: Supply item, remaining quantity, expiration date, low-stock threshold here",
+      inputPrompt: "Supply item, remaining quantity, expiration date, low-stock threshold",
       sourceRef: "IMM / §4 Limited Medical Supplies",
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Offline-first approved checklist & Buddy-Rescue flow while Earth is unreachable; use the validated light-delay model before action decisions.",
-    prolongedHorizon: "Here is: Pending DTN medical reports await transmission, and supply expirations remain watch items while Earth round-trip delay persists.",
-    etaSlot: "Here is: One-way light-time = distance_km / 299792.458; round-trip delay = 2 × one-way delay.",
-    solutionsSlot: "Here is: 1–2 locally executable steps filtered by non-expired onboard supplies (never autonomous prescribing).",
+    immediateHorizon: "Local autonomous checklists apply across the deep-space light-time window.",
+    prolongedHorizon: "Supply expirations and light-time separation remain watch items throughout cruise and surface ops.",
+    etaSlot: "One-way light-time = distance_km / 299792.458; round-trip delay = 2 × one-way delay.",
+    solutionsSlot: "1–2 locally executable steps filtered by non-expired onboard supplies.",
   },
   leadView: {
-    summary: "Store-and-Forward DTN queue oversight, link blackout simulation, onboard supply readiness, and CMO escalation coordination.",
-    privacyRule: "Authorized operational medical queue status & inventory alerts; raw personal notes remain protected.",
+    summary: "Light-time latency monitoring, onboard supply sufficiency, and autonomous crew coordination.",
+    privacyRule: "Authorized operational inventory & telemetry alerts; raw personal notes remain protected.",
     modules: [
       {
-        title: "DTN Store-and-Forward Queue & Link Control",
-        detail: "Here is: View PENDING / SENT / ACKNOWLEDGED reports and simulate link outage vs. sync.",
-        actionSlot: "Add your info: Earth link state & retry policy here",
+        title: "Light-Time Delay & Ephemeris Model",
+        detail: "Calculates one-way and round-trip light-time latency from JPL Horizons Earth–Mars distance.",
+        actionSlot: "DB-driven ephemeris distance stream",
       },
       {
         title: "Medical Inventory & Expiry Oversight",
-        detail: "Here is: Track onboard medical kit stock, expiring consumables, and mission-duration sufficiency.",
-        actionSlot: "Add your info: Inventory audit / restock note here",
+        detail: "Track onboard medical kit stock, expiring consumables, and mission-duration sufficiency.",
+        actionSlot: "DB-driven medical inventory stream",
       },
     ],
   },
   memberView: {
-    summary: "Personal baseline comparison, offline approved medical guide, quick symptom report submission to local DTN queue, and Buddy-Rescue mode.",
-    privacyRule: "Reports queued to Flight Surgeon/CMO respect medical confidentiality rules.",
+    summary: "Light-time delay context, onboard medical inventory snapshot, and local autonomous guidance.",
+    privacyRule: "Personal observations remain protected under crew confidentiality rules.",
     modules: [
       {
-        title: "Offline Medical Guide & Self-Report Queue",
-        detail: "Here is: Submit a structured symptom/incident report locally when Earth link is down (stays in PENDING queue).",
-        actionSlot: "Add your info: Observed symptoms & baseline deviation notes here",
+        title: "Autonomous Medical Kit Verification",
+        detail: "Review locally available non-expired Med Kit supplies before crew response.",
+        actionSlot: "DB-driven onboard medical inventory",
       },
       {
         title: "Earth Delay Context & Autonomy Guidance",
-        detail: "Here is: Shows why local crew action is required before a 40+ min Earth round-trip reply can arrive.",
-        actionSlot: "Add your info: Current mission link latency check here",
+        detail: "Shows exact light-time latency window why local crew action precedes any Earth reply.",
+        actionSlot: "JPL Horizons distance calculation",
       },
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/hazard-data?hazardSlug=distance", purpose: "Fetch persisted distance/DTN records for scenario + character" },
-    { method: "POST", path: "/api/communications/queue", purpose: "Queue a medical report locally while Earth link is unavailable" },
-    { method: "POST", path: "/api/communications/sync", purpose: "Transmit pending reports and record receipts when link restores" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=distance", purpose: "Fetch persisted ephemeris & inventory records for scenario + character" },
+    { method: "GET", path: "/api/hazard-samples?hazardSlug=distance", purpose: "Fetch ephemeris time-series samples" },
   ],
   alarmPreset: {
-    title: "EARTH LINK BLACKOUT + MEDICAL INCIDENT — DEEP SPACE AUTONOMY",
+    title: "DEEP SPACE LIGHT-TIME AUTONOMY ALERT",
     severity: "CRITICAL",
-    etaLabel: "Here is: Earliest Earth round-trip reply unavailable (> 40 min delay / LOS)",
+    etaLabel: "Earth round-trip reply delayed (> 20 min RTT)",
     descriptionSlot:
-      "Here is: Crew member reported acute dizziness/fatigue while Earth link is unavailable. Local onboard protocol & DTN queue activated.",
+      "Elevated deep-space distance latency requires autonomous onboard response using verified Med Kit items.",
     leadActions: [
       "1. Assign Crew Medical Officer (CMO) to open pre-approved local stabilization checklist.",
-      "2. Verify medical report is persisted in local DTN queue (PENDING) for next DSN window.",
+      "2. Confirm non-expired medical consumables match crew needs.",
     ],
     memberActions: [
-      "1. Follow offline pre-approved checklist using verified in-stock Med Kit items.",
-      "2. Launch Buddy-Rescue mode immediately if crewmate becomes unresponsive.",
+      "1. Follow approved local stabilization checklist using verified Med Kit items.",
+      "2. Monitor symptom progression and maintain telemetry logging.",
     ],
   },
   evaluate: evaluateDistanceHazard,

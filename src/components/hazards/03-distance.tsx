@@ -1,19 +1,14 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
   Clock,
-  Database,
   Lock,
   Package,
   Radio,
   ShieldAlert,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
 import { DISTANCE_PIPELINE_VALUES } from "@/lib/hazards/03-distance";
@@ -47,7 +42,7 @@ function StatusIcon({ status, className = "h-3.5 w-3.5" }: { status: StatusKey; 
 
 /**
  * HAZARD 3: DISTANCE FROM EARTH SCREEN (Read-Only, DB-Driven)
- * Displays the evaluated light-time delay model, DTN autonomy state, and synced DB streams.
+ * Displays the evaluated light-time delay model and synced DB streams.
  */
 export function DistanceHazardScreen({
   hazard,
@@ -57,30 +52,16 @@ export function DistanceHazardScreen({
   snapshot,
   hazardRecords,
   hazardSamples,
-  linkOnline,
-  reentryMode,
 }: HazardScreenProps) {
   const ephemerisRec = hazardRecords.find(
     (r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)"
   );
-  const dtnRec = hazardRecords.find((r) => r.streamName === "DTN Outbound Medical Queue");
   const inventoryRec = hazardRecords.find((r) => r.streamName === "Onboard Medical Inventory");
   const roleMeta = role === "lead" ? hazard.leadView : hazard.memberView;
   const charts = snapshot.charts ?? [];
 
   return (
     <div className="space-y-6">
-      {reentryMode && (
-        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-3.5">
-          <span className="text-xs font-bold tracking-wide text-indigo-900 uppercase">
-            Re-Entry Mode Active · 1-Action Cap
-          </span>
-          <p className="mt-0.5 text-xs text-indigo-800">
-            Autonomous recommendations are capped to 1 prioritized step.
-          </p>
-        </section>
-      )}
-
       {/* 1. Ready-to-Act Primary Briefing */}
       <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
@@ -115,7 +96,7 @@ export function DistanceHazardScreen({
 
             <div className="rounded-xl border border-slate-200 bg-white p-3.5">
               <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
-                Prolonged Horizon (DTN Queue &amp; Supply Readiness)
+                Prolonged Horizon (Light-Time Separation &amp; Supply Status)
               </p>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
                 {snapshot.prolongedHorizon}
@@ -125,8 +106,7 @@ export function DistanceHazardScreen({
 
           <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
             <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
-              Prioritized Steps ({snapshot.solutions.length}{" "}
-              {reentryMode ? "· Re-Entry Cap" : "Max"})
+              Prioritized Steps ({snapshot.solutions.length} Max)
             </p>
             <ol className="mt-2.5 space-y-2">
               {snapshot.solutions.map((sol, idx) => (
@@ -145,23 +125,8 @@ export function DistanceHazardScreen({
         </div>
       </section>
 
-      {/* 2. Core Distance & DTN KPIs */}
-      <section aria-label="Distance and communications telemetry" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">Earth Link State</span>
-            {linkOnline ? (
-              <Wifi className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-            ) : (
-              <WifiOff className="h-4 w-4 text-amber-600" aria-hidden="true" />
-            )}
-          </div>
-          <p className={`mt-2 text-lg font-bold ${linkOnline ? "text-emerald-700" : "text-amber-800"}`}>
-            {linkOnline ? "Online" : "Blackout (Offline)"}
-          </p>
-          <p className="mt-1 text-xs text-slate-600">{mission.commsDelayLabel}</p>
-        </div>
-
+      {/* 2. Core Distance & Medical Supply KPIs */}
+      <section aria-label="Distance and medical inventory telemetry" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-slate-600">JPL Horizons Ephemeris</span>
@@ -177,18 +142,11 @@ export function DistanceHazardScreen({
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">DTN Outbound Queue</span>
-            <Database className="h-4 w-4 text-sky-600" aria-hidden="true" />
+            <span className="text-xs font-medium text-slate-600">Signal Latency Profile</span>
+            <Clock className="h-4 w-4 text-amber-600" aria-hidden="true" />
           </div>
-          <p className="mt-2 text-sm font-bold text-slate-900">
-            {dtnRec?.rawValue || "No stream snapshot synced"}
-          </p>
-          <Link
-            href="/dashboard/comms"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
-          >
-            Open DTN Queue Console <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          <p className="mt-2 text-sm font-bold text-slate-900">{snapshot.eta}</p>
+          <p className="mt-1 text-xs text-slate-600">{mission.commsDelayLabel}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -209,7 +167,7 @@ export function DistanceHazardScreen({
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-slate-900">
-            {role === "lead" ? "Commander Autonomy & DTN Oversight" : "Member Offline Autonomy Guidance"}
+            {role === "lead" ? "Commander Deep-Space Autonomy Oversight" : "Member Autonomy Guidance"}
           </h2>
           <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
             <Lock className="h-3 w-3" /> {roleMeta.privacyRule}
@@ -238,21 +196,11 @@ export function DistanceHazardScreen({
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-600">
-            Awaiting Earth–Mars Ephemeris samples in Supabase to render telemetry charts.
+            No numeric distance time-series samples synced in Supabase yet. Sync via{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5">/api/hazard-samples</code> to plot
+            historical trajectories.
           </div>
         )}
-      </section>
-
-      {/* 5. NASA References */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-600">
-        <p className="font-bold text-slate-900">NASA Reference Anchors</p>
-        <ul className="mt-2 flex flex-wrap gap-2">
-          {hazard.nasaReferences.map((ref) => (
-            <li key={ref} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] text-slate-700">
-              {ref}
-            </li>
-          ))}
-        </ul>
       </section>
     </div>
   );

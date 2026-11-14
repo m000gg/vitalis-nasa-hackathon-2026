@@ -4,7 +4,6 @@ import React from "react";
 import { AlertTriangle, Bell, CheckCircle2, Info, ShieldAlert, Volume2, VolumeX, X } from "lucide-react";
 import { useAlerts } from "@/context/AlertContext";
 import { useMission } from "@/context/MissionContext";
-import { BUDDY_RESCUE_STEPS } from "@/lib/domain";
 
 export function AlertLayer() {
   const {
@@ -13,14 +12,12 @@ export function AlertLayer() {
     activeAlarm,
     acknowledgeAlarm,
     activateCaptainOverride,
-    toggleBuddyRescue,
     dismissAlarm,
     audioEnabled,
     setAudioEnabled,
-    pushToast,
   } = useAlerts();
 
-  const { role, mission, shelterConfirmations, toggleCrewShelter } = useMission();
+  const { role } = useMission();
 
   const variantClasses = {
     info: "border-slate-200 bg-white text-slate-800",
@@ -145,7 +142,7 @@ export function AlertLayer() {
                 <div className="rounded-lg bg-slate-950 p-3">
                   <span className="text-slate-400">Member Ack: </span>
                   <span className={activeAlarm.acknowledgedByMember ? "font-semibold text-emerald-400" : "font-semibold text-amber-400"}>
-                    {activeAlarm.acknowledgedByMember ? "Safe" : "Pending"}
+                    {activeAlarm.acknowledgedByMember ? "Acknowledged" : "Pending"}
                   </span>
                 </div>
               </div>
@@ -170,31 +167,6 @@ export function AlertLayer() {
                       </li>
                     ))}
                   </ul>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-slate-400">
-                      Crew Shelter Tracker ({mission?.name ?? "No Scenario"})
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {(mission?.crew ?? []).map((member) => {
-                        const confirmed = !!shelterConfirmations[member.id];
-                        return (
-                          <button
-                            key={member.id}
-                            type="button"
-                            onClick={() => toggleCrewShelter(member.id)}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs ${
-                              confirmed
-                                ? "bg-emerald-950/60 text-emerald-200"
-                                : "bg-red-950/50 text-red-200"
-                            }`}
-                          >
-                            <span className="truncate">{member.callsign}</span>
-                            <span className="ml-2 font-semibold">{confirmed ? "Sheltered" : "Pending"}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <button
                       type="button"
@@ -214,31 +186,15 @@ export function AlertLayer() {
                 </>
               ) : (
                 <>
-                  <h3 className="text-sm font-bold text-emerald-300">Member Immediate Steps (1–2 Solutions)</h3>
+                  <h3 className="text-sm font-bold text-emerald-300">Member Immediate Steps</h3>
 
-                  {!activeAlarm.buddyRescueActive ? (
-                    <ul className="space-y-2 text-sm text-slate-200">
-                      {activeAlarm.memberActions.map((act, i) => (
-                        <li key={i} className="rounded-lg bg-slate-950 p-3">
-                          {act}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="space-y-2 rounded-xl bg-amber-950/40 p-4">
-                      <p className="text-xs font-bold uppercase tracking-wide text-amber-300">
-                        Buddy-Rescue Stabilization Mode
-                      </p>
-                      {BUDDY_RESCUE_STEPS.map((s) => (
-                        <div key={s.step} className="rounded-lg bg-slate-950 p-2.5 text-xs">
-                          <span className="font-semibold text-amber-200">
-                            Step {s.step}: {s.title}
-                          </span>
-                          <p className="mt-0.5 text-slate-300">{s.detail}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <ul className="space-y-2 text-sm text-slate-200">
+                    {activeAlarm.memberActions.map((act, i) => (
+                      <li key={i} className="rounded-lg bg-slate-950 p-3">
+                        {act}
+                      </li>
+                    ))}
+                  </ul>
 
                   <div className="flex flex-wrap gap-2 pt-2">
                     <button
@@ -246,21 +202,7 @@ export function AlertLayer() {
                       onClick={() => acknowledgeAlarm("member")}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
                     >
-                      Confirm Safe / Sheltered
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleBuddyRescue();
-                        pushToast({
-                          title: activeAlarm.buddyRescueActive ? "Buddy-Rescue Closed" : "Buddy-Rescue Activated",
-                          message: "Here is: Offline stabilization guide toggled.",
-                          variant: "warning",
-                        });
-                      }}
-                      className="rounded-lg border border-amber-500/60 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/25"
-                    >
-                      {activeAlarm.buddyRescueActive ? "Hide Buddy-Rescue" : "Buddy-Rescue Mode"}
+                      Acknowledge as Member
                     </button>
                   </div>
                 </>
@@ -269,7 +211,7 @@ export function AlertLayer() {
           </div>
 
           <div className="mx-auto flex w-full max-w-4xl items-center justify-between border-t border-red-500/30 pt-4 text-xs text-slate-400">
-            <span>Offline-first onboard alert (works during Earth blackout)</span>
+            <span>Active Hazard Telemetry Alert</span>
             <span>Triggered at {activeAlarm.triggeredAt}</span>
           </div>
         </div>

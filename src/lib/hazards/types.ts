@@ -81,8 +81,6 @@ export interface HazardEvaluationInput {
   scenarioHazardRecords?: readonly HazardDataRecord[];
   /** Read-only time-series samples across ALL crew in the active scenario (privacy-sanitized when role === "lead"). */
   scenarioHazardSamples?: readonly HazardSampleRecord[];
-  linkOnline: boolean;
-  reentryMode: boolean;
 }
 
 export interface HazardEvaluationResult {

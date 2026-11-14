@@ -46,8 +46,6 @@ export async function POST(request: NextRequest) {
     callsign: string;
     assignedRoleTitle: string;
     isLeadSlot: boolean;
-    readinessState: CrewSlot["readinessState"];
-    evaGateState: CrewSlot["evaGateState"];
   }>;
 
   try {
@@ -71,21 +69,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const validReadiness: CrewSlot["readinessState"][] = ["GO", "CONDITIONAL", "HOLD"];
-  const validEva: CrewSlot["evaGateState"][] = ["GO", "CONDITIONAL", "NO-GO"];
-
-  const readinessState: CrewSlot["readinessState"] = validReadiness.includes(
-    body.readinessState as CrewSlot["readinessState"]
-  )
-    ? (body.readinessState as CrewSlot["readinessState"])
-    : "GO";
-
-  const evaGateState: CrewSlot["evaGateState"] = validEva.includes(
-    body.evaGateState as CrewSlot["evaGateState"]
-  )
-    ? (body.evaGateState as CrewSlot["evaGateState"])
-    : "GO";
-
   const charId =
     body.id?.trim() ||
     `${scenarioId}-${callsign
@@ -100,8 +83,6 @@ export async function POST(request: NextRequest) {
       callsign,
       assignedRoleTitle,
       isLeadSlot: Boolean(body.isLeadSlot),
-      readinessState,
-      evaGateState,
     });
 
     return NextResponse.json(
@@ -124,9 +105,6 @@ export async function PATCH(request: NextRequest) {
     callsign: string;
     assignedRoleTitle: string;
     isLeadSlot: boolean;
-    readinessState: CrewSlot["readinessState"];
-    evaGateState: CrewSlot["evaGateState"];
-    shelterConfirmed: boolean;
     publicStatusSummary: string;
     privateMemberNotesSlot: string;
     metrics: CrewSlot["metrics"];
@@ -149,35 +127,12 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const validReadiness: CrewSlot["readinessState"][] = ["GO", "CONDITIONAL", "HOLD"];
-  const validEva: CrewSlot["evaGateState"][] = ["GO", "CONDITIONAL", "NO-GO"];
-
-  if (
-    body.readinessState !== undefined &&
-    !validReadiness.includes(body.readinessState)
-  ) {
-    return NextResponse.json(
-      { error: `Invalid readinessState '${body.readinessState}'` },
-      { status: 400 }
-    );
-  }
-
-  if (body.evaGateState !== undefined && !validEva.includes(body.evaGateState)) {
-    return NextResponse.json(
-      { error: `Invalid evaGateState '${body.evaGateState}'` },
-      { status: 400 }
-    );
-  }
-
   try {
     const { character } = await updateCharacterInDb({
       id,
       callsign: body.callsign?.trim(),
       assignedRoleTitle: body.assignedRoleTitle?.trim(),
       isLeadSlot: body.isLeadSlot,
-      readinessState: body.readinessState,
-      evaGateState: body.evaGateState,
-      shelterConfirmed: body.shelterConfirmed,
       publicStatusSummary: body.publicStatusSummary?.trim(),
       privateMemberNotesSlot: body.privateMemberNotesSlot?.trim(),
       metrics: body.metrics,

@@ -11,8 +11,6 @@ import {
   HeartPulse,
   Info,
   Lock,
-  Radio,
-  ShieldAlert,
   ShieldCheck,
   Users,
   XCircle,
@@ -22,8 +20,6 @@ import {
   ConditioningStatusLabel,
   evaluateGravityCrewOverview,
   evaluateGravityDiagnostics,
-  EvaChainCheckItem,
-  EvaGateDecision,
   GRAVITY_PIPELINE_VALUES,
   GravityActorDiagnostics,
   GravityCrewOverview,
@@ -35,20 +31,6 @@ import type { HazardScreenProps } from "./types";
  * HAZARD 4: GRAVITY FIELDS SCREEN (Read-Only, DB-Driven)
  * Owner: Teammate 4 — Edit ONLY this file (and src/lib/hazards/04-gravity.ts).
  */
-
-const GATE_STYLES: Record<EvaGateDecision, string> = {
-  GO: "border-emerald-200 bg-emerald-100 text-emerald-800",
-  CONDITIONAL: "border-amber-200 bg-amber-100 text-amber-800",
-  "NO-GO": "border-red-200 bg-red-100 text-red-800",
-};
-
-const CHAIN_STATUS_STYLES: Record<EvaChainCheckItem["status"], string> = {
-  PASS: "bg-emerald-100 text-emerald-800",
-  BLOCKER: "bg-red-100 text-red-800",
-  LOCKOUT: "bg-red-100 text-red-900",
-  PENDING: "bg-amber-100 text-amber-800",
-  NA: "bg-slate-100 text-slate-600",
-};
 
 const CONDITION_STATUS_STYLES: Record<PreTestConditionCheckItem["status"], string> = {
   VALID: "bg-emerald-100 text-emerald-800",
@@ -82,8 +64,6 @@ export function GravityHazardScreen({
   hazardSamples,
   scenarioHazardRecords,
   scenarioHazardSamples,
-  linkOnline,
-  reentryMode,
 }: HazardScreenProps) {
   const diagnostics = evaluateGravityDiagnostics({
     actor: activeCharacter,
@@ -91,7 +71,6 @@ export function GravityHazardScreen({
     hazardRecords,
     hazardSamples,
     allHazardRecords: scenarioHazardRecords.filter((r) => r.characterId === activeCharacter.id),
-    reentryMode,
   });
 
   const crewOverview =
@@ -99,8 +78,7 @@ export function GravityHazardScreen({
       ? evaluateGravityCrewOverview(
           mission,
           scenarioHazardRecords,
-          scenarioHazardSamples,
-          reentryMode
+          scenarioHazardSamples
         )
       : null;
 
@@ -124,24 +102,10 @@ export function GravityHazardScreen({
                   </>
                 )}
               </span>
-              <span
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${
-                  linkOnline ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
-                }`}
-              >
-                <Radio className="h-3.5 w-3.5" />
-                {linkOnline ? "Telemetry Link Active" : "DTN Autonomous Edge Mode"}
-              </span>
-              {reentryMode && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-800">
-                  <ShieldAlert className="h-3.5 w-3.5" /> Reentry Mode · 1-Action Cap (MR026L)
-                </span>
-              )}
             </div>
             <p className="text-xs text-slate-600">
-              {hazard.overviewSlot.replace(/^Here is:\s*/i, "")} Ground comms ({mission.commsDelayLabel})
-              cannot verify Pre-EVA readiness or condition windows in real time — all checks run
-              deterministically on-board from synced DB records.
+              {hazard.overviewSlot.replace(/^Here is:\s*/i, "")} Telemetry checks run
+              deterministically from synced DB records across MEDB 5.2, 5.4, MR081L, and MR026L.
             </p>
           </div>
 
@@ -169,14 +133,10 @@ export function GravityHazardScreen({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Immediate Horizon · Pre-EVA Gate
+                Immediate Horizon · Condition Guard &amp; Cadence
               </span>
-              <span
-                className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${
-                  GATE_STYLES[diagnostics.evaGate.decision]
-                }`}
-              >
-                EVA: {diagnostics.evaGate.decision}
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                FD {diagnostics.currentFlightDay ?? "—"}
               </span>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-800">
@@ -214,7 +174,7 @@ export function GravityHazardScreen({
           <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 md:col-span-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-900">
-                {reentryMode ? "Priority Action (Reentry 1-Action Cap)" : "1–2 Actionable Solutions"}
+                1–2 Actionable Solutions
               </span>
               <span className="text-[11px] text-sky-700">Deterministic MRID/MEDB priority</span>
             </div>
@@ -236,7 +196,7 @@ export function GravityHazardScreen({
       {role === "lead" && crewOverview ? (
         <LeadGravitySection overview={crewOverview} hazard={hazard} />
       ) : (
-        <MemberGravitySection diagnostics={diagnostics} reentryMode={reentryMode} />
+        <MemberGravitySection diagnostics={diagnostics} />
       )}
 
       {/* 4. Deterministic Telemetry Charts (with dashed threshold lines) */}
@@ -343,7 +303,7 @@ export function GravityHazardScreen({
                 Explicit [ASSUMPTION] Cutoffs vs. NASA MRID/MEDB Rules
               </p>
               <p className="mt-1 leading-relaxed">
-                Pre-EVA chain sequences, fasting/caffeine/exercise windows, MEDB 5.2 (150 min/d),
+                Pre-test condition windows (caffeine/meal/exercise), MEDB 5.2 (150 min/d),
                 and MR026L (120 min/d reconditioning) come directly from NASA documentation. Alert
                 cutoffs ({GRAVITY_PIPELINE_VALUES.assumptions.calfAtrophyAlertPct}% calf atrophy,{" "}
                 {GRAVITY_PIPELINE_VALUES.assumptions.gripDeclineAlertPct}% grip decline,{" "}
@@ -368,7 +328,7 @@ function LeadGravitySection({
 }) {
   return (
     <section className="space-y-4">
-      {/* Crew Exercise Discipline Buff & Gate Summary */}
+      {/* Crew Exercise Discipline Buff & Conditioning Split */}
       <div className="grid gap-3 md:grid-cols-4">
         <div
           className={`rounded-2xl border p-4 md:col-span-2 ${
@@ -411,17 +371,17 @@ function LeadGravitySection({
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Crew EVA Gate Split
+            Crew Conditioning Split
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold">
             <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-800">
-              GO: {overview.goCount}
+              ON TRACK: {overview.onTrackCount}
             </span>
             <span className="rounded-md bg-amber-100 px-2 py-0.5 text-amber-800">
-              COND: {overview.conditionalCount}
+              WATCH: {overview.watchCount}
             </span>
             <span className="rounded-md bg-red-100 px-2 py-0.5 text-red-800">
-              NO-GO: {overview.noGoCount}
+              ALERT: {overview.alertCount}
             </span>
           </div>
         </div>
@@ -436,30 +396,29 @@ function LeadGravitySection({
         </div>
       </div>
 
-      {/* Crew EVA Readiness Matrix (Flight Note View) */}
+      {/* Crew Conditioning & Atrophy Matrix */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold text-slate-900">
-              Crew EVA Readiness Gate Matrix (Flight Note View · MEDB 6.1 / 6.2)
+              Crew Conditioning &amp; Atrophy Matrix (MEDB 5.2 / 5.4)
             </h2>
             <p className="text-xs text-slate-500">
-              Shows gate decision, blocker categories, conditioning band, and schedule adherence
-              only — no raw biometrics or private notes.
+              Shows conditioning band, blocker categories, and exercise adherence only — no raw
+              anthropometrics or private notes.
             </p>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] border-collapse text-left text-xs">
+          <table className="w-full min-w-[640px] border-collapse text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="py-2 pr-3 font-semibold">Crew Member</th>
-                <th className="px-3 py-2 font-semibold">EVA Gate</th>
                 <th className="px-3 py-2 font-semibold">Conditioning</th>
                 <th className="px-3 py-2 font-semibold">Exercise Disc.</th>
                 <th className="px-3 py-2 font-semibold">Blocker Categories &amp; Flags</th>
-                <th className="py-2 pl-3 font-semibold">Nearest ETA</th>
+                <th className="py-2 pl-3 font-semibold">Projected ETA</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -468,15 +427,6 @@ function LeadGravitySection({
                   <td className="py-2.5 pr-3">
                     <div className="font-semibold text-slate-900">{m.callsign}</div>
                     <div className="text-[11px] text-slate-500">{m.assignedRoleTitle}</div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span
-                      className={`inline-block rounded-md border px-2 py-0.5 text-[11px] font-bold ${
-                        GATE_STYLES[m.evaDecision]
-                      }`}
-                    >
-                      {m.evaDecision}
-                    </span>
                   </td>
                   <td className="px-3 py-2.5">
                     <span
@@ -511,9 +461,7 @@ function LeadGravitySection({
                       </div>
                     )}
                   </td>
-                  <td className="py-2.5 pl-3 text-[11px] text-slate-600">
-                    {m.nearestDeadlineLabel}
-                  </td>
+                  <td className="py-2.5 pl-3 text-[11px] text-slate-600">{m.etaLabel}</td>
                 </tr>
               ))}
             </tbody>
@@ -526,125 +474,53 @@ function LeadGravitySection({
 
 function MemberGravitySection({
   diagnostics,
-  reentryMode,
 }: {
   diagnostics: GravityActorDiagnostics;
-  reentryMode: boolean;
 }) {
-  const { evaInput, evaGate, atrophy } = diagnostics;
+  const { currentFlightDay, conditionChecks, atrophy } = diagnostics;
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
 
   return (
     <div className="space-y-4">
-      {/* Feature 1: Pre-EVA Readiness Gate & Condition Guard */}
+      {/* Feature 1: Pre-Test Condition Guard */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
               <ShieldCheck className="h-4 w-4 text-sky-600" />
-              Feature 1 · Autonomous Pre-EVA Readiness Gate &amp; Condition Guard
+              Pre-Test Condition Guard (Validity Windows)
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Evaluates MR081L, MEDB 6.1/6.3, MR087L, and MR090L locally against pre-test validity
-              rules.
+              Verifies MEDB 6.3, MR087L, and MEDB 5.4 fasting, caffeine, exercise, and morning sampling rules.
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
-              FD {evaInput.currentFlightDay ?? "—"}
-            </span>
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
-              Suit: {evaInput.suitType ?? "—"}
-            </span>
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
-              EVA T-{evaInput.hoursToPlannedEva !== null ? `${evaInput.hoursToPlannedEva}h` : "—"}
-            </span>
-            <span
-              className={`rounded-md border px-2.5 py-1 font-bold ${
-                GATE_STYLES[evaGate.decision]
-              }`}
-            >
-              {evaGate.decision}
-            </span>
-          </div>
+          <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
+            FD {currentFlightDay ?? "—"}
+          </span>
         </div>
 
-        {evaGate.noteCategory && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-            <div>
-              <p className="font-semibold">Private Pre-EVA Symptom Classification</p>
-              <p className="mt-0.5">
-                Category raised: <strong>{evaGate.noteCategory}</strong>. Your raw free-text note is
-                protected under RBAC and never shown raw to Lead without audit-logged unlock.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-12">
-          {/* Pre-EVA Verification Chain */}
-          <div className="space-y-2 lg:col-span-7">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">
-              Pre-EVA Verification Chain (7 NASA Gates)
-            </h3>
-            <div className="space-y-2">
-              {evaGate.chainChecks.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-slate-900">{item.label}</span>
-                      <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-                        {item.medbRef}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600">{item.detail}</p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                      CHAIN_STATUS_STYLES[item.status]
-                    }`}
-                  >
-                    {item.status}
-                  </span>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {conditionChecks.map((cond) => (
+            <div
+              key={cond.id}
+              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+            >
+              <div>
+                <div className="font-semibold text-slate-900">{cond.label}</div>
+                <div className="text-[11px] text-slate-500">
+                  {cond.requirement} ·{" "}
+                  <span className="font-medium text-slate-700">{cond.detail}</span>
                 </div>
-              ))}
+              </div>
+              <span
+                className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                  CONDITION_STATUS_STYLES[cond.status]
+                }`}
+              >
+                {cond.status}
+              </span>
             </div>
-          </div>
-
-          {/* Pre-Test Condition Guard */}
-          <div className="space-y-2 lg:col-span-5">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">
-              Pre-Test Condition Guard (Validity Windows)
-            </h3>
-            <div className="space-y-2">
-              {evaGate.conditionChecks.map((cond) => (
-                <div
-                  key={cond.id}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-                >
-                  <div>
-                    <div className="font-semibold text-slate-900">{cond.label}</div>
-                    <div className="text-[11px] text-slate-500">
-                      {cond.requirement} ·{" "}
-                      <span className="font-medium text-slate-700">{cond.detail}</span>
-                    </div>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                      CONDITION_STATUS_STYLES[cond.status]
-                    }`}
-                  >
-                    {cond.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -654,7 +530,7 @@ function MemberGravitySection({
           <div>
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
               <Activity className="h-4 w-4 text-sky-600" />
-              Feature 2 · Microgravity Atrophy, Proxy Bone-Shield &amp; Conditioning
+              Microgravity Atrophy, Proxy Bone-Shield &amp; Conditioning
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
               Low-N OLS projection against personal L+14 / FD14 baseline + resistance loading bone
@@ -662,15 +538,11 @@ function MemberGravitySection({
             </p>
           </div>
           {atrophy.adherenceSummary?.reconditioningDayRPlus !== null &&
-          atrophy.adherenceSummary?.reconditioningDayRPlus !== undefined ? (
-            <span className="rounded-md bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
-              MR026L Postflight R+{atrophy.adherenceSummary.reconditioningDayRPlus} (120 min/d)
-            </span>
-          ) : reentryMode ? (
-            <span className="rounded-md bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
-              Reentry Transition · MR026L Card Ready
-            </span>
-          ) : null}
+            atrophy.adherenceSummary?.reconditioningDayRPlus !== undefined && (
+              <span className="rounded-md bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
+                MR026L Postflight R+{atrophy.adherenceSummary.reconditioningDayRPlus} (120 min/d)
+              </span>
+            )}
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">

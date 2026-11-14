@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   let body: Partial<{
     id: string;
     name: string;
-    phase: string;
+    durationContext: string;
     scenarioDescriptionSlot: string;
     commsDelayLabel: string;
     leaderCallsign: string;
@@ -34,12 +34,12 @@ export async function POST(request: NextRequest) {
   }
 
   const name = body.name?.trim() ?? "";
-  const phase = body.phase?.trim() ?? "Add your info: Mission phase here";
+  const durationContext = body.durationContext?.trim() ?? "Add your info: Mission duration context here";
   const scenarioDescriptionSlot =
     body.scenarioDescriptionSlot?.trim() ??
     "Add your info: Scenario description here";
   const commsDelayLabel =
-    body.commsDelayLabel?.trim() ?? "Add your info: Comms delay here";
+    body.commsDelayLabel?.trim() ?? "Add your info: Light-time comms delay here";
 
   if (!name) {
     return NextResponse.json(
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const { scenario } = await createScenarioInDb({
       id: slug,
       name,
-      phase,
+      durationContext,
       scenarioDescriptionSlot,
       commsDelayLabel,
       leaderCallsign: body.leaderCallsign?.trim() || undefined,

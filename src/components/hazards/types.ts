@@ -17,8 +17,6 @@ export interface HazardCustomWidgetProps {
   hazardSamples: readonly HazardSampleRecord[];
   scenarioHazardRecords: readonly HazardDataRecord[];
   scenarioHazardSamples: readonly HazardSampleRecord[];
-  linkOnline: boolean;
-  reentryMode: boolean;
 }
 
 export type HazardScreenProps = HazardCustomWidgetProps;

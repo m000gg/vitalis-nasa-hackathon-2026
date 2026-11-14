@@ -15,7 +15,7 @@ export default function GreetingScenarioPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [phase, setPhase] = useState("");
+  const [durationContext, setDurationContext] = useState("");
   const [scenarioDescriptionSlot, setScenarioDescriptionSlot] = useState("");
   const [commsDelayLabel, setCommsDelayLabel] = useState("");
   const [leaderCallsign, setLeaderCallsign] = useState("");
@@ -37,10 +37,10 @@ export default function GreetingScenarioPage() {
     try {
       const created = await createScenario({
         name: name.trim(),
-        phase: phase.trim() || "Add your info: Mission phase here",
+        durationContext: durationContext.trim() || "Add your info: Mission duration context here",
         scenarioDescriptionSlot:
           scenarioDescriptionSlot.trim() || "Add your info: Scenario description here",
-        commsDelayLabel: commsDelayLabel.trim() || "Add your info: Comms delay here",
+        commsDelayLabel: commsDelayLabel.trim() || "Add your info: Light-time comms delay here",
         leaderCallsign: leaderCallsign.trim() || undefined,
       });
       pushToast({
@@ -49,7 +49,7 @@ export default function GreetingScenarioPage() {
         variant: "success",
       });
       setName("");
-      setPhase("");
+      setDurationContext("");
       setScenarioDescriptionSlot("");
       setCommsDelayLabel("");
       setLeaderCallsign("");
@@ -151,16 +151,16 @@ export default function GreetingScenarioPage() {
               />
               <input
                 type="text"
-                value={phase}
-                onChange={(e) => setPhase(e.target.value)}
-                placeholder="Add your info: Mission phase here"
+                value={durationContext}
+                onChange={(e) => setDurationContext(e.target.value)}
+                placeholder="Add your info: Mission duration context here"
                 className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
               />
               <input
                 type="text"
                 value={commsDelayLabel}
                 onChange={(e) => setCommsDelayLabel(e.target.value)}
-                placeholder="Add your info: One-way comms delay label here"
+                placeholder="Add your info: Light-time delay label here"
                 className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
               />
               <input
@@ -215,7 +215,7 @@ export default function GreetingScenarioPage() {
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-sky-700">{m.phase}</span>
+                    <span className="text-xs font-medium text-sky-700">{m.durationContext}</span>
                     <span className="inline-flex items-center gap-1 text-xs text-slate-500">
                       <Users className="h-3.5 w-3.5" />
                       {m.crew.length} Characters

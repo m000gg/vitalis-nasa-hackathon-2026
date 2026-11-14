@@ -102,8 +102,6 @@ export function RadiationHazardScreen({
   hazardSamples,
   scenarioHazardRecords,
   scenarioHazardSamples,
-  linkOnline,
-  reentryMode,
 }: HazardScreenProps) {
   const S = RADIATION_PIPELINE_VALUES.streams;
 
@@ -147,8 +145,6 @@ export function RadiationHazardScreen({
             scenarioHazardRecords,
             scenarioHazardSamples,
             role: "lead",
-            linkOnline,
-            reentryMode,
           });
           const mDosimeter = latestRecord(scenarioHazardRecords, S.personalDosimeter, member.id);
           const mRate = readNumStr(mDosimeter?.payload, "doseRateValue");
@@ -174,19 +170,6 @@ export function RadiationHazardScreen({
 
   return (
     <div className="space-y-6">
-      {reentryMode && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-3.5">
-          <div className="space-y-0.5">
-            <span className="text-xs font-bold tracking-wide text-indigo-900 uppercase">
-              Re-Entry Mode Active · 1-Action Cap
-            </span>
-            <p className="text-xs text-indigo-800">
-              Countermeasure output is capped to 1 prioritized flight-rule step.
-            </p>
-          </div>
-        </section>
-      )}
-
       {/* 1. Ready-to-Act Primary Briefing */}
       <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
@@ -228,8 +211,7 @@ export function RadiationHazardScreen({
 
           <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
             <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
-              Prioritized Flight-Rule Actions ({snapshot.solutions.length}{" "}
-              {reentryMode ? "· Re-Entry Cap" : "Max"})
+              Prioritized Flight-Rule Actions ({snapshot.solutions.length} Max)
             </p>
             <ol className="mt-2.5 space-y-2">
               {snapshot.solutions.map((sol, idx) => (
@@ -313,7 +295,7 @@ export function RadiationHazardScreen({
             Synced personal records: {hazardRecords.length} · Samples: {hazardSamples.length}
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
-            {linkOnline ? "Link Online" : "Offline Autonomous Mode"} · Experimental lab records: {researchRecs.length}
+            Experimental lab records: {researchRecs.length}
           </p>
         </div>
       </section>

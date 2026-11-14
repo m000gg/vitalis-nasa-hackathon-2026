@@ -26,7 +26,6 @@ export interface ScreenAlarm {
   acknowledgedByLead: boolean;
   acknowledgedByMember: boolean;
   captainOverrideActive: boolean;
-  buddyRescueActive: boolean;
   triggeredAt: string;
 }
 
@@ -38,12 +37,11 @@ interface AlertContextValue {
   triggerAlarm: (
     payload: Omit<
       ScreenAlarm,
-      "id" | "acknowledgedByLead" | "acknowledgedByMember" | "captainOverrideActive" | "buddyRescueActive" | "triggeredAt"
+      "id" | "acknowledgedByLead" | "acknowledgedByMember" | "captainOverrideActive" | "triggeredAt"
     >
   ) => void;
   acknowledgeAlarm: (role: UserRole) => void;
   activateCaptainOverride: () => void;
-  toggleBuddyRescue: () => void;
   dismissAlarm: () => void;
   audioEnabled: boolean;
   setAudioEnabled: (enabled: boolean) => void;
@@ -122,7 +120,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     (
       payload: Omit<
         ScreenAlarm,
-        "id" | "acknowledgedByLead" | "acknowledgedByMember" | "captainOverrideActive" | "buddyRescueActive" | "triggeredAt"
+        "id" | "acknowledgedByLead" | "acknowledgedByMember" | "captainOverrideActive" | "triggeredAt"
       >
     ) => {
       setActiveAlarm({
@@ -131,7 +129,6 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
         acknowledgedByLead: false,
         acknowledgedByMember: false,
         captainOverrideActive: false,
-        buddyRescueActive: false,
         triggeredAt: new Date().toLocaleTimeString(),
       });
     },
@@ -147,11 +144,11 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
           : { ...prev, acknowledgedByMember: true };
       });
       pushToast({
-        title: role === "lead" ? "Lead Acknowledgement Logged" : "Member Safety Confirmed",
+        title: role === "lead" ? "Lead Acknowledgement Logged" : "Member Acknowledgement Logged",
         message:
           role === "lead"
             ? "Here is: Commander acknowledgement recorded for active alarm."
-            : "Here is: Crew member shelter/safety confirmation recorded.",
+            : "Here is: Crew member acknowledgement recorded for active alarm.",
         variant: "success",
       });
     },
@@ -162,20 +159,16 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     setActiveAlarm((prev) => (prev ? { ...prev, captainOverrideActive: true, acknowledgedByLead: true } : null));
     pushToast({
       title: "Captain Emergency Override Broadcast",
-      message: "Here is: Local shelter route lights & crew override notification dispatched offline.",
+      message: "Here is: Local alert routing & crew override notification dispatched.",
       variant: "hazard",
     });
   }, [pushToast]);
-
-  const toggleBuddyRescue = useCallback(() => {
-    setActiveAlarm((prev) => (prev ? { ...prev, buddyRescueActive: !prev.buddyRescueActive } : null));
-  }, []);
 
   const dismissAlarm = useCallback(() => {
     setActiveAlarm(null);
     pushToast({
       title: "Full-Screen Alarm Cleared",
-      message: "Here is: Event remains logged in Alerts & Audit History.",
+      message: "Here is: Active screen alarm acknowledged and cleared.",
       variant: "info",
     });
   }, [pushToast]);
@@ -190,7 +183,6 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
         triggerAlarm,
         acknowledgeAlarm,
         activateCaptainOverride,
-        toggleBuddyRescue,
         dismissAlarm,
         audioEnabled,
         setAudioEnabled,

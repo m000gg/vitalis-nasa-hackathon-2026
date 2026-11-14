@@ -6,8 +6,6 @@ import {
   BedDouble,
   Brain,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
   Info,
   Lock,
@@ -300,7 +298,7 @@ function KpiCard({
 /**
  * HAZARD 2: ISOLATION & CONFINEMENT SCREEN
  * Coherent, astronaut-accessible, 100% Read-Only DB-ingested telemetry view with:
- * - Action-First Ready-to-Act Guidance & Re-Entry overload throttling
+ * - Action-First Ready-to-Act Guidance
  * - High-legibility KPI cards with accessible (i) research modals
  * - Strict Lead/Member privacy firewall & thresholded telemetry charts
  */
@@ -313,11 +311,8 @@ export function IsolationHazardScreen({
   hazardRecords,
   scenarioHazardRecords,
   scenarioHazardSamples,
-  linkOnline,
-  reentryMode,
 }: HazardScreenProps) {
   const [activeInfo, setActiveInfo] = useState<ActiveInfoState>(null);
-  const [showAllInReentry, setShowAllInReentry] = useState(false);
 
   const wearable = findRecord(hazardRecords, STREAM_WEARABLE);
   const habitat = findRecord(hazardRecords, STREAM_HABITAT);
@@ -389,8 +384,6 @@ export function IsolationHazardScreen({
             scenarioHazardRecords,
             scenarioHazardSamples,
             role: "lead",
-            linkOnline,
-            reentryMode,
           });
           const mWearable = findRecord(memberRecords, STREAM_WEARABLE);
           const mHabitat = findRecord(memberRecords, STREAM_HABITAT);
@@ -416,46 +409,8 @@ export function IsolationHazardScreen({
   ).length;
   const veggieActiveCount = crewRows.filter((r) => r.veggieDone === true).length;
 
-  const hideDensePanels = reentryMode && !showAllInReentry;
-
   return (
     <div className="space-y-6">
-      {/* Re-Entry Mode Sensory & Decision-Fatigue Guard (Five Tips on Emerging from Isolation) */}
-      {reentryMode && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-3.5">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold tracking-wide text-indigo-900 uppercase">
-                Post-Isolation Re-Entry Mode Active
-              </span>
-              <InfoCircle
-                entry={ISOLATION_RESEARCH_METADATA.ready_to_act_guidance}
-                activeInfo={activeInfo}
-                onSelectInfo={setActiveInfo}
-              />
-            </div>
-            <p className="text-xs text-indigo-800">
-              Actions are capped to 1 step and secondary charts are minimized to prevent sensory and decision overload.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAllInReentry((prev) => !prev)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-100/60 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none"
-          >
-            {showAllInReentry ? (
-              <>
-                Simplify View <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-              </>
-            ) : (
-              <>
-                Show Full Telemetry <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-              </>
-            )}
-          </button>
-        </section>
-      )}
-
       {/* 1. Ready-to-Act Primary Briefing (Action-First for Fatigued Crew & Commanders) */}
       <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
@@ -519,8 +474,7 @@ export function IsolationHazardScreen({
           <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
-                Prioritized Countermeasures ({snapshot.solutions.length}{" "}
-                {reentryMode ? "· Re-Entry Cap" : "Max"})
+                Prioritized Countermeasures ({snapshot.solutions.length} Max)
               </p>
               <InfoCircle
                 entry={ISOLATION_RESEARCH_METADATA.mission_connect}
@@ -591,9 +545,7 @@ export function IsolationHazardScreen({
         </div>
       </section>
 
-      {!hideDensePanels && (
-        <>
-          {/* 3. Role-Specific Workspace (Lead Matrix or Member Private Stream) */}
+      {/* 3. Role-Specific Workspace (Lead Matrix or Member Private Stream) */}
           {role === "lead" ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -815,8 +767,6 @@ export function IsolationHazardScreen({
               </div>
             )}
           </section>
-        </>
-      )}
 
       {/* Unified accessible modal for all (i) research explanations & links */}
       <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />

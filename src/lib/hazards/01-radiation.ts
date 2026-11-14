@@ -700,8 +700,8 @@ function buildCompartmentChart(input: HazardEvaluationInput): HazardChartSpec[] 
 
 // [SECTION 2: HAZARD 1 FORMULAS & EVALUATION PIPELINE]
 export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-    const { actor, hazardRecords, hazardSamples, reentryMode } = input;
-    const maxSolutions = reentryMode ? 1 : 2;
+    const { actor, hazardRecords, hazardSamples } = input;
+    const maxSolutions = 2;
     const policyRecord = latestRecordForStream(
         input.scenarioHazardRecords ?? hazardRecords,
         RADIATION_PIPELINE_VALUES.streams.missionPolicy
@@ -866,7 +866,7 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
 
     const solutions: string[] = [];
     if (status === "CRITICAL" || activeSpaceWeatherEvent) {
-        solutions.push("Here is: Follow the approved storm-shelter/EVA flight rule and verify onboard dosimeters; DONKI alone is not crew dose.");
+        solutions.push("Here is: Follow the approved radiation-protection flight rule and verify onboard dosimeters; DONKI alone is not crew dose.");
     } else if (status === "ELEVATED") {
         solutions.push("Here is: Verify sensor health, provenance, units, timestamps, and a second compatible detector before escalation.");
     } else {
@@ -875,7 +875,7 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
     if (disagreement.supported && disagreement.disagreement) {
         solutions.push("Here is: Isolate the suspect sensor and compare compartment readings without silently discarding the highest value.");
     } else {
-        solutions.push("Here is: Reassess planned EVA and higher-exposure tasks against the configured personal radiation budget.");
+        solutions.push("Here is: Reassess planned higher-exposure tasks against the configured personal radiation budget.");
     }
 
     const charts = buildRateAndCumulativeCharts(ratePoints, policy);
@@ -1004,7 +1004,7 @@ export const radiationHazard: HazardSpec = {
         solutionsSlot: "Here is: At most 1–2 mission-policy actions, never autonomous medication, maneuver or hardware deployment.",
     },
     leadView: {
-        summary: "Crew comparison, compartment rates, policy provenance, sensor disagreement, shelter readiness and forecast — without private clinical markers.",
+        summary: "Crew comparison, compartment rates, policy provenance, sensor disagreement, shielding status and forecast — without private clinical markers.",
         privacyRule: "Mission-safety dosimetry is visible to Lead; clinical biomarkers remain outside this module unless separately authorized.",
         modules: [
             {
@@ -1057,11 +1057,11 @@ export const radiationHazard: HazardSpec = {
         descriptionSlot:
             "Here is: A compatible onboard radiation trigger was detected. Space-weather context is displayed separately and is not a crew dose measurement.",
         leadActions: [
-            "1. Verify onboard dosimeters and apply the approved shelter/EVA flight rule.",
-            "2. Confirm crew shelter status and preserve the incident telemetry/provenance.",
+            "1. Verify onboard dosimeters and apply the approved radiation-protection flight rule.",
+            "2. Review compartment telemetry and preserve incident provenance.",
         ],
         memberActions: [
-            "1. Follow the approved route to the designated shelter or EVA return procedure.",
+            "1. Follow the approved low-exposure compartment procedure.",
             "2. Confirm safe status and keep the dosimeter active.",
         ],
     },

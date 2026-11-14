@@ -14,9 +14,8 @@ import {
  * Owner: Teammate 4 — Edit ONLY src/lib/hazards/04-gravity.ts and
  *   src/components/hazards/04-gravity.tsx.
  *
- * Implements two deterministic, NASA-grounded engines (zero ML):
- *   1. Autonomous Pre-EVA Readiness Gate & Condition Guard
- *      (MR081L, MEDB 6.1/6.2, MEDB 6.3, MR087L, MR090L, MEDB 5.2 PFE)
+ * Implements deterministic, NASA-grounded physiological engines (zero ML):
+ *   1. Pre-Test Validity Condition Guard (MEDB 6.3, MR087L, MEDB 5.4)
  *   2. Microgravity Atrophy, Proxy Bone-Shield & Exercise Adherence Engine
  *      (MEDB 5.2, MEDB 5.4, MEDB 1.13, MR081L, MEDB 1.11, MR026L)
  * ============================================================================
@@ -26,7 +25,6 @@ import {
 // Replace or extend constants here for Gravity Fields only.
 export const GRAVITY_PIPELINE_VALUES = {
   supportedStreams: [
-    "EVA Readiness Chain",
     "Pre-Test Conditions",
     "Handgrip & Calf Volume",
     "Daily Exercise Log",
@@ -36,25 +34,9 @@ export const GRAVITY_PIPELINE_VALUES = {
   schedule: {
     gripFirstFlightDay: 14, // MR081L: FD14, then every 30 days
     gripCadenceDays: 30,
-    gripPreEvaMinDays: 10, // MR081L: EVA minus 14d to 10d (+/-2d flexibility)
-    gripPreEvaMaxDays: 14,
-    gripPreEvaFlexDays: 2,
-    gripLockoutHoursBeforeEva: 24, // MR081L: no handgrip test within 24h of EVA
 
     calfFirstLaunchPlusDays: 14, // MEDB 5.4: L+14, then every 14 days
     calfCadenceDays: 14,
-
-    armErgometryAfterFlightDay: 21, // MEDB 6.3: required before EVA after FD21
-    armErgometryRecencySkipDays: 14, // MEDB 6.3: not needed if prior EVA <= 14d ago
-
-    preEvaHealthStatusMaxHours: 48, // MEDB 6.1: <= 48h before suit donning
-    postEvaHealthStatusMaxHours: 24, // MEDB 6.1: <= 24h after suit doffing
-    prebreathePracticeLeadDays: 7, // MR087L: ~1 week prior to EVA
-    prebreatheVo2TolerancePct: 10, // MR087L: within +/-10% of target VO2
-
-    // MR087L PFE timing rule has a documented ambiguity (14d/30d vs 2+/-1 weeks); configurable here
-    pfeMaxAgeDaysDefault: 30,
-    pfeMaxAgeDaysPreFd90: 14,
 
     dailyAerobicTargetMin: 60, // MEDB 5.2: ~2.5h daily (1h aerobic + 1.5h resistance)
     dailyResistanceTargetMin: 90,
@@ -100,21 +82,6 @@ export const GRAVITY_PIPELINE_VALUES = {
 // [SECTION 2: HAZARD 4 FORMULAS & EVALUATION PIPELINE]
 
 type PayloadMap = Record<string, unknown>;
-export type EvaGateDecision = "GO" | "CONDITIONAL" | "NO-GO";
-
-export interface EvaReadinessInput {
-  currentFlightDay: number | null;
-  hoursToPlannedEva: number | null;
-  daysSinceLastEva: number | null;
-  suitType: "EMU" | "ORLAN" | null;
-  pfeDaysAgo: number | null;
-  preEvaGripTaken: boolean | null;
-  armErgometryCompleted: boolean | null;
-  prebreatheVerifiedPct: number | null;
-  preEvaHealthStatusHoursAgo: number | null;
-  islePreflightCompleted: boolean | null;
-  symptomNote: string;
-}
 
 export interface PreTestConditionInput {
   hoursSinceMeal: number | null;
@@ -160,14 +127,6 @@ export interface LinearTrendResult {
   series: Array<{ label: string; value: number }>;
 }
 
-export interface EvaChainCheckItem {
-  id: string;
-  label: string;
-  medbRef: string;
-  status: "PASS" | "BLOCKER" | "LOCKOUT" | "PENDING" | "NA";
-  detail: string;
-}
-
 export interface PreTestConditionCheckItem {
   id: string;
   label: string;
@@ -177,19 +136,6 @@ export interface PreTestConditionCheckItem {
 }
 
 export type ConditioningStatusLabel = "ON_TRACK" | "WATCH" | "ALERT" | "UNLOGGED";
-
-export interface EvaGateEvaluation {
-  decision: EvaGateDecision;
-  hasAnyInput: boolean;
-  blockers: string[];
-  conditionViolations: string[];
-  chainChecks: EvaChainCheckItem[];
-  conditionChecks: PreTestConditionCheckItem[];
-  nearestDeadlineHours: number | null;
-  nearestDeadlineLabel: string;
-  noteCategory: string | null;
-  actions: string[];
-}
 
 export interface AtrophyEvaluation {
   hasAnyAnthropometric: boolean;
@@ -220,9 +166,10 @@ export interface AtrophyEvaluation {
 export interface GravityActorDiagnostics {
   role: UserRole;
   status: HazardEvaluationResult["status"];
-  evaInput: EvaReadinessInput;
+  currentFlightDay: number | null;
   condInput: PreTestConditionInput;
-  evaGate: EvaGateEvaluation;
+  conditionChecks: PreTestConditionCheckItem[];
+  conditionViolations: string[];
   atrophy: AtrophyEvaluation;
   exerciseEntries: ExerciseEntry[];
   conditioningStatus: ConditioningStatusLabel;
@@ -234,21 +181,19 @@ export interface GravityCrewMemberSummary {
   callsign: string;
   assignedRoleTitle: string;
   isLeadSlot: boolean;
-  readinessState: CrewSlot["readinessState"];
-  evaDecision: EvaGateDecision;
   status: HazardEvaluationResult["status"];
   blockerCategories: string[];
   conditionFlagCount: number;
-  nearestDeadlineLabel: string;
+  etaLabel: string;
   adherencePct: number | null;
   conditioningStatus: ConditioningStatusLabel;
   reconditioningDayRPlus: number | null;
 }
 
 export interface GravityCrewOverview {
-  goCount: number;
-  conditionalCount: number;
-  noGoCount: number;
+  onTrackCount: number;
+  watchCount: number;
+  alertCount: number;
   teamExerciseDisciplinePct: number | null;
   teamExerciseBuffActive: boolean;
   disciplinedCrewCount: number;
@@ -265,12 +210,6 @@ function readNum(payload: PayloadMap | undefined, key: string): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function readStr(payload: PayloadMap | undefined, key: string): string {
-  if (!payload) return "";
-  const val = payload[key];
-  return typeof val === "string" ? val.trim() : typeof val === "number" ? String(val) : "";
 }
 
 function readBoolChoice(payload: PayloadMap | undefined, key: string): boolean | null {
@@ -313,35 +252,21 @@ function resolveStreamPayload(
   return { ...parsedRaw, ...(rec?.payload ?? {}) };
 }
 
-function parseEvaReadinessInput(
+function resolveCurrentFlightDay(
   records: HazardDataRecord[],
   actorInputs: Record<string, string>
-): EvaReadinessInput {
-  const p = resolveStreamPayload("EVA Readiness Chain", records, actorInputs);
-  const rawSuit = (readStr(p, "suitType") || readStr(p, "suit_type")).toUpperCase();
-  const suitType: "EMU" | "ORLAN" | null =
-    rawSuit === "EMU" ? "EMU" : rawSuit === "ORLAN" ? "ORLAN" : null;
+): number | null {
+  const preTestPayload = resolveStreamPayload("Pre-Test Conditions", records, actorInputs);
+  const anthroPayload = resolveStreamPayload("Handgrip & Calf Volume", records, actorInputs);
+  const exPayload = resolveStreamPayload("Daily Exercise Log", records, actorInputs);
 
-  return {
-    currentFlightDay: readNum(p, "currentFlightDay") ?? readNum(p, "current_flight_day"),
-    hoursToPlannedEva: readNum(p, "hoursToPlannedEva") ?? readNum(p, "hours_to_eva"),
-    daysSinceLastEva: readNum(p, "daysSinceLastEva") ?? readNum(p, "days_since_last_eva"),
-    suitType,
-    pfeDaysAgo: readNum(p, "pfeDaysAgo") ?? readNum(p, "pfe_days_ago"),
-    preEvaGripTaken: readBoolChoice(p, "preEvaGripTaken") ?? readBoolChoice(p, "pre_eva_grip_taken"),
-    armErgometryCompleted:
-      readBoolChoice(p, "armErgometryCompleted") ?? readBoolChoice(p, "arm_ergometry"),
-    prebreatheVerifiedPct:
-      readNum(p, "prebreatheVerifiedPct") ?? readNum(p, "prebreathe_vo2_pct"),
-    preEvaHealthStatusHoursAgo:
-      readNum(p, "preEvaHealthStatusHoursAgo") ?? readNum(p, "health_status_hours_ago"),
-    islePreflightCompleted:
-      readBoolChoice(p, "islePreflightCompleted") ?? readBoolChoice(p, "isle_trained"),
-    symptomNote:
-      readStr(p, "symptomNote") ||
-      readStr(p, "note") ||
-      (Object.keys(p).length === 0 ? (actorInputs["EVA Readiness Chain"] ?? "") : ""),
-  };
+  return (
+    readNum(preTestPayload, "currentFlightDay") ??
+    readNum(preTestPayload, "flightDay") ??
+    readNum(anthroPayload, "measurementFlightDay") ??
+    readNum(anthroPayload, "flightDay") ??
+    readNum(exPayload, "flightDay")
+  );
 }
 
 function parsePreTestConditions(
@@ -365,46 +290,13 @@ function parsePreTestConditions(
 }
 
 /**
- * Deterministic keyword fallback classifier for free-text symptom notes
- * (per Section 6.6 of 04-gravity-fields-enviroments.md).
+ * Evaluates Pre-Test Condition Guard validity windows (MEDB 6.3 / MR087L / MEDB 5.4).
  */
-function classifyPreEvaSymptomNote(note: string): string | null {
-  const clean = note.trim().toLowerCase();
-  if (!clean) return null;
-  if (/(shoulder|arm|wrist|hand|joint|back|knee|muscle|pain|strain|ache|stiff)/.test(clean)) {
-    return "Musculoskeletal / Joint Symptom (requires CMO/Flight Note review before suit donning, MEDB 6.1)";
-  }
-  if (/(dizzy|dizziness|vertigo|lightheaded|nausea|balance|orthostatic)/.test(clean)) {
-    return "Vestibular / Orthostatic Symptom (hold EVA & escalate to CMO/ground when link restores)";
-  }
-  if (/(fatigue|exhaust|chest|shortness|breath|palpitation|tingling|numb)/.test(clean)) {
-    return "Exertion / Decompression Review Needed (uncertain — escalate to CMO per MEDB 6.1)";
-  }
-  return "Unclassified Crew Note (escalate to CMO / ground Flight Surgeon when link is available)";
-}
-
-/**
- * Evaluates Feature 1: Pre-EVA Readiness Gate & Condition Guard.
- */
-function evaluatePreEvaGate(
-  eva: EvaReadinessInput,
-  cond: PreTestConditionInput,
-  actorEvaState: "GO" | "CONDITIONAL" | "NO-GO"
-): EvaGateEvaluation {
-  const S = GRAVITY_PIPELINE_VALUES.schedule;
+function evaluateConditionGuard(cond: PreTestConditionInput): {
+  conditionViolations: string[];
+  conditionChecks: PreTestConditionCheckItem[];
+} {
   const C = GRAVITY_PIPELINE_VALUES.preTestConditions;
-
-  const hasAnyInput =
-    eva.currentFlightDay !== null ||
-    eva.hoursToPlannedEva !== null ||
-    eva.suitType !== null ||
-    eva.pfeDaysAgo !== null ||
-    eva.preEvaGripTaken !== null ||
-    eva.armErgometryCompleted !== null ||
-    eva.prebreatheVerifiedPct !== null ||
-    eva.preEvaHealthStatusHoursAgo !== null ||
-    eva.islePreflightCompleted !== null ||
-    eva.symptomNote.length > 0;
 
   const conditionViolations: string[] = [];
   if (cond.hoursSinceMeal !== null && cond.hoursSinceMeal < C.armErgometry.minHoursNoMeal) {
@@ -538,335 +430,7 @@ function evaluatePreEvaGate(
     },
   ];
 
-  const noteCategory = classifyPreEvaSymptomNote(eva.symptomNote);
-
-  const pfeLimitDays =
-    eva.currentFlightDay !== null && eva.currentFlightDay <= 90
-      ? S.pfeMaxAgeDaysPreFd90
-      : S.pfeMaxAgeDaysDefault;
-  const hoursToEva = eva.hoursToPlannedEva;
-  const daysToEva = hoursToEva !== null ? hoursToEva / 24 : null;
-  const armRequired =
-    eva.currentFlightDay !== null &&
-    eva.currentFlightDay > S.armErgometryAfterFlightDay &&
-    (eva.daysSinceLastEva === null || eva.daysSinceLastEva > S.armErgometryRecencySkipDays);
-  const prebreatheRequired = eva.suitType !== "ORLAN";
-
-  const buildChainChecks = (opts: {
-    armInvalidated: boolean;
-    prebreatheInvalidated: boolean;
-    prebreathePending7d: boolean;
-    healthDueWithin48h: boolean;
-  }): EvaChainCheckItem[] => [
-    {
-      id: "isle",
-      label: "ISLE Preflight Training",
-      medbRef: "MR090L",
-      status:
-        eva.islePreflightCompleted === false
-          ? "BLOCKER"
-          : eva.islePreflightCompleted === true
-          ? "PASS"
-          : "PENDING",
-      detail:
-        eva.islePreflightCompleted === true
-          ? "Preflight ISLE completed"
-          : eva.islePreflightCompleted === false
-          ? "ISLE preflight prerequisite missing (Hard NO-GO)"
-          : "Awaiting telemetry",
-    },
-    {
-      id: "pfe",
-      label: "Periodic Fitness Evaluation (PFE)",
-      medbRef: "MEDB 5.2 / MR087L",
-      status:
-        eva.pfeDaysAgo === null
-          ? "PENDING"
-          : eva.pfeDaysAgo > pfeLimitDays
-          ? "BLOCKER"
-          : "PASS",
-      detail:
-        eva.pfeDaysAgo === null
-          ? `Awaiting PFE recency (limit ${pfeLimitDays}d)`
-          : `${eva.pfeDaysAgo}d ago (limit <= ${pfeLimitDays}d)`,
-    },
-    {
-      id: "grip",
-      label: "Pre-EVA Handgrip Window (EVA-14..10d)",
-      medbRef: "MR081L",
-      status:
-        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false
-          ? "LOCKOUT"
-          : eva.preEvaGripTaken === false
-          ? "BLOCKER"
-          : eva.preEvaGripTaken === true
-          ? "PASS"
-          : "PENDING",
-      detail:
-        hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false
-          ? `Locked out inside <24h pre-EVA (${hoursToEva.toFixed(1)}h left)`
-          : eva.preEvaGripTaken === true
-          ? "Completed; <24h lockout preserved"
-          : eva.preEvaGripTaken === false
-          ? "Pending in EVA-14..10d (+/-2d) window"
-          : "Awaiting telemetry",
-    },
-    {
-      id: "arm",
-      label: "Arm Ergometry (Post-FD21)",
-      medbRef: "MEDB 6.3",
-      status: !armRequired
-        ? "NA"
-        : eva.armErgometryCompleted === false || opts.armInvalidated
-        ? "BLOCKER"
-        : eva.armErgometryCompleted === true
-        ? "PASS"
-        : "PENDING",
-      detail: !armRequired
-        ? eva.currentFlightDay !== null && eva.currentFlightDay <= S.armErgometryAfterFlightDay
-          ? `Not required until after FD${S.armErgometryAfterFlightDay}`
-          : `Skipped (prior EVA <= ${S.armErgometryRecencySkipDays}d ago)`
-        : opts.armInvalidated
-        ? "Invalidated by pre-test condition violation"
-        : eva.armErgometryCompleted === true
-        ? `Valid (${eva.suitType === "ORLAN" ? "Protocol B 50W->150W" : "Protocol A 40W->80W"})`
-        : "Pending completion",
-    },
-    {
-      id: "prebreathe",
-      label: "EVA Exercise Prebreathe VO2",
-      medbRef: "MR087L",
-      status: !prebreatheRequired
-        ? "NA"
-        : opts.prebreatheInvalidated
-        ? "BLOCKER"
-        : opts.prebreathePending7d
-        ? "BLOCKER"
-        : eva.prebreatheVerifiedPct !== null
-        ? "PASS"
-        : "PENDING",
-      detail: !prebreatheRequired
-        ? "Not required for ORLAN suit"
-        : eva.prebreatheVerifiedPct !== null
-        ? `${eva.prebreatheVerifiedPct}% of target (+/-${S.prebreatheVo2TolerancePct}% band)${opts.prebreatheInvalidated ? " — flagged" : ""}`
-        : opts.prebreathePending7d
-        ? "Pending inside ~7d pre-EVA window"
-        : "Target +/-10% VO2 at 75% stage",
-    },
-    {
-      id: "health",
-      label: "Pre-EVA Health Status (ROS + Exam)",
-      medbRef: "MEDB 6.1",
-      status: opts.healthDueWithin48h
-        ? "BLOCKER"
-        : eva.preEvaHealthStatusHoursAgo !== null &&
-          eva.preEvaHealthStatusHoursAgo <= S.preEvaHealthStatusMaxHours
-        ? "PASS"
-        : "PENDING",
-      detail: opts.healthDueWithin48h
-        ? `Due within <=${S.preEvaHealthStatusMaxHours}h of suit donning`
-        : eva.preEvaHealthStatusHoursAgo !== null
-        ? `Exam logged ${eva.preEvaHealthStatusHoursAgo}h ago`
-        : "Due <=48h prior to suit donning",
-    },
-    {
-      id: "flight-note",
-      label: "Flight Note / Symptom Screen",
-      medbRef: "MEDB 6.1",
-      status: noteCategory ? "BLOCKER" : hasAnyInput ? "PASS" : "PENDING",
-      detail: noteCategory ?? "No clinical symptom flag raised",
-    },
-  ];
-
-  if (!hasAnyInput) {
-    return {
-      decision: actorEvaState,
-      hasAnyInput: false,
-      blockers: [],
-      conditionViolations,
-      chainChecks: buildChainChecks({
-        armInvalidated: false,
-        prebreatheInvalidated: false,
-        prebreathePending7d: false,
-        healthDueWithin48h: false,
-      }),
-      conditionChecks,
-      nearestDeadlineHours: null,
-      nearestDeadlineLabel: "Awaiting EVA plan & pre-EVA test telemetry",
-      noteCategory,
-      actions: [
-        "Sync EVA schedule (hours to suit donning, flight day) and pre-test conditions to compute live EVA Gate.",
-      ],
-    };
-  }
-
-  const blockers: string[] = [];
-  const pendingActions: Array<{ priorityHours: number; text: string }> = [];
-  let hardNoGo = false;
-
-  // 1. ISLE preflight prerequisite (MR090L)
-  if (eva.islePreflightCompleted === false) {
-    hardNoGo = true;
-    blockers.push("ISLE preflight training incomplete (MR090L prerequisite)");
-    pendingActions.push({
-      priorityHours: 0,
-      text: "Hold EVA assignment: ISLE preflight prerequisite (MR090L) is flagged incomplete.",
-    });
-  }
-
-  // 2. PFE cycle test recency (MEDB 5.2 / MR087L — configurable window)
-  if (eva.pfeDaysAgo !== null && eva.pfeDaysAgo > pfeLimitDays) {
-    hardNoGo = true;
-    blockers.push(`PFE cycle test expired (${eva.pfeDaysAgo}d ago > ${pfeLimitDays}d configurable limit)`);
-    pendingActions.push({
-      priorityHours: 6,
-      text: `Complete Periodic Fitness Evaluation (PFE) cycle test before EVA (last done ${eva.pfeDaysAgo}d ago).`,
-    });
-  }
-
-  // 3. Handgrip window & 24h lockout (MR081L)
-  if (hoursToEva !== null && hoursToEva < S.gripLockoutHoursBeforeEva && eva.preEvaGripTaken === false) {
-    hardNoGo = true;
-    blockers.push("Handgrip test missing inside 24h pre-EVA lockout (MR081L prohibits testing <24h)");
-    pendingActions.push({
-      priorityHours: Math.max(0, hoursToEva),
-      text: "DO NOT perform handgrip test within 24h of EVA (MR081L lockout); escalate missing test to Lead/CMO.",
-    });
-  } else if (eva.preEvaGripTaken === false) {
-    const windowCloseDays = S.gripPreEvaMinDays - S.gripPreEvaFlexDays; // EVA - 8d
-    const hoursLeftInWindow =
-      daysToEva !== null ? Math.max(0, (daysToEva - windowCloseDays) * 24) : 24;
-    if (daysToEva !== null && daysToEva < windowCloseDays) {
-      blockers.push("Pre-EVA handgrip window (EVA-14..10d +/-2d) missed; >24h remaining allows recovery-safe test");
-    } else {
-      blockers.push("Pre-EVA handgrip test (MR081L) pending in EVA-14..10d (+/-2d) window");
-    }
-    pendingActions.push({
-      priorityHours: hoursLeftInWindow,
-      text: "Complete Handgrip Dynamometry (MR081L: 3x5s max contractions, 60s rest) at least 24h before EVA.",
-    });
-  }
-
-  // 4. Arm ergometry applicability & conditions (MEDB 6.3)
-  let armInvalidated = false;
-  if (armRequired) {
-    if (eva.armErgometryCompleted === false) {
-      blockers.push("Arm ergometry required after FD21 (MEDB 6.3 — note: not a cardiac screening tool)");
-      pendingActions.push({
-        priorityHours: hoursToEva !== null ? Math.max(1, hoursToEva - 24) : 24,
-        text: `Run Arm Ergometry (${eva.suitType === "ORLAN" ? "Protocol B: 50W->150W" : "Protocol A: 40W->80W"}, MEDB 6.3) once pre-test conditions are clean.`,
-      });
-    } else if (eva.armErgometryCompleted === true && conditionViolations.length > 0) {
-      armInvalidated = true;
-      blockers.push("Arm ergometry invalidated by pre-test condition violation (conditions_met = false)");
-      pendingActions.push({
-        priorityHours: 8,
-        text: `Retake Arm Ergometry (MEDB 6.3) under clean conditions (${conditionViolations[0]}).`,
-      });
-    }
-  }
-
-  // 5. EVA Exercise Prebreathe verification (MR087L: within +/-10% of target VO2)
-  let prebreatheInvalidated = false;
-  let prebreathePending7d = false;
-  if (prebreatheRequired && eva.prebreatheVerifiedPct !== null) {
-    const dev = Math.abs(eva.prebreatheVerifiedPct - 100);
-    if (dev > S.prebreatheVo2TolerancePct) {
-      hardNoGo = true;
-      prebreatheInvalidated = true;
-      blockers.push(
-        `Prebreathe VO2 (${eva.prebreatheVerifiedPct}% of target) outside +/-${S.prebreatheVo2TolerancePct}% verification band (MR087L)`
-      );
-      pendingActions.push({
-        priorityHours: hoursToEva ?? 12,
-        text: "Re-verify EVA prebreathe practice (MR087L) so last-2-min VO2 at 75% stage is within +/-10% of target.",
-      });
-    } else if (conditionViolations.length > 0) {
-      prebreatheInvalidated = true;
-      blockers.push("Prebreathe cycle test flagged with pre-test condition violation (MR087L)");
-    }
-  } else if (prebreatheRequired && hoursToEva !== null && hoursToEva <= S.prebreathePracticeLeadDays * 24 && eva.prebreatheVerifiedPct === null) {
-    prebreathePending7d = true;
-    blockers.push("Prebreathe practice verification pending (~7d pre-EVA target, MR087L)");
-    pendingActions.push({
-      priorityHours: Math.max(1, hoursToEva - 24),
-      text: "Complete EMU prebreathe exercise verification (MR087L) under clean pre-test conditions.",
-    });
-  }
-
-  // 6. Pre-EVA Health Status <= 48h before suit donning (MEDB 6.1)
-  let healthDueWithin48h = false;
-  if (hoursToEva !== null && hoursToEva <= S.preEvaHealthStatusMaxHours) {
-    if (
-      eva.preEvaHealthStatusHoursAgo === null ||
-      eva.preEvaHealthStatusHoursAgo > S.preEvaHealthStatusMaxHours
-    ) {
-      healthDueWithin48h = true;
-      if (hoursToEva <= 2) hardNoGo = true;
-      blockers.push("Pre-EVA health status (ROS + brief skin/extremity exam) due within 48h of suit donning (MEDB 6.1)");
-      pendingActions.push({
-        priorityHours: Math.max(0, hoursToEva),
-        text: `Complete MEDB 6.1 Pre-EVA Health Status check immediately (${hoursToEva.toFixed(1)}h left before suit donning).`,
-      });
-    }
-  } else if (hoursToEva !== null) {
-    pendingActions.push({
-      priorityHours: hoursToEva - S.preEvaHealthStatusMaxHours,
-      text: `Pre-EVA Health Status (MEDB 6.1) 48h window opens in ${(hoursToEva - S.preEvaHealthStatusMaxHours).toFixed(0)}h.`,
-    });
-  }
-
-  if (noteCategory) {
-    blockers.push(noteCategory);
-    pendingActions.push({
-      priorityHours: 1,
-      text: `Flag symptom note for CMO / Flight Note review before suit donning (${noteCategory.split("(")[0].trim()}).`,
-    });
-  }
-
-  // Determine nearest deadline & final decision
-  let nearestDeadlineHours: number | null = null;
-  let nearestDeadlineLabel = "No pending pre-EVA deadline";
-  if (hoursToEva !== null) {
-    if (healthDueWithin48h) {
-      nearestDeadlineHours = Math.max(0, hoursToEva);
-      nearestDeadlineLabel = `${nearestDeadlineHours.toFixed(1)}h until suit donning (MEDB 6.1 <=48h health check due)`;
-    } else if (eva.preEvaGripTaken === false && hoursToEva > S.gripLockoutHoursBeforeEva) {
-      const hoursToLockout = hoursToEva - S.gripLockoutHoursBeforeEva;
-      nearestDeadlineHours = hoursToLockout;
-      nearestDeadlineLabel = `${hoursToLockout.toFixed(1)}h until 24h Handgrip lockout (MR081L)`;
-    } else {
-      nearestDeadlineHours = Math.max(0, hoursToEva);
-      nearestDeadlineLabel = `${nearestDeadlineHours.toFixed(1)}h to scheduled EVA suit donning`;
-    }
-  }
-
-  const decision: EvaGateDecision = hardNoGo
-    ? "NO-GO"
-    : blockers.length > 0 || conditionViolations.length > 0
-    ? "CONDITIONAL"
-    : "GO";
-
-  pendingActions.sort((a, b) => a.priorityHours - b.priorityHours);
-  const actions = pendingActions.map((a) => a.text);
-
-  return {
-    decision,
-    hasAnyInput: true,
-    blockers,
-    conditionViolations,
-    chainChecks: buildChainChecks({
-      armInvalidated,
-      prebreatheInvalidated,
-      prebreathePending7d,
-      healthDueWithin48h,
-    }),
-    conditionChecks,
-    nearestDeadlineHours,
-    nearestDeadlineLabel,
-    noteCategory,
-    actions,
-  };
+  return { conditionViolations, conditionChecks };
 }
 
 function parseAnthropometricSamples(
@@ -1111,12 +675,11 @@ function parseExerciseEntries(
  * Evaluates Feature 2: Microgravity Atrophy, Proxy Bone-Shield & Exercise Adherence Engine.
  */
 function evaluateAtrophyAndConditioning(
-  eva: EvaReadinessInput,
+  currentFlightDay: number | null,
   cond: PreTestConditionInput,
   records: HazardDataRecord[],
   samples: HazardSampleRecord[],
-  actorInputs: Record<string, string>,
-  reentryMode: boolean
+  actorInputs: Record<string, string>
 ): AtrophyEvaluation {
   const S = GRAVITY_PIPELINE_VALUES.schedule;
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
@@ -1129,7 +692,7 @@ function evaluateAtrophyAndConditioning(
   );
 
   const inferredFlightDay =
-    eva.currentFlightDay ??
+    currentFlightDay ??
     (validCalfPoints.length > 0
       ? validCalfPoints[validCalfPoints.length - 1].day
       : validGripPoints.length > 0
@@ -1148,13 +711,13 @@ function evaluateAtrophyAndConditioning(
   );
 
   const calfDaysOverdue =
-    eva.currentFlightDay !== null && validCalfPoints.length > 0
-      ? Math.max(0, eva.currentFlightDay - (validCalfPoints[validCalfPoints.length - 1].day + S.calfCadenceDays))
+    currentFlightDay !== null && validCalfPoints.length > 0
+      ? Math.max(0, currentFlightDay - (validCalfPoints[validCalfPoints.length - 1].day + S.calfCadenceDays))
       : null;
 
   const gripDaysOverdue =
-    eva.currentFlightDay !== null && validGripPoints.length > 0
-      ? Math.max(0, eva.currentFlightDay - (validGripPoints[validGripPoints.length - 1].day + S.gripCadenceDays))
+    currentFlightDay !== null && validGripPoints.length > 0
+      ? Math.max(0, currentFlightDay - (validGripPoints[validGripPoints.length - 1].day + S.gripCadenceDays))
       : null;
 
   const exerciseEntries = parseExerciseEntries(records, samples, actorInputs);
@@ -1188,7 +751,7 @@ function evaluateAtrophyAndConditioning(
     const latestRecond = [...recentWindow].reverse().find((e) => e.reconditioningDayRPlus !== null);
     const recondDay = latestRecond?.reconditioningDayRPlus ?? null;
     const recondPct =
-      recondDay !== null || reentryMode ? (totalAvg / S.reconditioningDailyTargetMin) * 100 : null;
+      recondDay !== null ? (totalAvg / S.reconditioningDailyTargetMin) * 100 : null;
 
     adherenceSummary = {
       sessionsCount: recentWindow.length,
@@ -1246,7 +809,7 @@ function evaluateAtrophyAndConditioning(
   }
 
   if (adherenceSummary) {
-    if (adherenceSummary.reconditioningDayRPlus !== null || reentryMode) {
+    if (adherenceSummary.reconditioningDayRPlus !== null) {
       const rDay = adherenceSummary.reconditioningDayRPlus ?? 0;
       const pct = adherenceSummary.reconditioningPct ?? adherenceSummary.overallPct;
       if (rDay <= S.reconditioningDurationDays && pct < A.weeklyAdherenceAlertPct) {
@@ -1444,25 +1007,21 @@ function computeGravityDiagnosticsCore(options: {
   hazardRecords: readonly HazardDataRecord[];
   hazardSamples: readonly HazardSampleRecord[];
   allHazardRecords: readonly HazardDataRecord[];
-  reentryMode: boolean;
 }): GravityActorDiagnostics {
-  const { actor, role, actorInputs, reentryMode } = options;
+  const { actor, role, actorInputs } = options;
   const hazardRecords = [...options.hazardRecords];
   const hazardSamples = [...options.hazardSamples];
   const allHazardRecords = [...options.allHazardRecords];
 
-  const rawEvaInput = parseEvaReadinessInput(hazardRecords, actorInputs);
-  const evaInput: EvaReadinessInput =
-    role === "lead" ? { ...rawEvaInput, symptomNote: "" } : rawEvaInput;
+  const currentFlightDay = resolveCurrentFlightDay(hazardRecords, actorInputs);
   const condInput = parsePreTestConditions(hazardRecords, actorInputs);
-  const evaGate = evaluatePreEvaGate(evaInput, condInput, actor.evaGateState);
+  const { conditionViolations, conditionChecks } = evaluateConditionGuard(condInput);
   const atrophy = evaluateAtrophyAndConditioning(
-    evaInput,
+    currentFlightDay,
     condInput,
     hazardRecords,
     hazardSamples,
-    actorInputs,
-    reentryMode
+    actorInputs
   );
   const exerciseEntries = parseExerciseEntries(hazardRecords, hazardSamples, actorInputs);
 
@@ -1477,17 +1036,11 @@ function computeGravityDiagnosticsCore(options: {
 
   let status: HazardEvaluationResult["status"] = "NOMINAL";
   if (
-    evaGate.decision === "NO-GO" ||
-    actor.readinessState === "HOLD" ||
     (atrophy.calfTrend && atrophy.calfTrend.latestPctChange <= GRAVITY_PIPELINE_VALUES.assumptions.calfAtrophyAlertPct) ||
     (atrophy.gripTrend && atrophy.gripTrend.latestPctChange <= GRAVITY_PIPELINE_VALUES.assumptions.gripDeclineAlertPct)
   ) {
     status = "CRITICAL";
-  } else if (
-    evaGate.decision === "CONDITIONAL" ||
-    atrophy.alerts.length > 0 ||
-    actor.readinessState === "CONDITIONAL"
-  ) {
+  } else if (atrophy.alerts.length > 0 || conditionViolations.length > 0) {
     status = "ELEVATED";
   }
 
@@ -1496,9 +1049,10 @@ function computeGravityDiagnosticsCore(options: {
   return {
     role,
     status,
-    evaInput,
+    currentFlightDay,
     condInput,
-    evaGate,
+    conditionChecks,
+    conditionViolations,
     atrophy,
     exerciseEntries,
     conditioningStatus,
@@ -1516,7 +1070,6 @@ export function evaluateGravityDiagnostics(options: {
   hazardRecords: readonly HazardDataRecord[];
   hazardSamples: readonly HazardSampleRecord[];
   allHazardRecords?: readonly HazardDataRecord[];
-  reentryMode: boolean;
 }): GravityActorDiagnostics {
   return computeGravityDiagnosticsCore({
     actor: options.actor,
@@ -1525,19 +1078,17 @@ export function evaluateGravityDiagnostics(options: {
     hazardRecords: [...options.hazardRecords],
     hazardSamples: [...options.hazardSamples],
     allHazardRecords: [...(options.allHazardRecords ?? options.hazardRecords)],
-    reentryMode: options.reentryMode,
   });
 }
 
 /**
- * Privacy-safe crew-wide EVA Flight Note & Exercise Discipline overview for Crew Lead.
+ * Privacy-safe crew-wide conditioning & exercise discipline overview for Crew Lead.
  * Expects sanitized scenario records/samples (private notes & personal raw biomarkers omitted).
  */
 export function evaluateGravityCrewOverview(
   mission: MissionProfile,
   scenarioRecords: readonly HazardDataRecord[],
-  scenarioSamples: readonly HazardSampleRecord[],
-  reentryMode: boolean
+  scenarioSamples: readonly HazardSampleRecord[]
 ): GravityCrewOverview {
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
   const members: GravityCrewMemberSummary[] = mission.crew.map((member) => {
@@ -1554,7 +1105,6 @@ export function evaluateGravityCrewOverview(
       hazardRecords: memberGravityRecords,
       hazardSamples: memberGravitySamples,
       allHazardRecords: memberAllRecords,
-      reentryMode,
     });
 
     const adherencePct = diag.atrophy.adherenceSummary
@@ -1566,21 +1116,19 @@ export function evaluateGravityCrewOverview(
       callsign: member.callsign,
       assignedRoleTitle: member.assignedRoleTitle,
       isLeadSlot: member.isLeadSlot,
-      readinessState: member.readinessState,
-      evaDecision: diag.evaGate.decision,
       status: diag.status,
-      blockerCategories: diag.evaGate.blockers,
-      conditionFlagCount: diag.evaGate.conditionViolations.length,
-      nearestDeadlineLabel: diag.evaGate.nearestDeadlineLabel,
+      blockerCategories: [...diag.atrophy.alerts, ...diag.conditionViolations],
+      conditionFlagCount: diag.conditionViolations.length,
+      etaLabel: diag.atrophy.etaLabel,
       adherencePct,
       conditioningStatus: diag.conditioningStatus,
       reconditioningDayRPlus: diag.atrophy.adherenceSummary?.reconditioningDayRPlus ?? null,
     };
   });
 
-  const goCount = members.filter((m) => m.evaDecision === "GO").length;
-  const conditionalCount = members.filter((m) => m.evaDecision === "CONDITIONAL").length;
-  const noGoCount = members.filter((m) => m.evaDecision === "NO-GO").length;
+  const onTrackCount = members.filter((m) => m.conditioningStatus === "ON_TRACK").length;
+  const watchCount = members.filter((m) => m.conditioningStatus === "WATCH").length;
+  const alertCount = members.filter((m) => m.conditioningStatus === "ALERT").length;
   const loggedAdherences = members
     .map((m) => m.adherencePct)
     .filter((v): v is number => v !== null);
@@ -1593,9 +1141,9 @@ export function evaluateGravityCrewOverview(
   ).length;
 
   return {
-    goCount,
-    conditionalCount,
-    noGoCount,
+    onTrackCount,
+    watchCount,
+    alertCount,
     teamExerciseDisciplinePct,
     teamExerciseBuffActive:
       loggedAdherences.length > 0 && disciplinedCrewCount === loggedAdherences.length,
@@ -1619,7 +1167,6 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     allHazardRecords,
     scenarioHazardRecords,
     scenarioHazardSamples,
-    reentryMode,
   } = input;
 
   const effectiveRole: UserRole = role ?? (actor.isLeadSlot ? "lead" : "member");
@@ -1630,20 +1177,28 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     hazardRecords,
     hazardSamples,
     allHazardRecords,
-    reentryMode,
   });
-  const { evaGate, atrophy, status, sleepCrossNote, conditioningStatus } = diag;
+  const { conditionViolations, atrophy, status, sleepCrossNote, conditioningStatus } = diag;
 
-  // Immediate Horizon: Feature 1 (EVA Gate)
-  const immediateHorizon = evaGate.hasAnyInput
-    ? `EVA Gate: ${evaGate.decision} | ${
-        evaGate.blockers.length > 0
-          ? `Blockers (${evaGate.blockers.length}): ${evaGate.blockers.join("; ")}`
-          : "All applicable pre-EVA chain checks satisfied"
-      }${evaGate.conditionViolations.length > 0 ? ` | Pre-test condition flags: ${evaGate.conditionViolations.join("; ")}` : ""}`
-    : `${gravityHazard.outputSlots.immediateHorizon} (Current character EVA state: ${actor.evaGateState})`;
+  const immediateHorizon =
+    conditionViolations.length > 0 || atrophy.alerts.length > 0
+      ? [
+          conditionViolations.length > 0
+            ? `Pre-test condition flags (${conditionViolations.length}): ${conditionViolations.join("; ")}`
+            : null,
+          atrophy.alerts.length > 0 ? atrophy.alerts.join("; ") : null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+      : atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
+      ? `Nominal — ${
+          atrophy.adherenceSummary
+            ? `7d exercise adherence ${adherenceLabel(atrophy.adherenceSummary)}`
+            : "pre-test validity clean"
+        }`
+      : gravityHazard.outputSlots.immediateHorizon;
 
-  // Prolonged Horizon: Feature 2 (Role-aware RBAC output)
+  // Prolonged Horizon (Role-aware RBAC output)
   const prolongedParts: string[] = [];
   if (effectiveRole === "lead") {
     if (conditioningStatus !== "UNLOGGED") {
@@ -1684,28 +1239,17 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
       ? `${prolongedParts.join(" | ")}${effectiveRole === "member" ? sleepCrossNote : ""}`
       : gravityHazard.outputSlots.prolongedHorizon;
 
-  // Combined ETA (prioritize imminent EVA deadline if <= 7 days, else prolonged trend ETA)
   const eta =
-    evaGate.hasAnyInput && evaGate.nearestDeadlineHours !== null
-      ? `${evaGate.nearestDeadlineLabel}${atrophy.etaDays !== null ? ` | Conditioning threshold ETA: ~${atrophy.etaDays}d [ASSUMPTION]` : ""}`
-      : atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
+    atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
       ? atrophy.etaLabel
       : actor.metrics.etaSlot;
 
-  // Prioritized 1-2 Actionable Solutions (capped to 1 in reentryMode per OUTLINE.md)
-  const maxSolutions = reentryMode ? 1 : 2;
-  const candidateSolutions = [...evaGate.actions, ...atrophy.actions];
   const fallbackSolutions = [
-    actor.evaGateState === "GO"
-      ? "EVA gate GO — preserve test validity and block handgrip testing within <24h of EVA (MR081L)."
-      : "Complete pending pre-EVA verification (MEDB 6.1 48h health status / MR087L prebreathe / MEDB 6.3 arm ergometry) with clean pre-test conditions.",
     "Maintain daily 2.5h exercise (1h aerobic + 1.5h resistance, >=2h before sleep) and morning fasted EZOG calf volume every 14 days (MEDB 5.2 / 5.4).",
+    "Verify clean pre-test conditions (>=2h fast, >=8h caffeine abstinence) before anthropometric or cycle sessions.",
   ];
 
-  const solutions = (candidateSolutions.length > 0 ? candidateSolutions : fallbackSolutions).slice(
-    0,
-    maxSolutions
-  );
+  const solutions = (atrophy.actions.length > 0 ? atrophy.actions : fallbackSolutions).slice(0, 2);
 
   const charts =
     effectiveRole === "lead"
@@ -1713,8 +1257,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
           evaluateGravityCrewOverview(
             mission,
             scenarioHazardRecords ?? allHazardRecords,
-            scenarioHazardSamples ?? [],
-            reentryMode
+            scenarioHazardSamples ?? []
           )
         )
       : buildGravityCharts(atrophy, hazardRecords, hazardSamples, actorInputs);
@@ -1751,92 +1294,12 @@ export const gravityHazard: HazardSpec = {
     "MR081L (Handgrip / Pinch Dynamometry)",
     "MEDB 5.4 (Calf Volume EZOG) + MEDB 1.13 (Body Mass)",
     "MEDB 5.2 (Daily Exercise 2.5h: 1h Aerobic + 1.5h Resistance)",
-    "MEDB 6.1 / 6.2 / 6.3 & MR087L & MR090L (EVA Readiness Chain)",
+    "MEDB 6.3 / MR087L (Pre-Test Conditions)",
     "MEDB 1.11 (Pre/Post DXA Context) & MR026L (R+0..R+45 Reconditioning)",
   ],
   overviewSlot:
-    "Here is: On-board Pre-EVA Readiness Gate + Condition Guard (compensating for ~22 min delay where ground real-time EVA monitoring cannot run) and deterministic low-N muscle/bone conditioning tracker.",
+    "Deterministic low-N muscle/bone conditioning tracker and pre-test validity condition guard (MEDB 5.2, 5.4, MR081L, MR026L).",
   inputSlots: [
-    {
-      streamName: "EVA Readiness Chain",
-      inputPrompt: "Add your info: EVA schedule & pre-EVA test chain parameters here",
-      sourceRef: "MR081L / MEDB 6.1–6.3 / MR087L / MR090L",
-      subfields: [
-        {
-          key: "currentFlightDay",
-          label: "Current Flight Day",
-          fieldType: "number",
-          unit: "FD",
-          prompt: "Add your info: Current mission flight day (e.g. 92) here",
-        },
-        {
-          key: "hoursToPlannedEva",
-          label: "Hours to EVA Suit Donning",
-          fieldType: "number",
-          unit: "h",
-          prompt: "Add your info: Hours remaining until planned EVA here",
-        },
-        {
-          key: "daysSinceLastEva",
-          label: "Days Since Prior EVA",
-          fieldType: "number",
-          unit: "days",
-          prompt: "Add your info: Days since previous EVA (leave blank if none) here",
-        },
-        {
-          key: "suitType",
-          label: "Suit Type (EMU / ORLAN)",
-          fieldType: "text",
-          prompt: "Add your info: EMU or ORLAN here",
-        },
-        {
-          key: "pfeDaysAgo",
-          label: "Days Since Last PFE Test",
-          fieldType: "number",
-          unit: "days",
-          prompt: "Add your info: Days since last Periodic Fitness Evaluation here",
-        },
-        {
-          key: "preEvaGripTaken",
-          label: "Pre-EVA Grip Test Done",
-          fieldType: "boolean",
-          prompt: "Add your info: yes or no (EVA-14..10d window) here",
-        },
-        {
-          key: "armErgometryCompleted",
-          label: "Arm Ergometry Done",
-          fieldType: "boolean",
-          prompt: "Add your info: yes or no (MEDB 6.3 after FD21) here",
-        },
-        {
-          key: "prebreatheVerifiedPct",
-          label: "Prebreathe VO2 % of Target",
-          fieldType: "number",
-          unit: "%",
-          prompt: "Add your info: Measured VO2 % of target (valid 90-110%) here",
-        },
-        {
-          key: "preEvaHealthStatusHoursAgo",
-          label: "Pre-EVA Health Check Age",
-          fieldType: "number",
-          unit: "h",
-          prompt: "Add your info: Hours since MEDB 6.1 exam (<=48h) here",
-        },
-        {
-          key: "islePreflightCompleted",
-          label: "ISLE Preflight Trained",
-          fieldType: "boolean",
-          prompt: "Add your info: yes or no (MR090L prerequisite) here",
-        },
-        {
-          key: "symptomNote",
-          label: "Pre-EVA Note (Private)",
-          fieldType: "text",
-          isPrivate: true,
-          prompt: "Add your info: Optional free-text note (e.g. shoulder stiffness) here",
-        },
-      ],
-    },
     {
       streamName: "Pre-Test Conditions",
       inputPrompt: "Add your info: Pre-test fasting, caffeine, workout & med hours here",
@@ -2003,61 +1466,60 @@ export const gravityHazard: HazardSpec = {
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: EVA Gate output — GO / CONDITIONAL / NO-GO, active blockers, and pre-test condition flags.",
-    prolongedHorizon: "Here is: Low-N personal-baseline calf/grip trend, proxy bone-shield resistance adherence (DXA pre/post only), and meal/sleep timing.",
-    etaSlot: "Here is: Nearest EVA schedule deadline (48h health check / 24h grip lockout) or projected days to ASSUMPTION conditioning threshold.",
-    solutionsSlot: "Here is: 1–2 deterministic actions (e.g., Complete morning calf check before breakfast; Defer grip test >24h before EVA).",
+    immediateHorizon: "Pre-test validity condition guard and active conditioning/cadence flags.",
+    prolongedHorizon: "Low-N personal-baseline calf/grip trend, proxy bone-shield resistance adherence (DXA pre/post only), and meal/sleep timing.",
+    etaSlot: "Projected days to ASSUMPTION conditioning threshold or overdue measurement cadence.",
+    solutionsSlot: "1–2 deterministic conditioning actions (e.g., Complete morning calf check before breakfast).",
   },
   leadView: {
-    summary: "Per-crew EVA Gate status (GO / CONDITIONAL / NO-GO), blocker categories, team exercise discipline buff, and audit-logged Emergency Medical Detail Unlock.",
-    privacyRule: "RBAC: Lead sees gate status & blocker categories only (e.g., 'test overdue') — no raw values or private notes unless Emergency Unlock is triggered & logged.",
+    summary: "Per-crew conditioning status (ON_TRACK / WATCH / ALERT), blocker categories, and team exercise discipline buff.",
+    privacyRule: "RBAC: Lead sees conditioning band & category flags only (e.g., 'test overdue') — no raw anthropometric values or private notes.",
     modules: [
       {
-        title: "Crew EVA Readiness Gate (Flight Note View)",
-        detail: "Here is: Summary gate status (GO/CONDITIONAL/NO-GO) & blocker categories per astronaut (MEDB 6.1/6.2 Flight Note analogue).",
-        actionSlot: "Add your info: Planned EVA date & suit type (EMU/ORLAN) here",
+        title: "Crew Conditioning & Atrophy Matrix",
+        detail: "Summary conditioning band & adherence categories per crew member without exposing private raw values.",
+        actionSlot: "DB-driven exercise & cadence tracking",
       },
       {
-        title: "Emergency Detail Unlock (Audit-Logged)",
-        detail: "Here is: Explicit emergency unlock revealing raw gravity/EVA metrics only with logged justification + automatic crew notification.",
-        actionSlot: "Add your info: Emergency unlock reason & authorization here",
+        title: "Team Exercise Discipline Buff",
+        detail: "Aggregates anonymized 7d aerobic + resistance adherence across the crew.",
+        actionSlot: "MEDB 5.2 150 min/d compliance",
       },
     ],
   },
   memberView: {
-    summary: "Personal EVA gate checklist, pre-test condition guard (caffeine/meal/strenuous exercise windows), personal low-N baseline trend, and R+0..R+45 reconditioning card.",
-    privacyRule: "All own measurements, notes, and trends stay private unless an audit-logged emergency unlock occurs.",
+    summary: "Pre-test condition guard (caffeine/meal/strenuous exercise windows), personal low-N calf & grip baseline trend, and R+0..R+45 reconditioning card.",
+    privacyRule: "All personal measurements and trends remain private to the crew member.",
     modules: [
       {
-        title: "Personal EVA Readiness Chain & Pre-Test Conditions",
-        detail: "Here is: Checklist covering PFE, Grip window (MR081L), Arm Ergometry (MEDB 6.3), Prebreathe verification (MR087L), ISLE training (MR090L), and 48h Health Status (MEDB 6.1).",
-        actionSlot: "Add your info: Test completion & conditions_met verification here",
+        title: "Pre-Test Condition Guard",
+        detail: "Verifies pre-test fasting, caffeine abstinence, exercise buffers, and morning fasted calf sampling.",
+        actionSlot: "MEDB 6.3 / MEDB 5.4 validity windows",
       },
       {
         title: "Atrophy, Proxy Bone-Shield & Return-to-Gravity Card",
-        detail: "Here is: Daily 2.5h exercise adherence + postflight 120 min/day reconditioning card (in-flight bone loss is estimated via resistance loading; DXA is pre/post only).",
-        actionSlot: "Add your info: Daily aerobic/resistance session & morning fasted calf log here",
+        detail: "Daily 2.5h exercise adherence + postflight 120 min/day reconditioning card (in-flight bone loss is estimated via resistance loading; DXA is pre/post only).",
+        actionSlot: "Daily aerobic/resistance session & morning fasted calf log",
       },
     ],
   },
   proposedEndpoints: [
-    { method: "GET", path: "/api/hazard-data?hazardSlug=gravity", purpose: "Fetch persisted gravity/EVA records for scenario + character" },
-    { method: "POST", path: "/api/hazard-data", purpose: "Upsert exercise, grip, calf, or EVA gate records into Supabase" },
+    { method: "GET", path: "/api/hazard-data?hazardSlug=gravity", purpose: "Fetch persisted gravity records for scenario + character" },
     { method: "GET", path: "/api/hazard-samples?hazardSlug=gravity", purpose: "Fetch historical calf/grip/exercise time-series samples for linear trend projection" },
   ],
   alarmPreset: {
-    title: "EVA READINESS GATE HOLD — SCHEDULE / PRE-TEST BLOCKER",
+    title: "GRAVITY CONDITIONING ALERT — ATROPHY / ADHERENCE FLAG",
     severity: "WARNING",
-    etaLabel: "Here is: Nearest EVA gate deadline (e.g., <= 48h Pre-EVA health status window or 24h grip lockout)",
+    etaLabel: "Projected days to ASSUMPTION conditioning cutoff",
     descriptionSlot:
-      "Here is: EVA gate evaluated NO-GO/CONDITIONAL due to missing pre-EVA verification, pre-test condition violation, or conditioning threshold alert.",
+      "Calf atrophy, grip decline, or exercise resistance deficit crossed configured ASSUMPTION alert thresholds.",
     leadActions: [
-      "1. Hold EVA suit donning for affected crew slot or rotate EVA assignment per Flight Note.",
-      "2. Use Audit-Logged Emergency Unlock only if mission-critical medical review is needed.",
+      "1. Review crew exercise adherence compliance and overdue measurement flags.",
+      "2. Adjust workload to protect daily 150 min MEDB 5.2 aerobic + resistance block.",
     ],
     memberActions: [
-      "1. Complete missing pre-EVA health status / verification under valid pre-test conditions.",
-      "2. Do not perform handgrip test within 24h prior to EVA (MR081L lockout).",
+      "1. Complete overdue morning fasted calf volume + body mass measurement.",
+      "2. Prioritize full 90-min resistance session >=2h before sleep.",
     ],
   },
   evaluate: evaluateGravityHazard,

@@ -160,11 +160,11 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
   },
   ready_to_act_guidance: {
     id: "ready_to_act_guidance",
-    title: "Dual-Horizon Guidance & Re-Entry Throttling",
+    title: "Dual-Horizon Operational Guidance",
     explanation:
-      "Separates immediate NASA safety limits (355 ms PVT-B lapse ceiling, ISS sleep floor, NC-40/50 acoustics) from prolonged trends (Martian sol drift, Third-Quarter window, Hazard 05 CO₂). In Re-Entry Mode, caps action cards to 1 step per NASA post-isolation guidance.",
+      "Separates immediate NASA safety limits (355 ms PVT-B lapse ceiling, ISS sleep floor, NC-40/50 acoustics) from prolonged trends (Martian sol drift, Third-Quarter window, Hazard 05 CO₂).",
     benchmark:
-      "Cross-correlates Hazard 05 ppCO2 (> 3.0 mmHg per NASA-STD-3001 / OCHMO-TB-004) & acoustics with sleep loss; caps solutions to 1 step in Re-Entry mode per NASA Emerging from Isolation.",
+      "Cross-correlates Hazard 05 ppCO2 (> 3.0 mmHg per NASA-STD-3001 / OCHMO-TB-004) & acoustics with sleep loss.",
     links: [
       {
         label: "Five Tips from NASA Crew on Emerging from Isolation",
@@ -473,12 +473,12 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     hazardSamples,
     allHazardRecords,
     scenarioHazardRecords = [],
-    reentryMode,
   } = input;
 
-  const maxSolutions = reentryMode ? 1 : 2;
+  const maxSolutions = 2;
   const isMarsSurface =
-    mission.phase.toUpperCase().includes("SURFACE") ||
+    mission.durationContext.toLowerCase().includes("surface") ||
+    mission.durationContext.toLowerCase().includes("sol") ||
     mission.name.toLowerCase().includes("chapea") ||
     mission.name.toLowerCase().includes("mars");
 
@@ -627,10 +627,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       : hasElevatedTelemetry
       ? "ELEVATED"
       : "NOMINAL"
-    : actor.readinessState === "HOLD"
-    ? "CRITICAL"
-    : actor.readinessState === "CONDITIONAL"
-    ? "ELEVATED"
     : "NOMINAL";
 
   // 9. Factual Operational Window & Horizon Summaries (no invented countdown formulas)
@@ -733,7 +729,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
         pvtCritical
           ? `PVT-B ${pvtMedianRtMs} ms (>= ${V.pvtLapseThresholdMs} ms lapse ceiling)`
           : `Sleep ${sleepDurationH} h (< ${V.issHistoricalMeanSleepHours} h ISS mean)`
-      } — defer precision EVA/rover tasks until an ${V.nasaStd3001SleepReqHours}–${V.scheduledSleepHours} h sleep window is completed.`
+      } — defer precision tasks until an ${V.nasaStd3001SleepReqHours}–${V.scheduledSleepHours} h sleep window is completed.`
     );
   } else if (sleepBelowNasaReq || pvtElevated) {
     rankedSolutions.push(
@@ -759,10 +755,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     if (!hasAnyIsolationTelemetry) {
       rankedSolutions.push(
         "Awaiting DB Telemetry: Ingest Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to evaluate against NASA benchmarks."
-      );
-    } else if (reentryMode) {
-      rankedSolutions.push(
-        "Post-Isolation Re-Entry Pacing [NASA Emerging from Isolation]: Telemetry is within NASA bounds — limit choices and maintain steady rest routines."
       );
     } else {
       const verifiedChecks = [
@@ -1065,7 +1057,7 @@ export const isolationHazard: HazardSpec = {
   },
   leadView: {
     summary:
-      "Anonymized crew sleep & PVT-B overview, NC-40 acoustic breaches, Mars500 Third-Quarter context, and Re-Entry UI throttling.",
+      "Anonymized crew sleep & PVT-B overview, NC-40 acoustic breaches, and Mars500 Third-Quarter context.",
     privacyRule:
       "STRICT PRIVACY FIREWALL: Raw journal entries, personal mood scores, and sleep-aid usage are masked and NEVER shown to Lead.",
     modules: [
@@ -1080,12 +1072,6 @@ export const isolationHazard: HazardSpec = {
         detail:
           "Here is: Distinguishes shared habitat noise (>49 dBA NC-40) or Hazard 05 CO₂ (>3.0 mmHg) from individual sleep loss.",
         actionSlot: "Ready-to-act: Inspect acoustic source in flagged crew quarters.",
-      },
-      {
-        title: "Post-Isolation Re-Entry Mode Toggle",
-        detail:
-          "Here is: Reduces non-essential alerts & caps action cards to 1 step per NASA Emerging from Isolation guidance.",
-        actionSlot: "Ready-to-act: Toggle Re-Entry mode in header when transitioning post-isolation.",
       },
     ],
   },
@@ -1105,7 +1091,7 @@ export const isolationHazard: HazardSpec = {
         title: "CONNECT & ISS Veggie Countermeasures",
         detail:
           "Here is: 1–2 actions grounded in ISS Veggie plant care, NASA CONNECT, and acoustic/lighting compliance.",
-        actionSlot: "Ready-to-act: Execute top-ranked countermeasure aligned with current mission phase.",
+        actionSlot: "Ready-to-act: Execute top-ranked countermeasure from live telemetry.",
       },
     ],
   },
@@ -1124,7 +1110,7 @@ export const isolationHazard: HazardSpec = {
   alarmPreset: {
     title: "CIRCADIAN & VIGILANCE DEBUFF — PRE-TASK HOLD",
     severity: "WARNING",
-    etaLabel: "Here is: Operational gate status prior to scheduled precision task / EVA",
+    etaLabel: "Here is: Operational gate status prior to scheduled precision tasks",
     descriptionSlot:
       "Here is: Sleep below 6.09 h ISS mean, PVT-B lapse (>=355 ms), or sleep-quarter acoustic breach (>49 dBA NC-40) detected in device streams.",
     leadActions: [
@@ -1132,7 +1118,7 @@ export const isolationHazard: HazardSpec = {
       "2. Shift non-critical maintenance to restore protected 8.0–8.5h sleep window.",
     ],
     memberActions: [
-      "1. Defer precision EVA tasks and complete a protected 8.0–8.5h recovery sleep window.",
+      "1. Defer high-precision tasks and complete a protected 8.0–8.5h recovery sleep window.",
       "2. Use hearing protection and follow pre-sleep dim/red lighting schedule.",
     ],
   },

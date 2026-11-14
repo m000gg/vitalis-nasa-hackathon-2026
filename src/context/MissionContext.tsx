@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AuditLogEntry, CrewSlot, DtnMessage, MissionProfile, UserRole } from "@/lib/domain";
+import { AuditLogEntry, CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
 import { HAZARDS, HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
 import { evaluateHazardForActor } from "@/lib/evaluator";
 import { useAlerts } from "@/context/AlertContext";
@@ -31,7 +31,7 @@ export interface PrivateCheckIn {
 
 export interface CreateScenarioInput {
   name: string;
-  phase: string;
+  durationContext: string;
   scenarioDescriptionSlot: string;
   commsDelayLabel: string;
   leaderCallsign?: string;
@@ -42,8 +42,6 @@ export interface CreateCharacterInput {
   callsign: string;
   assignedRoleTitle: string;
   isLeadSlot: boolean;
-  readinessState?: CrewSlot["readinessState"];
-  evaGateState?: CrewSlot["evaGateState"];
 }
 
 export interface UpdateCharacterInput {
@@ -52,9 +50,6 @@ export interface UpdateCharacterInput {
   callsign?: string;
   assignedRoleTitle?: string;
   isLeadSlot?: boolean;
-  readinessState?: CrewSlot["readinessState"];
-  evaGateState?: CrewSlot["evaGateState"];
-  shelterConfirmed?: boolean;
   publicStatusSummary?: string;
 }
 
@@ -76,10 +71,6 @@ interface MissionContextValue {
   setRole: (role: UserRole) => void;
   selectedMemberId: string;
   setSelectedMemberId: (id: string) => void;
-  linkOnline: boolean;
-  setLinkOnline: (online: boolean) => void;
-  reentryMode: boolean;
-  setReentryMode: (enabled: boolean) => void;
   actorInputs: Record<string, Record<string, string>>;
   hazardRecords: HazardDataRecord[];
   hazardSamples: HazardSampleRecord[];
@@ -99,13 +90,8 @@ interface MissionContextValue {
     numericValue?: number | null;
     samplePayload?: Record<string, unknown>;
   }) => Promise<void>;
-  dtnQueue: DtnMessage[];
-  queueDtnReport: (reportTitle: string, hazardSlug: string, payloadSummary: string) => Promise<void>;
-  syncDtnQueue: () => Promise<void>;
   auditLog: AuditLogEntry[];
   addAuditEntry: (targetCallsign: string, reason: string, action: string) => void;
-  shelterConfirmations: Record<string, boolean>;
-  toggleCrewShelter: (crewId: string) => void;
   privateCheckIns: PrivateCheckIn[];
   addPrivateCheckIn: (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => Promise<void>;
 }
@@ -128,23 +114,6 @@ function parseOptionalNumber(raw: string): number | null {
   return null;
 }
 
-function buildInitialDtnForMission(m: MissionProfile): DtnMessage[] {
-  const firstMember = m.crew.find((c) => !c.isLeadSlot) ?? m.crew[0];
-  if (!firstMember) return [];
-  return [
-    {
-      id: `dtn-init-${m.id}`,
-      reportTitle: `Here is: Baseline Crew Report (${m.name})`,
-      senderCallsign: firstMember.callsign,
-      hazardSlug: "distance",
-      status: m.environment.linkOnlineDefault ? "ACKNOWLEDGED" : "PENDING",
-      createdAt: "Scenario Initialized",
-      retryCount: m.environment.linkOnlineDefault ? 0 : 1,
-      payloadSummary: "Add your info: Structured symptom & vital baseline delta summary here",
-    },
-  ];
-}
-
 export function MissionProvider({ children }: { children: React.ReactNode }) {
   const { pushToast, triggerAlarm } = useAlerts();
   const [scenarios, setScenarios] = useState<MissionProfile[]>([]);
@@ -152,15 +121,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   const [dbError, setDbError] = useState<string | null>(null);
   const [missionId, setMissionIdState] = useState<string>("");
   const [activeCharacterId, setActiveCharacterIdState] = useState<string>("");
-  const [linkOnline, setLinkOnline] = useState<boolean>(false);
-  const [reentryMode, setReentryMode] = useState<boolean>(false);
   const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
   const [scenarioHazardRecords, setScenarioHazardRecords] = useState<HazardDataRecord[]>([]);
   const [scenarioHazardSamples, setScenarioHazardSamples] = useState<HazardSampleRecord[]>([]);
   const [lastTelemetrySyncAt, setLastTelemetrySyncAt] = useState<string | null>(null);
-  const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
-  const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
   const hasLoadedScenarioTelemetryRef = useRef<string | null>(null);
   const evaluatedBaselineRef = useRef<{
     actorKey: string;
@@ -205,7 +170,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       if (loadedScenarios.length === 0) {
         setMissionIdState("");
         setActiveCharacterIdState("");
-        setDtnQueue([]);
         return;
       }
 
@@ -233,8 +197,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
 
       setMissionIdState(targetMission.id);
       setActiveCharacterIdState(targetChar ? targetChar.id : "");
-      setLinkOnline(targetMission.environment.linkOnlineDefault);
-      setDtnQueue(buildInitialDtnForMission(targetMission));
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to connect to Supabase (/api/scenarios)";
@@ -260,18 +222,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       ? mission?.crew.find((c) => !c.isLeadSlot)?.id ?? mission?.crew[0]?.id ?? ""
       : activeCharacter.id
     : "";
-
-  useEffect(() => {
-    if (!mission) {
-      setShelterConfirmations({});
-      return;
-    }
-    const initial: Record<string, boolean> = {};
-    mission.crew.forEach((c) => {
-      initial[c.id] = c.shelterConfirmed;
-    });
-    setShelterConfirmations(initial);
-  }, [mission]);
 
   const missionIdLoaded = mission?.id ?? "";
 
@@ -401,8 +351,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         scenarioHazardRecords,
         scenarioHazardSamples,
         role,
-        linkOnline,
-        reentryMode,
       });
       nextStatuses[h.slug] = snap.status;
       return { hazard: h, snap };
@@ -441,8 +389,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     mission,
     activeCharacter,
     role,
-    linkOnline,
-    reentryMode,
     actorInputs,
     hazardRecords,
     hazardSamples,
@@ -514,8 +460,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       if (defaultChar) {
         persistSession(found.id, defaultChar.id);
       }
-      setLinkOnline(found.environment.linkOnlineDefault);
-      setDtnQueue(buildInitialDtnForMission(found));
     },
     [scenarios]
   );
@@ -761,46 +705,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     [activeCharacter, mission]
   );
 
-  const queueDtnReport = useCallback(
-    async (reportTitle: string, hazardSlug: string, payloadSummary: string) => {
-      const senderCallsign = activeCharacter?.callsign ?? "Unknown";
-      const res = await fetch("/api/communications/queue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reportTitle,
-          senderCallsign,
-          hazardSlug,
-          payloadSummary,
-          linkOnline,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} queueing DTN report`);
-      }
-      const data = await res.json();
-      setDtnQueue((prev) => [data.message, ...prev]);
-    },
-    [activeCharacter, linkOnline]
-  );
-
-  const syncDtnQueue = useCallback(async () => {
-    const res = await fetch("/api/communications/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ count: dtnQueue.filter((m) => m.status === "PENDING").length }),
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} syncing DTN queue`);
-    }
-    const now = new Date().toLocaleTimeString();
-    setDtnQueue((prev) =>
-      prev.map((m) =>
-        m.status === "PENDING" ? { ...m, status: "ACKNOWLEDGED", sentAt: now, acknowledgedAt: now } : m
-      )
-    );
-  }, [dtnQueue]);
-
   const addAuditEntry = useCallback(
     (targetCallsign: string, reason: string, action: string) => {
       setAuditLog((prev) => [
@@ -817,13 +721,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     },
     [role]
   );
-
-  const toggleCrewShelter = useCallback((crewId: string) => {
-    setShelterConfirmations((prev) => ({
-      ...prev,
-      [crewId]: !prev[crewId],
-    }));
-  }, []);
 
   const addPrivateCheckIn = useCallback(
     async (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => {
@@ -875,10 +772,6 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         setRole,
         selectedMemberId,
         setSelectedMemberId,
-        linkOnline,
-        setLinkOnline,
-        reentryMode,
-        setReentryMode,
         actorInputs,
         hazardRecords,
         hazardSamples,
@@ -888,13 +781,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         refreshHazardTelemetry,
         saveActorInput,
         appendHazardSample,
-        dtnQueue,
-        queueDtnReport,
-        syncDtnQueue,
         auditLog,
         addAuditEntry,
-        shelterConfirmations,
-        toggleCrewShelter,
         privateCheckIns,
         addPrivateCheckIn,
       }}

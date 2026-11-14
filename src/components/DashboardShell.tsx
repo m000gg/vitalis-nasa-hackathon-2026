@@ -5,15 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
-  Bell,
   Database,
   LayoutDashboard,
-  Radio,
   RefreshCw,
   Shield,
   Users,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
@@ -31,37 +27,24 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     lastTelemetrySyncAt,
     refreshHazardTelemetry,
     role,
-    linkOnline,
-    setLinkOnline,
-    reentryMode,
-    setReentryMode,
-    dtnQueue,
   } = useMission();
   const { pushToast } = useAlerts();
-
-  const pendingDtnCount = dtnQueue.filter((m) => m.status === "PENDING").length;
 
   const navItems = [
     {
       href: "/dashboard",
-      label: role === "lead" ? "Lead Overview" : "Member Overview",
+      label: "Dashboard",
       icon: LayoutDashboard,
     },
-    {
-      href: "/dashboard/crew",
-      label: role === "lead" ? "Crew Matrix" : "Readiness & EVA",
-      icon: Users,
-    },
-    {
-      href: "/dashboard/comms",
-      label: `DTN Comms (${pendingDtnCount})`,
-      icon: Radio,
-    },
-    {
-      href: "/dashboard/alerts",
-      label: "Alerts & Buddy-Rescue",
-      icon: Bell,
-    },
+    ...(role === "lead"
+      ? [
+          {
+            href: "/dashboard/members",
+            label: "Members",
+            icon: Users,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -146,47 +129,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 ))}
               </select>
             )}
-
-            <button
-              type="button"
-              onClick={() => {
-                const next = !linkOnline;
-                setLinkOnline(next);
-                pushToast({
-                  title: next ? "Earth Link Online" : "Earth Link Blackout",
-                  message: next ? "Here is: DTN sync available." : "Here is: Offline-first local mode active.",
-                  variant: next ? "success" : "warning",
-                });
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
-                linkOnline
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-amber-200 bg-amber-50 text-amber-800"
-              }`}
-            >
-              {linkOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-              {linkOnline ? "Online" : "Blackout"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const next = !reentryMode;
-                setReentryMode(next);
-                pushToast({
-                  title: next ? "Re-Entry Mode" : "Operational Mode",
-                  message: next ? "Here is: 1-step action cap enabled." : "Here is: Standard 1–2 action mode.",
-                  variant: "info",
-                });
-              }}
-              className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
-                reentryMode
-                  ? "border-indigo-200 bg-indigo-50 text-indigo-800"
-                  : "border-slate-200 bg-white text-slate-600"
-              }`}
-            >
-              {reentryMode ? "Phase: Re-Entry" : "Phase: Ops"}
-            </button>
           </div>
         </div>
       </header>

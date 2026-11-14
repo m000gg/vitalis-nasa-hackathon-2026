@@ -22,8 +22,6 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     activeCharacter,
     role,
     dbStatus,
-    linkOnline,
-    reentryMode,
     actorInputs,
     hazardRecords,
     hazardSamples,
@@ -47,8 +45,6 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     scenarioHazardRecords,
     scenarioHazardSamples,
     role,
-    linkOnline,
-    reentryMode,
   });
 
   const safeScenarioRecords = sanitizeHazardRecordsForRole(scenarioHazardRecords, role);
@@ -135,8 +131,6 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
         hazardSamples={safeHazardSamples}
         scenarioHazardRecords={safeScenarioRecords}
         scenarioHazardSamples={safeScenarioSamples}
-        linkOnline={linkOnline}
-        reentryMode={reentryMode}
       />
     </DashboardShell>
   );

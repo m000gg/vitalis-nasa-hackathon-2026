@@ -1,4 +1,4 @@
-import { CrewSlot, MissionProfile, ReadinessState, UserRole } from "@/lib/domain";
+import { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
 import {
   HAZARDS,
   HazardChartSpec,
@@ -21,9 +21,6 @@ export interface CharacterDashboardModel {
   actorId: string;
   callsign: string;
   roleTitle: string;
-  readinessState: ReadinessState;
-  evaGateState: "GO" | "CONDITIONAL" | "NO-GO";
-  shelterConfirmed: boolean;
   etaLabel: string;
   actions: string[];
   blockers: string[];
@@ -37,19 +34,18 @@ export interface CharacterDashboardModel {
 
 export interface LeaderDashboardModel {
   totalCrew: number;
-  goCount: number;
-  conditionalCount: number;
-  holdCount: number;
-  shelteredCount: number;
+  nominalCount: number;
+  elevatedCount: number;
+  criticalCount: number;
   crewMatrix: Array<{
     id: string;
     callsign: string;
     assignedRoleTitle: string;
-    readinessState: ReadinessState;
-    evaGateState: "GO" | "CONDITIONAL" | "NO-GO";
-    shelterConfirmed: boolean;
+    isLeadSlot: boolean;
+    overallStatus: HazardEvaluationResult["status"];
     publicStatusSummary: string;
     blockerCount: number;
+    hazardStatuses: Record<HazardSlug, HazardEvaluationResult["status"]>;
   }>;
   derivedTeamAlerts: string[];
 }
@@ -201,19 +197,16 @@ function sanitizeActorInputsForRole(
 export function evaluateCharacterDashboard(
   actor: CrewSlot,
   options: {
-    shelterConfirmed: boolean;
-    reentryMode: boolean;
     customInputs?: Record<string, string>;
     mission?: MissionProfile;
     hazardRecords?: HazardDataRecord[];
     hazardSamples?: HazardSampleRecord[];
     scenarioHazardRecords?: readonly HazardDataRecord[];
     scenarioHazardSamples?: readonly HazardSampleRecord[];
-    linkOnline?: boolean;
     role?: UserRole;
-  }
+  } = {}
 ): CharacterDashboardModel {
-  const maxActions = options.reentryMode ? 1 : 2;
+  const maxActions = 2;
   const effectiveRole: UserRole = options.role ?? (actor.isLeadSlot ? "lead" : "member");
   const liveBlockers: string[] = [];
   const criticalSolutions: string[] = [];
@@ -228,8 +221,6 @@ export function evaluateCharacterDashboard(
         scenarioHazardRecords: options.scenarioHazardRecords,
         scenarioHazardSamples: options.scenarioHazardSamples,
         role: effectiveRole,
-        linkOnline: options.linkOnline ?? options.mission.environment.linkOnlineDefault,
-        reentryMode: options.reentryMode,
       });
 
       if (snap.status === "CRITICAL" || snap.status === "ELEVATED") {
@@ -253,9 +244,6 @@ export function evaluateCharacterDashboard(
     actorId: actor.id,
     callsign: actor.callsign,
     roleTitle: actor.assignedRoleTitle,
-    readinessState: actor.readinessState,
-    evaGateState: actor.evaGateState,
-    shelterConfirmed: options.shelterConfirmed,
     etaLabel: actor.metrics.etaSlot,
     actions,
     blockers,
@@ -270,79 +258,74 @@ export function evaluateCharacterDashboard(
 
 export function evaluateLeaderDashboard(
   mission: MissionProfile,
-  shelterConfirmations: Record<string, boolean>,
   options?: {
     actorInputs?: Record<string, Record<string, string>>;
     scenarioHazardRecords?: readonly HazardDataRecord[];
     scenarioHazardSamples?: readonly HazardSampleRecord[];
-    linkOnline?: boolean;
-    reentryMode?: boolean;
   }
 ): LeaderDashboardModel {
-  const linkOnline = options?.linkOnline ?? mission.environment.linkOnlineDefault;
-  const reentryMode = options?.reentryMode ?? false;
-
   const evalsByHazard = new Map<HazardSlug, HazardActorSnapshot[]>();
   const alertCountByMember = new Map<string, number>();
+  const hazardStatusesByMember = new Map<string, Record<HazardSlug, HazardEvaluationResult["status"]>>();
 
-  if (options) {
-    for (const member of mission.crew) {
-      const memberRecords = (options.scenarioHazardRecords ?? []).filter(
-        (r) => r.characterId === member.id
-      );
-      const memberSamples = (options.scenarioHazardSamples ?? []).filter(
-        (s) => s.characterId === member.id
-      );
-      let memberAlerts = 0;
+  for (const member of mission.crew) {
+    const memberRecords = (options?.scenarioHazardRecords ?? []).filter(
+      (r) => r.characterId === member.id
+    );
+    const memberSamples = (options?.scenarioHazardSamples ?? []).filter(
+      (s) => s.characterId === member.id
+    );
+    let memberAlerts = 0;
+    const perHazard = {} as Record<HazardSlug, HazardEvaluationResult["status"]>;
 
-      for (const h of HAZARDS) {
-        const snap = evaluateHazardForActor(mission, member, h, {
-          actorInputs: options.actorInputs?.[member.id] ?? {},
-          hazardRecords: memberRecords,
-          hazardSamples: memberSamples,
-          scenarioHazardRecords: options.scenarioHazardRecords,
-          scenarioHazardSamples: options.scenarioHazardSamples,
-          role: "lead",
-          linkOnline,
-          reentryMode,
-        });
-        if (snap.status === "CRITICAL" || snap.status === "ELEVATED") {
-          memberAlerts += 1;
-        }
-        const list = evalsByHazard.get(h.slug) ?? [];
-        list.push(snap);
-        evalsByHazard.set(h.slug, list);
+    for (const h of HAZARDS) {
+      const snap = evaluateHazardForActor(mission, member, h, {
+        actorInputs: options?.actorInputs?.[member.id] ?? {},
+        hazardRecords: memberRecords,
+        hazardSamples: memberSamples,
+        scenarioHazardRecords: options?.scenarioHazardRecords,
+        scenarioHazardSamples: options?.scenarioHazardSamples,
+        role: "lead",
+      });
+      perHazard[h.slug] = snap.status;
+      if (snap.status === "CRITICAL" || snap.status === "ELEVATED") {
+        memberAlerts += 1;
       }
-
-      alertCountByMember.set(member.id, memberAlerts);
+      const list = evalsByHazard.get(h.slug) ?? [];
+      list.push(snap);
+      evalsByHazard.set(h.slug, list);
     }
+
+    hazardStatusesByMember.set(member.id, perHazard);
+    alertCountByMember.set(member.id, memberAlerts);
   }
 
-  const crewMatrix = mission.crew.map((member) => ({
-    id: member.id,
-    callsign: member.callsign,
-    assignedRoleTitle: member.assignedRoleTitle,
-    readinessState: member.readinessState,
-    evaGateState: member.evaGateState,
-    shelterConfirmed: !!shelterConfirmations[member.id],
-    publicStatusSummary: member.publicStatusSummary,
-    blockerCount: member.metrics.blockers.length + (alertCountByMember.get(member.id) ?? 0),
-  }));
+  const crewMatrix = mission.crew.map((member) => {
+    const statuses = hazardStatusesByMember.get(member.id) ?? ({} as Record<HazardSlug, HazardEvaluationResult["status"]>);
+    const vals = Object.values(statuses);
+    const overallStatus: HazardEvaluationResult["status"] = vals.includes("CRITICAL")
+      ? "CRITICAL"
+      : vals.includes("ELEVATED")
+      ? "ELEVATED"
+      : "NOMINAL";
 
-  const goCount = crewMatrix.filter((c) => c.readinessState === "GO").length;
-  const conditionalCount = crewMatrix.filter((c) => c.readinessState === "CONDITIONAL").length;
-  const holdCount = crewMatrix.filter((c) => c.readinessState === "HOLD").length;
-  const shelteredCount = crewMatrix.filter((c) => c.shelterConfirmed).length;
+    return {
+      id: member.id,
+      callsign: member.callsign,
+      assignedRoleTitle: member.assignedRoleTitle,
+      isLeadSlot: member.isLeadSlot,
+      overallStatus,
+      publicStatusSummary: member.publicStatusSummary,
+      blockerCount: member.metrics.blockers.length + (alertCountByMember.get(member.id) ?? 0),
+      hazardStatuses: statuses,
+    };
+  });
+
+  const nominalCount = crewMatrix.filter((c) => c.overallStatus === "NOMINAL").length;
+  const elevatedCount = crewMatrix.filter((c) => c.overallStatus === "ELEVATED").length;
+  const criticalCount = crewMatrix.filter((c) => c.overallStatus === "CRITICAL").length;
 
   const derivedTeamAlerts: string[] = [];
-  if (holdCount > 0) {
-    derivedTeamAlerts.push(`Here is: ${holdCount} crew slot(s) currently in HOLD readiness state.`);
-  }
-  if (shelteredCount < crewMatrix.length) {
-    derivedTeamAlerts.push(
-      `Here is: ${crewMatrix.length - shelteredCount} crew slot(s) with unconfirmed shelter status.`
-    );
-  }
 
   for (const h of HAZARDS) {
     const snaps = evalsByHazard.get(h.slug) ?? [];
@@ -361,15 +344,14 @@ export function evaluateLeaderDashboard(
   }
 
   if (derivedTeamAlerts.length === 0) {
-    derivedTeamAlerts.push("Here is: All crew slots currently GO and shelter-confirmed.");
+    derivedTeamAlerts.push("All 5 hazard zones across crew slots are currently NOMINAL.");
   }
 
   return {
     totalCrew: crewMatrix.length,
-    goCount,
-    conditionalCount,
-    holdCount,
-    shelteredCount,
+    nominalCount,
+    elevatedCount,
+    criticalCount,
     crewMatrix,
     derivedTeamAlerts,
   };
@@ -390,8 +372,6 @@ export function evaluateHazardForActor(
     scenarioHazardRecords?: readonly HazardDataRecord[];
     scenarioHazardSamples?: readonly HazardSampleRecord[];
     role?: UserRole;
-    linkOnline: boolean;
-    reentryMode: boolean;
   }
 ): HazardActorSnapshot {
   const effectiveRole: UserRole = options.role ?? (actor.isLeadSlot ? "lead" : "member");
@@ -432,8 +412,6 @@ export function evaluateHazardForActor(
     allHazardSamples: allSamples,
     scenarioHazardRecords: scenarioRecords,
     scenarioHazardSamples: scenarioSamples,
-    linkOnline: options.linkOnline,
-    reentryMode: options.reentryMode,
   });
 
   // Auto-generate fallback charts for any numeric time-series streams logged via character_hazard_samples
@@ -467,7 +445,7 @@ export function evaluateHazardForActor(
     ...result,
     charts,
     hazardSlug: hazard.slug,
-    actorStatusLabel: `${actor.callsign} — Readiness: ${actor.readinessState} (EVA: ${actor.evaGateState})`,
+    actorStatusLabel: `${actor.callsign} (${actor.assignedRoleTitle})`,
     actorInputOverrides: sanitizedActorInputs,
   };
 }

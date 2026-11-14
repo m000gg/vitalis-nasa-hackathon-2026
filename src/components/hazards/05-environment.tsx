@@ -81,7 +81,6 @@ export function EnvironmentHazardScreen({
   snapshot,
   hazardRecords,
   scenarioHazardRecords,
-  reentryMode,
 }: HazardScreenProps) {
   const readStream = (streamName: string) =>
     hazardRecords.find((r) => r.streamName === streamName)?.rawValue ||
@@ -122,11 +121,6 @@ export function EnvironmentHazardScreen({
               {bannerText} · Simulated Minute: {Math.floor(elapsedMin / 10) * 10} · Scenario: {scenarioId}
             </span>
           </div>
-          {reentryMode && (
-            <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-900">
-              Re-Entry Mode · 1-Action Cap
-            </span>
-          )}
         </div>
         <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] text-amber-900">
           {V.limitsTooltipLines.map((line) => (
@@ -179,8 +173,7 @@ export function EnvironmentHazardScreen({
 
           <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
             <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
-              Prioritized Module Actions ({snapshot.solutions.length}{" "}
-              {reentryMode ? "· Re-Entry Cap" : "Max"})
+              Prioritized Module Actions ({snapshot.solutions.length} Max)
             </p>
             {snapshot.solutions.length > 0 ? (
               <ol className="mt-2.5 space-y-2">

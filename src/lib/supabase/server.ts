@@ -37,7 +37,6 @@ export function getSupabaseServerClient(): SupabaseClient {
 interface ScenarioRow {
   id: string;
   name: string;
-  phase: string;
   duration_context: string;
   comms_delay_label: string;
   active_hazards_highlight: string[];
@@ -51,9 +50,6 @@ interface CharacterRow {
   callsign: string;
   assigned_role_title: string;
   is_lead_slot: boolean;
-  readiness_state: CrewSlot["readinessState"];
-  eva_gate_state: CrewSlot["evaGateState"];
-  shelter_confirmed: boolean;
   public_status_summary: string;
   private_member_notes: string;
   metrics: CrewSlot["metrics"];
@@ -87,9 +83,6 @@ function mapCharacterRow(row: CharacterRow): CrewSlot {
     callsign: row.callsign,
     assignedRoleTitle: row.assigned_role_title,
     isLeadSlot: row.is_lead_slot,
-    readinessState: row.readiness_state,
-    evaGateState: row.eva_gate_state,
-    shelterConfirmed: row.shelter_confirmed,
     publicStatusSummary: row.public_status_summary,
     privateMemberNotesSlot: row.private_member_notes,
     metrics: row.metrics,
@@ -120,7 +113,6 @@ export async function fetchScenariosFromDb(): Promise<{ scenarios: MissionProfil
   const mapped: MissionProfile[] = ((scenarioRows ?? []) as ScenarioRow[]).map((s) => ({
     id: s.id,
     name: s.name,
-    phase: s.phase,
     durationContext: s.duration_context,
     commsDelayLabel: s.comms_delay_label,
     activeHazardsHighlight: s.active_hazards_highlight ?? [],
@@ -137,7 +129,7 @@ export async function fetchScenariosFromDb(): Promise<{ scenarios: MissionProfil
 export async function createScenarioInDb(input: {
   id: string;
   name: string;
-  phase: string;
+  durationContext: string;
   scenarioDescriptionSlot: string;
   commsDelayLabel: string;
   leaderCallsign?: string;
@@ -149,21 +141,18 @@ export async function createScenarioInDb(input: {
     callsign: input.leaderCallsign || "Leader — Commander",
     assignedRoleTitle: "Crew Captain / Mission Commander",
     isLeadSlot: true,
-    readinessState: "GO",
-    evaGateState: "GO",
-    shelterConfirmed: true,
-    publicStatusSummary: "Here is: Duty readiness & shelter oversight status",
+    publicStatusSummary: "Mission commander hazard & crew oversight status",
     privateMemberNotesSlot: "Add your info: Personal private reflection slot here",
     metrics: {
-      etaSlot: "Add your info: Next command review / shelter window ETA here",
-      doseSlot: "Add your info: Personal cumulative dose (Gy / Sv) here",
+      etaSlot: "Add your info: Next command review ETA here",
+      doseSlot: "Add your info: Personal cumulative dose (mSv) here",
       sleepSlot: "Add your info: Personal sleep duration slot here",
       fatigueSlot: "Add your info: 60s self-check slot here",
       exerciseAdherenceSlot: "Add your info: Daily 2.5h exercise adherence slot here",
       blockers: [],
       actions: [
-        "Here is: Action 1 — Verify crew readiness & shelter status.",
-        "Here is: Action 2 — Review module environmental telemetry.",
+        "Action 1 — Review crew vitals across all 5 NASA hazard zones.",
+        "Action 2 — Review module environmental telemetry.",
       ],
     },
   };
@@ -173,21 +162,18 @@ export async function createScenarioInDb(input: {
     callsign: `Member ${num}`,
     assignedRoleTitle: `Add your info: Member ${num} role title here`,
     isLeadSlot: false,
-    readinessState: "GO",
-    evaGateState: "GO",
-    shelterConfirmed: false,
-    publicStatusSummary: `Here is: Duty readiness (GO) & EVA (GO) for Member ${num}`,
+    publicStatusSummary: `Nominal monitoring status for Member ${num}`,
     privateMemberNotesSlot: "Add your info: Private journal / personal notes here",
     metrics: {
       etaSlot: "Add your info: Character Estimated Time of Action here",
-      doseSlot: "Add your info: Personal cumulative dose (Gy / Sv) here",
+      doseSlot: "Add your info: Personal cumulative dose (mSv) here",
       sleepSlot: "Add your info: Sleep duration (h) & quality slot here",
       fatigueSlot: "Add your info: Subjective fatigue (1–5) & PVT-B slot here",
       exerciseAdherenceSlot: "Add your info: Daily exercise log slot here",
       blockers: [],
       actions: [
-        "Here is: Action 1 — Complete 60s guided self-check.",
-        "Here is: Action 2 — Confirm shelter & habitat readiness.",
+        "Action 1 — Complete 60s guided self-check.",
+        "Action 2 — Review habitat & radiation telemetry.",
       ],
     },
   }));
@@ -197,19 +183,17 @@ export async function createScenarioInDb(input: {
   const scenario: MissionProfile = {
     id: input.id,
     name: input.name,
-    phase: input.phase,
-    durationContext: `Here is: Custom scenario (${input.phase})`,
+    durationContext: input.durationContext,
     commsDelayLabel: input.commsDelayLabel,
     activeHazardsHighlight: ["Space Radiation", "Isolation & Confinement", "Distance from Earth"],
     scenarioDescriptionSlot: input.scenarioDescriptionSlot,
     environment: {
       commsDelaySlot: input.commsDelayLabel,
-      linkOnlineDefault: false,
       radiationStatusSlot: "Add your info: Compartment radiation status here",
       atmosphereStatusSlot: "Add your info: Cabin CO₂ / O₂ / pressure here",
       acousticsStatusSlot: "Add your info: Sleep quarter acoustic level here",
       isolationStatusSlot: "Add your info: Confinement / circadian status here",
-      gravityStatusSlot: "Add your info: Conditioning / EVA schedule status here",
+      gravityStatusSlot: "Add your info: Muscle/bone conditioning status here",
     },
     crew: defaultCrew,
   };
@@ -217,7 +201,6 @@ export async function createScenarioInDb(input: {
   const { error: sErr } = await client.from("scenarios").insert({
     id: scenario.id,
     name: scenario.name,
-    phase: scenario.phase,
     duration_context: scenario.durationContext,
     comms_delay_label: scenario.commsDelayLabel,
     active_hazards_highlight: scenario.activeHazardsHighlight,
@@ -236,9 +219,6 @@ export async function createScenarioInDb(input: {
       callsign: member.callsign,
       assigned_role_title: member.assignedRoleTitle,
       is_lead_slot: member.isLeadSlot,
-      readiness_state: member.readinessState,
-      eva_gate_state: member.evaGateState,
-      shelter_confirmed: member.shelterConfirmed,
       public_status_summary: member.publicStatusSummary,
       private_member_notes: member.privateMemberNotesSlot,
       metrics: member.metrics,
@@ -258,8 +238,6 @@ export async function createCharacterInDb(input: {
   callsign: string;
   assignedRoleTitle: string;
   isLeadSlot: boolean;
-  readinessState: CrewSlot["readinessState"];
-  evaGateState: CrewSlot["evaGateState"];
 }): Promise<{ character: CrewSlot }> {
   const client = getSupabaseServerClient();
 
@@ -268,21 +246,18 @@ export async function createCharacterInDb(input: {
     callsign: input.callsign,
     assignedRoleTitle: input.assignedRoleTitle,
     isLeadSlot: input.isLeadSlot,
-    readinessState: input.readinessState,
-    evaGateState: input.evaGateState,
-    shelterConfirmed: false,
-    publicStatusSummary: `Here is: Duty readiness (${input.readinessState}) & EVA (${input.evaGateState})`,
+    publicStatusSummary: `Nominal hazard monitoring (${input.assignedRoleTitle})`,
     privateMemberNotesSlot: "Add your info: Private journal / personal notes here",
     metrics: {
       etaSlot: "Add your info: Character Estimated Time of Action here",
-      doseSlot: "Add your info: Personal cumulative dose (Gy / Sv) here",
+      doseSlot: "Add your info: Personal cumulative dose (mSv) here",
       sleepSlot: "Add your info: Sleep duration (h) & quality slot here",
       fatigueSlot: "Add your info: Subjective fatigue (1–5) & PVT-B slot here",
       exerciseAdherenceSlot: "Add your info: Daily exercise log slot here",
-      blockers: input.readinessState === "GO" ? [] : ["Here is: Readiness or EVA check pending"],
+      blockers: [],
       actions: [
-        "Here is: Action 1 — Complete 60s guided self-check.",
-        "Here is: Action 2 — Confirm shelter & habitat readiness.",
+        "Action 1 — Complete 60s guided self-check.",
+        "Action 2 — Review daily conditioning and module telemetry.",
       ],
     },
   };
@@ -293,9 +268,6 @@ export async function createCharacterInDb(input: {
     callsign: character.callsign,
     assigned_role_title: character.assignedRoleTitle,
     is_lead_slot: character.isLeadSlot,
-    readiness_state: character.readinessState,
-    eva_gate_state: character.evaGateState,
-    shelter_confirmed: character.shelterConfirmed,
     public_status_summary: character.publicStatusSummary,
     private_member_notes: character.privateMemberNotesSlot,
     metrics: character.metrics,
@@ -313,9 +285,6 @@ export async function updateCharacterInDb(input: {
   callsign?: string;
   assignedRoleTitle?: string;
   isLeadSlot?: boolean;
-  readinessState?: CrewSlot["readinessState"];
-  evaGateState?: CrewSlot["evaGateState"];
-  shelterConfirmed?: boolean;
   publicStatusSummary?: string;
   privateMemberNotesSlot?: string;
   metrics?: CrewSlot["metrics"];
@@ -326,9 +295,6 @@ export async function updateCharacterInDb(input: {
   if (input.callsign !== undefined) updates.callsign = input.callsign;
   if (input.assignedRoleTitle !== undefined) updates.assigned_role_title = input.assignedRoleTitle;
   if (input.isLeadSlot !== undefined) updates.is_lead_slot = input.isLeadSlot;
-  if (input.readinessState !== undefined) updates.readiness_state = input.readinessState;
-  if (input.evaGateState !== undefined) updates.eva_gate_state = input.evaGateState;
-  if (input.shelterConfirmed !== undefined) updates.shelter_confirmed = input.shelterConfirmed;
   if (input.publicStatusSummary !== undefined) updates.public_status_summary = input.publicStatusSummary;
   if (input.privateMemberNotesSlot !== undefined) updates.private_member_notes = input.privateMemberNotesSlot;
   if (input.metrics !== undefined) updates.metrics = input.metrics;

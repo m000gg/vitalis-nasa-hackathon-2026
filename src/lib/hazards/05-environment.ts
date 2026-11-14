@@ -198,7 +198,6 @@ export interface ModuleSimulation {
 type ModuleConfig = (typeof ENVIRONMENT_PIPELINE_VALUES.modules)[number];
 
 const STATUS_SEVERITY: Record<AirStatus, number> = { green: 0, yellow: 1, red: 2 };
-const HAZARD_SEVERITY: Record<HazardEvaluationResult["status"], number> = { NOMINAL: 0, ELEVATED: 1, CRITICAL: 2 };
 
 function fmt(value: number, decimals: number): string {
   return String(Number(value.toFixed(decimals)));
@@ -502,8 +501,8 @@ function buildSolutions(analyses: ModuleAnalysis[], maxSolutions: number): strin
 }
 
 export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { actor, actorInputs, hazardRecords, scenarioHazardRecords = [], reentryMode } = input;
-  const maxSolutions = reentryMode ? 1 : 2;
+  const { actor, actorInputs, hazardRecords, scenarioHazardRecords = [] } = input;
+  const maxSolutions = 2;
 
   const readStream = (streamName: string) =>
     actorInputs[streamName] ||
@@ -517,15 +516,12 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
   const statuses = analyses.map((a) => a.air.status);
   const nowMin = analyses[0].sim.history[analyses[0].sim.history.length - 1].tMin;
 
-  // Hazard status = the worse of the module air statuses and the actor readiness (same way as 02).
   const airStatus: HazardEvaluationResult["status"] = statuses.includes("red")
     ? "CRITICAL"
     : statuses.includes("yellow")
     ? "ELEVATED"
     : "NOMINAL";
-  const readinessStatus: HazardEvaluationResult["status"] =
-    actor.readinessState === "HOLD" ? "CRITICAL" : actor.readinessState === "CONDITIONAL" ? "ELEVATED" : "NOMINAL";
-  const status = HAZARD_SEVERITY[airStatus] >= HAZARD_SEVERITY[readinessStatus] ? airStatus : readinessStatus;
+  const status = airStatus;
 
   // Immediate: critical alerts (CO2 above target), trend warnings, then every module that is not green.
   const immediateLines: string[] = [];
