@@ -87,6 +87,18 @@ create table if not exists public.emergency_audit_logs (
   created_at timestamptz not null default now()
 );
 
+-- Hackathon/dev permissions for Supabase Publishable / Anon keys (+ service_role).
+-- For production hardening: enable RLS, drop `anon` grants, and use `SUPABASE_SERVICE_ROLE_KEY` strictly on the server.
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on table
+  public.scenarios,
+  public.characters,
+  public.character_hazard_data,
+  public.character_hazard_samples,
+  public.dtn_messages,
+  public.emergency_audit_logs
+to anon, authenticated, service_role;
+
 -- Seed starter scenarios (optional; safe to re-run with ON CONFLICT DO NOTHING)
 insert into public.scenarios (id, name, phase, duration_context, comms_delay_label, active_hazards_highlight, scenario_description, environment)
 values
