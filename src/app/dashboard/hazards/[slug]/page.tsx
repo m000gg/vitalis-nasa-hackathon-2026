@@ -30,6 +30,9 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
 
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [subfieldDrafts, setSubfieldDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [nasaQueryDate, setNasaQueryDate] = useState<string>("");
+  const [nasaFetchState, setNasaFetchState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [nasaFetchMessage, setNasaFetchMessage] = useState<string>("");
 
   if (!hazard) {
     notFound();
@@ -141,6 +144,62 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
   };
 
   const charts = snapshot.charts ?? [];
+  const isDistanceHazard = hazard.slug === "distance";
+
+  const handleFetchNasaDistance = async () => {
+    if (!isDistanceHazard) {
+      return;
+    }
+
+    if (!nasaQueryDate.trim()) {
+      setNasaFetchState("error");
+      setNasaFetchMessage("Please choose a date before fetching NASA JPL Horizons data.");
+      return;
+    }
+
+    setNasaFetchState("loading");
+    setNasaFetchMessage("Fetching Earth–Mars ephemeris from NASA JPL Horizons...");
+
+    try {
+      const response = await fetch(`/api/horizons/earth-mars?date=${encodeURIComponent(nasaQueryDate)}`);
+      const payload = (await response.json()) as { distanceKm?: number | string; error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || `NASA Horizons request failed with HTTP ${response.status}.`);
+      }
+
+      const numericDistance = Number(payload.distanceKm);
+      if (!Number.isFinite(numericDistance) || numericDistance <= 0) {
+        throw new Error("NASA Horizons response did not include a valid positive Earth–Mars distance in kilometers.");
+      }
+
+      const distanceValue = String(numericDistance);
+      await saveActorInput("Earth–Mars Ephemeris (JPL Horizons)", distanceValue, "distance", {
+        payload: {
+          source: "NASA/JPL Horizons",
+          queryDate: nasaQueryDate,
+          distanceKm: numericDistance,
+          unit: "km",
+          note: "Earth–Mars ephemeris from NASA JPL Horizons; not live spacecraft telemetry.",
+        },
+        numericValue: numericDistance,
+        recordSample: false,
+      });
+
+      setDraftValues((prev) => ({
+        ...prev,
+        "Earth–Mars Ephemeris (JPL Horizons)": distanceValue,
+      }));
+      setNasaFetchState("success");
+      setNasaFetchMessage(
+        `Loaded ${distanceValue} km for Earth–Mars ephemeris on ${nasaQueryDate}. This is NASA JPL Horizons ephemeris data, not live spacecraft telemetry.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch NASA Horizons data.";
+      setNasaFetchState("error");
+      setNasaFetchMessage(message);
+    }
+  };
 
   return (
     <DashboardShell>
@@ -241,6 +300,70 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
               <HazardTelemetryChart key={chart.id} chart={chart} />
             ))}
           </div>
+        </section>
+      )}
+
+      {isDistanceHazard && (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-bold text-slate-900">NASA JPL Horizons</h2>
+            <span className="rounded-md bg-sky-50 px-2.5 py-0.5 text-[11px] font-medium text-sky-800">
+              Earth–Mars ephemeris query
+            </span>
+          </div>
+
+          <p className="text-sm text-slate-600">
+            Fetch Earth–Mars position data from NASA JPL Horizons for the selected date. This is ephemeris data, not live spacecraft telemetry.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 space-y-1">
+              <span className="block text-[11px] font-medium text-slate-600">Selected NASA query date</span>
+              <input
+                type="date"
+                value={nasaQueryDate}
+                onChange={(event) => {
+                  setNasaQueryDate(event.target.value);
+                  if (nasaFetchState !== "idle") {
+                    setNasaFetchState("idle");
+                    setNasaFetchMessage("");
+                  }
+                }}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleFetchNasaDistance}
+              disabled={nasaFetchState === "loading"}
+              className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-medium text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-400"
+            >
+              {nasaFetchState === "loading" ? "Fetching..." : "Fetch NASA Data"}
+            </button>
+          </div>
+
+          {nasaQueryDate && (
+            <p className="text-[11px] text-slate-500">Selected NASA query date: {nasaQueryDate}</p>
+          )}
+
+          {nasaFetchState === "loading" && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+              {nasaFetchMessage}
+            </div>
+          )}
+
+          {nasaFetchState === "success" && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              {nasaFetchMessage}
+            </div>
+          )}
+
+          {nasaFetchState === "error" && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              {nasaFetchMessage}
+            </div>
+          )}
         </section>
       )}
 
