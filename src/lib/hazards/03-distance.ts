@@ -10,35 +10,108 @@ import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./typ
 // [SECTION 1: HAZARD 3 VALUES & THRESHOLD SLOTS]
 // Replace or extend constants here for Distance from Earth only.
 export const DISTANCE_PIPELINE_VALUES = {
-  // Add your info: Speed-of-light delay & inventory expiry window constants here
+  speedOfLightKmPerSecond: 299792.458,
   supportedStreams: ["Earth–Mars Ephemeris (JPL Horizons)", "DTN Outbound Medical Queue", "Onboard Medical Inventory"],
 };
+
+function parseEarthDistanceKm(rawValue: unknown): number | null {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+  if (typeof rawValue === "number") {
+    return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : null;
+  }
+
+  const source = typeof rawValue === "string" ? rawValue : String(rawValue);
+  const normalized = source.replace(/,/g, "").trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const unitMatch = normalized.match(/(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s*(?:km|kilometers?|kilometres?)\b/i);
+  const plainMatch = unitMatch ?? normalized.match(/^(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)$/);
+  const numericValue = plainMatch ? Number(plainMatch[1]) : Number(normalized);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null;
+  }
+
+  return numericValue;
+}
+
+function formatDelayDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds.toFixed(3)} s`;
+  }
+
+  const minutes = seconds / 60;
+  if (minutes < 60) {
+    return `${minutes.toFixed(2)} min`;
+  }
+
+  const hours = minutes / 60;
+  return `${hours.toFixed(2)} h`;
+}
+
+function calculateEarthCommsDelay(distanceKm: number) {
+  const oneWaySeconds = distanceKm / DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond;
+  const roundTripSeconds = oneWaySeconds * 2;
+
+  return {
+    oneWaySeconds,
+    roundTripSeconds,
+    oneWayLabel: formatDelayDuration(oneWaySeconds),
+    roundTripLabel: formatDelayDuration(roundTripSeconds),
+  };
+}
 
 // [SECTION 2: HAZARD 3 FORMULAS & EVALUATION PIPELINE]
 // Write generalized comms-delay / DTN / inventory formulas here.
 export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEvaluationResult {
   const { mission, actor, actorInputs, hazardRecords, linkOnline, reentryMode } = input;
-  const dbEphemeris = hazardRecords.find((r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)")?.rawValue;
-  const ephemerisInput = actorInputs["Earth–Mars Ephemeris (JPL Horizons)"] || dbEphemeris;
+  const dbRecord = hazardRecords.find((r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)");
+  const ephemerisInput =
+    actorInputs["Earth–Mars Ephemeris (JPL Horizons)"] ||
+    dbRecord?.rawValue ||
+    dbRecord?.payload?.distanceKm ||
+    dbRecord?.payload?.distance_km;
+  const validatedDistanceKm = parseEarthDistanceKm(ephemerisInput);
+  const delay = validatedDistanceKm !== null ? calculateEarthCommsDelay(validatedDistanceKm) : null;
   const maxSolutions = reentryMode ? 1 : 2;
 
   const status = !linkOnline ? "ELEVATED" : actor.readinessState === "HOLD" ? "CRITICAL" : "NOMINAL";
 
+  const immediateHorizon =
+    validatedDistanceKm !== null && delay !== null
+      ? `Here is: ${delay.oneWayLabel} one-way light delay and ${delay.roundTripLabel} Earth round-trip delay for ${validatedDistanceKm.toLocaleString()} km; local action windows must plan around the blackout and DTN queue.`
+      : distanceHazard.outputSlots.immediateHorizon;
+
+  const prolongedHorizon =
+    validatedDistanceKm !== null && delay !== null
+      ? `Here is: A ${delay.roundTripLabel} Earth round-trip delay means queued DTN reports await acknowledgment while local autonomy remains the primary response path.`
+      : distanceHazard.outputSlots.prolongedHorizon;
+
+  const eta =
+    validatedDistanceKm !== null && delay !== null
+      ? `Here is: Earth round-trip delay = ${delay.roundTripLabel} for ${validatedDistanceKm.toLocaleString()} km at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
+      : actor.metrics.etaSlot;
+
   const solutions = [
+    delay
+      ? `Here is: One-way light-time is ${delay.oneWayLabel}; round-trip delay is ${delay.roundTripLabel} at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
+      : "Here is: Validate Earth–Mars distance in km before using the comms-delay model.",
     linkOnline
       ? "Here is: Earth link online — sync pending Store-and-Forward DTN medical reports."
       : "Here is: Earth link offline — follow pre-approved local checklists & queue DTN reports locally.",
-    ephemerisInput
-      ? `Here is: Ephemeris slot ("${ephemerisInput}") applied to comms delay simulator.`
-      : "Here is: Verify non-expired onboard Med Kit coverage for autonomous operations.",
   ].slice(0, maxSolutions);
 
   return {
     status,
     scenarioStatusSlot: mission.environment.commsDelaySlot,
-    immediateHorizon: distanceHazard.outputSlots.immediateHorizon,
-    prolongedHorizon: distanceHazard.outputSlots.prolongedHorizon,
-    eta: actor.metrics.etaSlot,
+    immediateHorizon,
+    prolongedHorizon,
+    eta,
     solutions,
   };
 }
@@ -59,12 +132,15 @@ export const distanceHazard: HazardSpec = {
     "NASA Deep Space Network (DSN Now)",
   ],
   overviewSlot:
-    "Here is: Deep Space Autonomy Mode — Earth–Mars light-time delay calculation, offline-first medical checklists, onboard supply/expiry tracking, and Store-and-Forward report queuing.",
+    "Here is: Deep Space Autonomy Mode — Earth–Mars light-time delay calculation using c = 299792.458 km/s, offline-first medical checklists, onboard supply/expiry tracking, and Store-and-Forward report queuing.",
   inputSlots: [
     {
       streamName: "Earth–Mars Ephemeris (JPL Horizons)",
-      inputPrompt: "Add your info: Selected mission date, Earth–Mars distance (km), calculated one-way & RTT delay here",
+      inputPrompt: "Add your info: Selected mission date, Earth–Mars distance in kilometers here",
       sourceRef: "03-distance-from-earth.md §6",
+      fieldType: "number",
+      unit: "km",
+      recordSample: true,
     },
     {
       streamName: "DTN Outbound Medical Queue",
@@ -78,9 +154,9 @@ export const distanceHazard: HazardSpec = {
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Offline-first approved checklist & Buddy-Rescue flow while Earth is unreachable.",
-    prolongedHorizon: "Here is: Pending DTN medical reports awaiting transmission & upcoming supply expirations.",
-    etaSlot: "Here is: Current Earth–Mars round-trip communication delay vs. local action window.",
+    immediateHorizon: "Here is: Offline-first approved checklist & Buddy-Rescue flow while Earth is unreachable; use the validated light-delay model before action decisions.",
+    prolongedHorizon: "Here is: Pending DTN medical reports await transmission, and supply expirations remain watch items while Earth round-trip delay persists.",
+    etaSlot: "Here is: One-way light-time = distance_km / 299792.458; round-trip delay = 2 × one-way delay.",
     solutionsSlot: "Here is: 1–2 locally executable steps filtered by non-expired onboard supplies (never autonomous prescribing).",
   },
   leadView: {

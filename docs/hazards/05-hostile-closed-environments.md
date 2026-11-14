@@ -53,52 +53,69 @@ In closed habitats [1]:
 
 ---
 
-## 4. Feature Ideas
+## 4. Feature Specs
 
-| # | Feature | What the crew sees | NASA data |
-| :--- | :--- | :--- | :--- |
-| 1 | **CO₂ headache forecast** | CO₂ slowly rises, and the system says "in 2 hours, 3 of 4 crew members have a high headache risk". | EDA ISS CO₂ [6][7] + NASA finding (+1 mmHg CO₂ = 2× headache odds) [2][3] |
-| 2 | **"Module weather"** | Each spacecraft module is shown like a weather map: green/yellow/red by CO₂, temperature, noise. | EDA [6][7] + NASA limits [3][4][5] |
-| 3 | **"Where to go" advice** | "CO₂ is high in module A, sleep in module B tonight." | EDA [6][7] |
-| 4 | **Sleep and environment** | Morning message: "you slept badly because it was noisy and stuffy at night". | NASA noise and CO₂ limits [3][5] |
-| 5 | **Radiation budget** | Like a health bar in a game: how much dose the crew member received this mission and how much is left. | EDA radiation (daily and accumulated dose) [6][7] |
-| 6 | **Contagion in the crew** | One person gets sick, and the system shows who had the most contact with them in the closed habitat. | NASA HRP article on microbes [1]. Limited public data available; future work. |
+App: Next.js + TypeScript, frontend only. No backend. Both features live on one page `/environment` and share one simulation. Everything is per **module** (Lab, Habitat, Galley, Airlock).
 
-### Recommendation
+**Data:** only the cabin CO2 comes from real NASA data (OSDR Environmental Data App, CSV in `public/data/iss-cabin.csv`). Everything else is **simulated** and must carry a "SIM" tag in the UI. If the CSV is missing, generate fake CO2 and show a red badge "SIMULATED DATA - NOT NASA".
 
-Combine **1 + 5**: *"The environment attacks the crew, and we warn early."*
+### Shared simulation
 
-- Both are built on **real NASA data** from the ISS cabin [6][7].
-- Both rest on **published NASA research**, such as the finding that each +1 mmHg of CO₂ doubles the odds of a headache [2][3].
-- Both link the **environment to crew health**, warning the crew before symptoms start.
-- Each hazard is tracked as one sensor or metric, and the system combines them into one picture of crew health.
+- Replays the CSV rows as a live stream (loops at the end). Controls: play/pause, speed 1x / 60x / 600x, reset.
+- Internal CO2 unit is **mmHg**. If the CSV is in ppm: `mmHg = ppm * 0.00076`. If in percent: `mmHg = percent * 7.6`.
+- Values per module:
+  - **CO2:** cabin CO2 + module offset (lab 0, habitat +0.4, galley +0.2, airlock -0.4). Real cabin value, simulated offset.
+  - **O2:** about 149 mmHg, small noise. Simulated.
+  - **Pressure:** about 14.7 psia, small noise. Simulated.
+  - **Noise:** lab 62, habitat 45, galley 58, airlock 52 dBA, small noise. Simulated.
+  - **Temperature, humidity:** from the CSV if present, shown for information only.
+- Demo buttons: **CO2 scrubber failure** (CO2 in all modules rises +0.04 mmHg per simulated minute, up to +3), **O2 leak in Lab** (Lab O2 falls to 118 mmHg in 20 min), **Noisy equipment in Galley** (Galley noise rises to 90 dBA in 10 min), **Clear**.
 
----
+### Feature 1: Habitat Map
 
-## 5. Proposed API Endpoints
+**What it is:** a schematic map of the spacecraft with 4 modules. Each module is green, yellow or red. Click a module to see its values. This is the air layer of the team-wide map, so keep module ids in one shared config.
 
-> All endpoints below are **proposed**. They are not implemented yet, and all values in the example are **illustrative**.
+**Input:** current values per module (CO2, O2, pressure, noise, temperature, humidity) and the CO2 forecast from Feature 2.
 
-| Feature # | Method | Path | Purpose | Key params |
+**How it works:** each metric gets a status, the module takes the worst one.
+
+| Metric | Green | Yellow | Red | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| Shared | `POST` | `/api/environment/replay/start` | Replay real ISS data as a live stream | `mission_id`, `speed` |
-| Shared | `GET` | `/api/environment/replay/status` | Show the state of the current replay | — |
-| 1 | `GET` | `/api/environment/co2/live` | Current cabin CO₂ from the live stream | — |
-| 1 | `GET` | `/api/environment/headache-risk` | Crew headache risk forecast based on CO₂ | `person_id`, `horizon_hours` |
-| 2 | `GET` | `/api/environment/modules` | Module weather for all modules (green/yellow/red) | — |
-| 2 | `GET` | `/api/environment/modules/{module_id}` | Module weather for one module | `module_id` |
-| 3 | `GET` | `/api/environment/recommendations/relocation` | "Where to go" advice for a crew member | `person_id` |
-| 4 | `GET` | `/api/environment/sleep-report/{person_id}` | Morning report linking sleep to noise and CO₂ | `person_id`, `date` |
-| 5 | `GET` | `/api/environment/radiation/{person_id}` | Radiation budget: dose received this mission and dose left | `person_id` |
-| 6 | `GET` | `/api/environment/contacts/{person_id}` | Contacts of a sick crew member (future work, limited data) | `person_id` |
+| CO2 | otherwise | forecast reaches 4 mmHg within 2 h | above 4 mmHg | NASA target [2] |
+| O2 | 130 mmHg or more | 122 to 130 | below 122 | NASA [4] |
+| Pressure | 5.0 to 15.0 psia | none | outside that range | NASA [4] |
+| Noise | below 85 dBA | none | 85 dBA or more | NASA [5] |
 
-### Example: `GET /api/environment/headache-risk` (proposed, illustrative)
+Temperature and humidity have no status (no NASA health limit found).
 
-```json
-{
-  "current_co2": 3.4,
-  "risk_level": "elevated",
-  "risk_multiplier": 2.0,
-  "warning_message": "CO2 is rising. Headache risk is higher than normal."
-}
-```
+**Output:** per module: status (green/yellow/red), the worst metric with its value (for example "O2 118 mmHg"), a table of all metrics with REAL/SIM tags. A banner: "Modules: N green, N yellow, N red". Use icons (check, warning, cross), not only colors. Export `getAirLayer()` that returns `{ moduleId, status, worstMetric }` for each module, so other layers can plug into the same map.
+
+### Feature 2: Air Risk Forecast
+
+**What it is:** shows how CO2 raises headache risk in each module, forecasts when a module will reach the NASA limit, shows an alert with 1-2 actions, and counts how long each module has been over the limit.
+
+**Basis:** NASA target is CO2 at or below 4 mmHg. Each +1 mmHg of CO2 doubles the odds of a headache [2].
+
+**Input:** CO2 history per module (last 2 simulated hours) from the shared simulation.
+
+**How it works:**
+1. **Risk multiplier** vs the target: `multiplier = 2 ^ (co2 - 4)`. At 4 mmHg it is 1.0, at 5 it is 2.0.
+2. **Illustrative weekly risk:** `odds = 0.0163 * 2 ^ (co2 - 4)`, `risk = odds / (1 + odds)`. Anchored at 1.6% for 4 mmHg. Always label it "illustrative".
+3. **Forecast:** fit a straight line to the last 30 simulated minutes, get the slope in mmHg per minute. `minutesToLimit = (4 - co2) / slope` if slope is above 0.001 and co2 is below 4. Otherwise none. Projected CO2 after 120 min = `co2 + slope * 120`.
+4. **Level:** `high` if CO2 is above 4. `elevated` if `minutesToLimit` is 120 or less. Otherwise `low`.
+5. **Alert:** created when the level goes from low to elevated (warning) or to high (critical). Not duplicated while it lasts. Resolves when the level is low again. Has an Acknowledge button. Actions are demo placeholders, not NASA procedures:
+   - warning: "Check the CO2 scrubber for {Module}" and "Limit time in {Module} until CO2 stabilizes"
+   - critical: "Check the CO2 scrubber for {Module} now" and "Move non-essential work out of {Module}. Lowest CO2 now: {Module}"
+6. **Ledger:** per module, add the simulated minutes spent above 4 mmHg; also track the max CO2.
+
+**Output:**
+- Per module: level, multiplier ("x2.0 vs target"), illustrative weekly %, trend, minutes to limit, a message.
+- CO2 chart per module: last 2 hours, a dashed projection for the next 2 hours, a reference line at 4 mmHg labeled "NASA limit".
+- Alert cards with title, ETA in minutes, 1-2 actions and an Acknowledge button.
+- Ledger table: module, minutes above the limit, max CO2.
+- Messages: low "CO2 is within the NASA target."; elevated "At this rate CO2 reaches the 4 mmHg limit in about {n} min."; high "CO2 is above the NASA limit of 4 mmHg. Each extra 1 mmHg doubles headache odds."; not enough data "Collecting data..."
+
+### Limits to show in an info tooltip
+- Only the cabin CO2 is real data. Per-module differences, O2, pressure and noise are simulated around NASA limits.
+- The doubling rule is an estimate from ISS crew data, not an exact law. The weekly percent is illustrative.
+- Alert actions are demo placeholders.
