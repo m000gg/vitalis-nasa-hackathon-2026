@@ -20,13 +20,13 @@ function isValidHazardSlug(value: string): value is HazardSlug {
 
 export async function GET(request: NextRequest) {
   const scenarioId = request.nextUrl.searchParams.get("scenarioId")?.trim();
-  const characterId = request.nextUrl.searchParams.get("characterId")?.trim();
+  const characterId = request.nextUrl.searchParams.get("characterId")?.trim() || undefined;
   const hazardSlugParam =
     request.nextUrl.searchParams.get("hazardSlug")?.trim() || undefined;
 
-  if (!scenarioId || !characterId) {
+  if (!scenarioId) {
     return NextResponse.json(
-      { error: "Missing required query params: scenarioId and characterId" },
+      { error: "Missing required query param: scenarioId" },
       { status: 400 }
     );
   }
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       source: "supabase",
       scenarioId,
-      characterId,
+      characterId: characterId ?? null,
       hazardSlug: hazardSlugParam ?? null,
       records,
     });

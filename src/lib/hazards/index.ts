@@ -8,9 +8,11 @@ import { HazardSpec } from "./types";
 export type {
   HazardChartPoint,
   HazardChartSpec,
+  HazardChartThreshold,
   HazardDataRecord,
   HazardEvaluationInput,
   HazardEvaluationResult,
+  HazardFieldType,
   HazardInputSlot,
   HazardInputSubfield,
   HazardSampleRecord,

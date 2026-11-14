@@ -351,7 +351,7 @@ export async function updateCharacterInDb(input: {
 
 export async function fetchHazardDataFromDb(params: {
   scenarioId: string;
-  characterId: string;
+  characterId?: string;
   hazardSlug?: HazardSlug;
 }): Promise<{ records: HazardDataRecord[] }> {
   const client = getSupabaseServerClient();
@@ -359,8 +359,11 @@ export async function fetchHazardDataFromDb(params: {
   let query = client
     .from("character_hazard_data")
     .select("*")
-    .eq("scenario_id", params.scenarioId)
-    .eq("character_id", params.characterId);
+    .eq("scenario_id", params.scenarioId);
+
+  if (params.characterId) {
+    query = query.eq("character_id", params.characterId);
+  }
 
   if (params.hazardSlug) {
     query = query.eq("hazard_slug", params.hazardSlug);
@@ -429,7 +432,7 @@ export async function upsertHazardDataInDb(input: {
 
 export async function fetchHazardSamplesFromDb(params: {
   scenarioId: string;
-  characterId: string;
+  characterId?: string;
   hazardSlug?: HazardSlug;
   streamName?: string;
 }): Promise<{ samples: HazardSampleRecord[] }> {
@@ -438,8 +441,11 @@ export async function fetchHazardSamplesFromDb(params: {
   let query = client
     .from("character_hazard_samples")
     .select("*")
-    .eq("scenario_id", params.scenarioId)
-    .eq("character_id", params.characterId);
+    .eq("scenario_id", params.scenarioId);
+
+  if (params.characterId) {
+    query = query.eq("character_id", params.characterId);
+  }
 
   if (params.hazardSlug) {
     query = query.eq("hazard_slug", params.hazardSlug);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { AuditLogEntry, CrewSlot, DtnMessage, MissionProfile, UserRole } from "@/lib/domain";
 import { HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
 
@@ -73,6 +73,8 @@ interface MissionContextValue {
   actorInputs: Record<string, Record<string, string>>;
   hazardRecords: HazardDataRecord[];
   hazardSamples: HazardSampleRecord[];
+  scenarioHazardRecords: HazardDataRecord[];
+  scenarioHazardSamples: HazardSampleRecord[];
   saveActorInput: (
     streamName: string,
     value: string,
@@ -93,12 +95,25 @@ interface MissionContextValue {
   shelterConfirmations: Record<string, boolean>;
   toggleCrewShelter: (crewId: string) => void;
   privateCheckIns: PrivateCheckIn[];
-  addPrivateCheckIn: (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => void;
+  addPrivateCheckIn: (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => Promise<void>;
 }
 
 const MissionContext = createContext<MissionContextValue | null>(null);
 
 const STORAGE_KEY = "vitalis_session_v2";
+
+function parseOptionalNumber(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const direct = Number(trimmed);
+  if (Number.isFinite(direct)) return direct;
+  const match = trimmed.match(/^-?\d+(\.\d+)?/);
+  if (match) {
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 function buildInitialDtnForMission(m: MissionProfile): DtnMessage[] {
   const firstMember = m.crew.find((c) => !c.isLeadSlot) ?? m.crew[0];
@@ -126,12 +141,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   const [linkOnline, setLinkOnline] = useState<boolean>(false);
   const [reentryMode, setReentryMode] = useState<boolean>(false);
   const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
-  const [hazardRecords, setHazardRecords] = useState<HazardDataRecord[]>([]);
-  const [hazardSamples, setHazardSamples] = useState<HazardSampleRecord[]>([]);
+  const [scenarioHazardRecords, setScenarioHazardRecords] = useState<HazardDataRecord[]>([]);
+  const [scenarioHazardSamples, setScenarioHazardSamples] = useState<HazardSampleRecord[]>([]);
   const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
-  const [privateCheckIns, setPrivateCheckIns] = useState<PrivateCheckIn[]>([]);
 
   const persistSession = (nextMissionId: string, nextCharacterId: string) => {
     try {
@@ -239,21 +253,19 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     setShelterConfirmations(initial);
   }, [mission]);
 
+  const missionIdLoaded = mission?.id ?? "";
+
   useEffect(() => {
-    if (!mission || !activeCharacter) {
-      setHazardRecords([]);
-      setHazardSamples([]);
+    if (!missionIdLoaded) {
+      setScenarioHazardRecords([]);
+      setScenarioHazardSamples([]);
       return;
     }
 
-    const currentMissionId = mission.id;
-    const currentCharacterId = activeCharacter.id;
     let active = true;
 
-    async function loadHazardData() {
-      const qs = `scenarioId=${encodeURIComponent(currentMissionId)}&characterId=${encodeURIComponent(
-        currentCharacterId
-      )}`;
+    async function loadScenarioHazardData() {
+      const qs = `scenarioId=${encodeURIComponent(missionIdLoaded)}`;
       try {
         const [dataRes, sampleRes] = await Promise.all([
           fetch(`/api/hazard-data?${qs}`),
@@ -281,38 +293,109 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         }
 
         const recs = Array.isArray(data.records) ? data.records : [];
-        setHazardRecords(recs);
+        setScenarioHazardRecords(recs);
         if (recs.length > 0) {
           setActorInputs((prev) => {
-            const existing = prev[currentCharacterId] ?? {};
-            const hydrated: Record<string, string> = { ...existing };
+            const next = { ...prev };
             recs.forEach((rec) => {
-              if (!hydrated[rec.streamName] && rec.rawValue) {
-                hydrated[rec.streamName] = rec.rawValue;
+              const existing = next[rec.characterId] ?? {};
+              if (!existing[rec.streamName] && rec.rawValue) {
+                next[rec.characterId] = {
+                  ...existing,
+                  [rec.streamName]: rec.rawValue,
+                };
               }
             });
-            return { ...prev, [currentCharacterId]: hydrated };
+            return next;
           });
         }
 
-        setHazardSamples(Array.isArray(sampleData.samples) ? sampleData.samples : []);
+        setScenarioHazardSamples(Array.isArray(sampleData.samples) ? sampleData.samples : []);
         setDbStatus("connected");
       } catch (err) {
         if (!active) return;
         const message =
-          err instanceof Error ? err.message : "Failed to load character hazard telemetry from Supabase";
+          err instanceof Error ? err.message : "Failed to load scenario hazard telemetry from Supabase";
         setDbStatus("error");
         setDbError(message);
-        setHazardRecords([]);
-        setHazardSamples([]);
+        setScenarioHazardRecords([]);
+        setScenarioHazardSamples([]);
       }
     }
 
-    loadHazardData();
+    loadScenarioHazardData();
     return () => {
       active = false;
     };
-  }, [mission, activeCharacter]);
+  }, [missionIdLoaded]);
+
+  const hazardRecords = useMemo(
+    () =>
+      activeCharacter
+        ? scenarioHazardRecords.filter((r) => r.characterId === activeCharacter.id)
+        : [],
+    [scenarioHazardRecords, activeCharacter]
+  );
+
+  const hazardSamples = useMemo(
+    () =>
+      activeCharacter
+        ? scenarioHazardSamples.filter((s) => s.characterId === activeCharacter.id)
+        : [],
+    [scenarioHazardSamples, activeCharacter]
+  );
+
+  const privateCheckIns = useMemo<PrivateCheckIn[]>(() => {
+    if (!activeCharacter) return [];
+
+    const fromSamples = hazardSamples
+      .filter(
+        (s) =>
+          s.hazardSlug === "isolation" &&
+          s.streamName === "60-Second Self-Check (Private)" &&
+          s.samplePayload &&
+          (s.samplePayload.source === "crew-60s-checkin" ||
+            s.samplePayload.fatigueScore !== undefined ||
+            s.samplePayload.sleepHoursInput !== undefined ||
+            s.samplePayload.privateJournalNote !== undefined)
+      )
+      .slice()
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())
+      .map((s) => ({
+        id: s.id,
+        actorId: s.characterId,
+        timestamp: new Date(s.recordedAt).toLocaleTimeString(),
+        fatigueScore: String(s.samplePayload.fatigueScore ?? ""),
+        sleepHoursInput: String(s.samplePayload.sleepHoursInput ?? ""),
+        privateJournalNote: String(s.samplePayload.privateJournalNote ?? ""),
+      }));
+
+    if (fromSamples.length > 0) return fromSamples;
+
+    const fallbackRecord = hazardRecords.find(
+      (r) =>
+        r.hazardSlug === "isolation" &&
+        r.streamName === "60-Second Self-Check (Private)" &&
+        r.payload &&
+        (r.payload.source === "crew-60s-checkin" ||
+          r.payload.fatigueScore !== undefined ||
+          r.payload.sleepHoursInput !== undefined ||
+          r.payload.privateJournalNote !== undefined)
+    );
+
+    if (!fallbackRecord) return [];
+
+    return [
+      {
+        id: fallbackRecord.id,
+        actorId: fallbackRecord.characterId,
+        timestamp: new Date(fallbackRecord.updatedAt).toLocaleTimeString(),
+        fatigueScore: String(fallbackRecord.payload.fatigueScore ?? ""),
+        sleepHoursInput: String(fallbackRecord.payload.sleepHoursInput ?? ""),
+        privateJournalNote: String(fallbackRecord.payload.privateJournalNote ?? ""),
+      },
+    ];
+  }, [activeCharacter, hazardRecords, hazardSamples]);
 
   const setMissionId = useCallback(
     (id: string) => {
@@ -485,7 +568,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       }
 
       const savedSample = data.sample;
-      setHazardSamples((prev) => [...prev, savedSample]);
+      setScenarioHazardSamples((prev) => [...prev, savedSample]);
       setDbStatus("connected");
       setDbError(null);
     },
@@ -550,15 +633,20 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
           [streamName]: value,
         },
       }));
-      setHazardRecords((prev) => {
+      setScenarioHazardRecords((prev) => {
         const filtered = prev.filter(
-          (r) => !(r.hazardSlug === savedRecord.hazardSlug && r.streamName === savedRecord.streamName)
+          (r) =>
+            !(
+              r.characterId === savedRecord.characterId &&
+              r.hazardSlug === savedRecord.hazardSlug &&
+              r.streamName === savedRecord.streamName
+            )
         );
         return [...filtered, savedRecord];
       });
       if (data.sample) {
         const savedSample = data.sample;
-        setHazardSamples((prev) => [...prev, savedSample]);
+        setScenarioHazardSamples((prev) => [...prev, savedSample]);
       }
       setDbStatus("connected");
       setDbError(null);
@@ -631,19 +719,35 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addPrivateCheckIn = useCallback(
-    (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => {
-      if (!activeCharacter) return;
-      setPrivateCheckIns((prev) => [
-        {
-          ...entry,
-          id: `priv-${Date.now()}`,
-          actorId: activeCharacter.id,
-          timestamp: new Date().toLocaleTimeString(),
+    async (entry: Omit<PrivateCheckIn, "id" | "actorId" | "timestamp">) => {
+      if (!mission || !activeCharacter) {
+        throw new Error("Cannot save private check-in: no active scenario or character loaded.");
+      }
+
+      const fatigueNum = parseOptionalNumber(entry.fatigueScore);
+      const sleepNum = parseOptionalNumber(entry.sleepHoursInput);
+      const summaryParts: string[] = [];
+      if (entry.fatigueScore.trim()) {
+        summaryParts.push(`Fatigue: ${entry.fatigueScore.trim()}`);
+      }
+      if (entry.sleepHoursInput.trim()) {
+        summaryParts.push(`Sleep: ${entry.sleepHoursInput.trim()}`);
+      }
+      const summaryVal = summaryParts.join(", ") || "60s Self-Check logged";
+
+      await saveActorInput("60-Second Self-Check (Private)", summaryVal, "isolation", {
+        payload: {
+          source: "crew-60s-checkin",
+          fatigueScore: entry.fatigueScore,
+          sleepHoursInput: entry.sleepHoursInput,
+          privateJournalNote: entry.privateJournalNote,
+          ...(sleepNum !== null ? { sleepHours: sleepNum } : {}),
         },
-        ...prev,
-      ]);
+        numericValue: fatigueNum,
+        recordSample: true,
+      });
     },
-    [activeCharacter]
+    [activeCharacter, mission, saveActorInput]
   );
 
   return (
@@ -671,6 +775,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         actorInputs,
         hazardRecords,
         hazardSamples,
+        scenarioHazardRecords,
+        scenarioHazardSamples,
         saveActorInput,
         appendHazardSample,
         dtnQueue,

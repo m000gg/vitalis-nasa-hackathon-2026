@@ -21,6 +21,8 @@ export default function DashboardOverviewPage() {
     actorInputs,
     hazardRecords,
     hazardSamples,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
   } = useMission();
 
   if (!mission || !activeCharacter) {
@@ -31,9 +33,22 @@ export default function DashboardOverviewPage() {
     shelterConfirmed: !!shelterConfirmations[activeCharacter.id],
     reentryMode,
     customInputs: actorInputs[activeCharacter.id],
+    mission,
+    hazardRecords,
+    hazardSamples,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    linkOnline,
+    role,
   });
 
-  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
+  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations, {
+    actorInputs,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    linkOnline,
+    reentryMode,
+  });
 
   return (
     <DashboardShell>
@@ -128,6 +143,38 @@ export default function DashboardOverviewPage() {
                   <p className="inline-flex items-center gap-1 text-[11px] text-slate-400">
                     <Lock className="h-3 w-3" /> Private notes masked
                   </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-amber-700">
+                <AlertTriangle className="h-4 w-4" />
+                <h2 className="text-sm font-bold">Live Derived Team Alerts</h2>
+              </div>
+              <Link
+                href="/dashboard/alerts"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
+              >
+                Open Alerts &amp; Escalation
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="space-y-2 text-xs">
+              {leaderModel.derivedTeamAlerts.map((alertText, idx) => (
+                <div
+                  key={idx}
+                  className={`rounded-xl p-3 ${
+                    alertText.startsWith("[CRITICAL]")
+                      ? "bg-red-50 text-red-900"
+                      : alertText.startsWith("[ELEVATED]")
+                      ? "bg-amber-50 text-amber-900"
+                      : "bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  {alertText}
                 </div>
               ))}
             </div>
@@ -239,6 +286,9 @@ export default function DashboardOverviewPage() {
               actorInputs: actorInputs[activeCharacter.id] ?? {},
               hazardRecords,
               hazardSamples,
+              scenarioHazardRecords,
+              scenarioHazardSamples,
+              role,
               linkOnline,
               reentryMode,
             });

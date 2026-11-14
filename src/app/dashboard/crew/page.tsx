@@ -12,6 +12,11 @@ export default function CrewOrCheckInPage() {
     mission,
     activeCharacter,
     role,
+    linkOnline,
+    reentryMode,
+    actorInputs,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
     shelterConfirmations,
     toggleCrewShelter,
     auditLog,
@@ -47,7 +52,13 @@ export default function CrewOrCheckInPage() {
     mission.crew[0]?.callsign ||
     "";
 
-  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
+  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations, {
+    actorInputs,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    linkOnline,
+    reentryMode,
+  });
   const myPrivateCheckIns = privateCheckIns.filter((entry) => entry.actorId === activeCharacter.id);
 
   const handleSaveRotation = (e: React.FormEvent) => {
@@ -86,21 +97,29 @@ export default function CrewOrCheckInPage() {
     });
   };
 
-  const handleSubmitPrivateCheckIn = (e: React.FormEvent) => {
+  const handleSubmitPrivateCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    addPrivateCheckIn({
-      fatigueScore: fatigueScore.trim() || "Add your info: Fatigue 1–5 here",
-      sleepHoursInput: sleepHoursInput.trim() || "Add your info: Sleep hours here",
-      privateJournalNote: privateJournalNote.trim() || "Add your info: Private mood/journal note here",
-    });
-    setFatigueScore("");
-    setSleepHoursInput("");
-    setPrivateJournalNote("");
-    pushToast({
-      title: "Private Check-In Saved",
-      message: `Here is: Check-in recorded privately for ${activeCharacter.callsign}.`,
-      variant: "success",
-    });
+    try {
+      await addPrivateCheckIn({
+        fatigueScore: fatigueScore.trim() || "Add your info: Fatigue 1–5 here",
+        sleepHoursInput: sleepHoursInput.trim() || "Add your info: Sleep hours here",
+        privateJournalNote: privateJournalNote.trim() || "Add your info: Private mood/journal note here",
+      });
+      setFatigueScore("");
+      setSleepHoursInput("");
+      setPrivateJournalNote("");
+      pushToast({
+        title: "Private Check-In Saved to Supabase",
+        message: `Here is: Check-in recorded privately for ${activeCharacter.callsign}.`,
+        variant: "success",
+      });
+    } catch (err) {
+      pushToast({
+        title: "Supabase Write Error",
+        message: err instanceof Error ? err.message : "Failed to persist 60s private check-in.",
+        variant: "hazard",
+      });
+    }
   };
 
   return (

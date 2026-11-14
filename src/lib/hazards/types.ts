@@ -1,6 +1,8 @@
-import { CrewSlot, MissionProfile } from "@/lib/domain";
+import { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
 
 export type HazardSlug = "radiation" | "isolation" | "distance" | "gravity" | "environment";
+
+export type HazardFieldType = "text" | "number" | "textarea" | "boolean";
 
 export interface HazardDataRecord {
   id: string;
@@ -29,34 +31,45 @@ export interface HazardChartPoint {
   value: number;
 }
 
+export interface HazardChartThreshold {
+  label: string;
+  value: number;
+  color?: string;
+}
+
 export interface HazardChartSpec {
   id: string;
   title: string;
   unit: string;
   series: HazardChartPoint[];
+  thresholds?: HazardChartThreshold[];
 }
 
 export interface HazardInputSubfield {
   key: string;
   label: string;
-  fieldType?: "text" | "number";
+  fieldType?: HazardFieldType;
   unit?: string;
   prompt: string;
+  isPrivate?: boolean;
 }
 
 export interface HazardInputSlot {
   streamName: string;
   inputPrompt: string;
   sourceRef: string;
-  fieldType?: "text" | "number";
+  fieldType?: HazardFieldType;
   unit?: string;
   recordSample?: boolean;
+  isPrivate?: boolean;
   subfields?: HazardInputSubfield[];
 }
 
 export interface HazardEvaluationInput {
   mission: MissionProfile;
   actor: CrewSlot;
+  /** Active viewer role ("lead" | "member") so evaluate() can tailor outputs and enforce privacy rules. */
+  role?: UserRole;
   actorInputs: Record<string, string>;
   hazardRecords: HazardDataRecord[];
   hazardSamples: HazardSampleRecord[];
@@ -64,6 +77,10 @@ export interface HazardEvaluationInput {
   allHazardRecords: readonly HazardDataRecord[];
   /** Read-only time-series samples across ALL 5 hazards for this scenario/character. */
   allHazardSamples: readonly HazardSampleRecord[];
+  /** Read-only snapshots across ALL crew in the active scenario (privacy-sanitized when role === "lead"). */
+  scenarioHazardRecords?: readonly HazardDataRecord[];
+  /** Read-only time-series samples across ALL crew in the active scenario (privacy-sanitized when role === "lead"). */
+  scenarioHazardSamples?: readonly HazardSampleRecord[];
   linkOnline: boolean;
   reentryMode: boolean;
 }

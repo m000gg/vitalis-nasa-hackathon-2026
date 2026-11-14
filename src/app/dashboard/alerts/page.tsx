@@ -11,17 +11,43 @@ import { evaluateCharacterDashboard, evaluateLeaderDashboard } from "@/lib/evalu
 
 export default function AlertsAndAlarmsPage() {
   const { triggerAlarm } = useAlerts();
-  const { mission, activeCharacter, role, reentryMode, shelterConfirmations, actorInputs, auditLog } = useMission();
+  const {
+    mission,
+    activeCharacter,
+    role,
+    linkOnline,
+    reentryMode,
+    shelterConfirmations,
+    actorInputs,
+    hazardRecords,
+    hazardSamples,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    auditLog,
+  } = useMission();
 
   if (!mission || !activeCharacter) {
     return <DashboardShell>{null}</DashboardShell>;
   }
 
-  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations);
+  const leaderModel = evaluateLeaderDashboard(mission, shelterConfirmations, {
+    actorInputs,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    linkOnline,
+    reentryMode,
+  });
   const characterModel = evaluateCharacterDashboard(activeCharacter, {
     shelterConfirmed: !!shelterConfirmations[activeCharacter.id],
     reentryMode,
     customInputs: actorInputs[activeCharacter.id],
+    mission,
+    hazardRecords,
+    hazardSamples,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    linkOnline,
+    role,
   });
 
   const handleReportUnresponsiveCrewmate = () => {
