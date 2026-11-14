@@ -99,6 +99,33 @@ grant select, insert, update, delete on table
   public.emergency_audit_logs
 to anon, authenticated, service_role;
 
+-- Hackathon/dev RLS policies so publishable/anon key can read & write when RLS is enabled.
+-- For production hardening: tighten these policies or drop `anon` access and use `SUPABASE_SERVICE_ROLE_KEY` on the server.
+alter table public.scenarios enable row level security;
+alter table public.characters enable row level security;
+alter table public.character_hazard_data enable row level security;
+alter table public.character_hazard_samples enable row level security;
+alter table public.dtn_messages enable row level security;
+alter table public.emergency_audit_logs enable row level security;
+
+drop policy if exists "vitalis_dev_all_scenarios" on public.scenarios;
+create policy "vitalis_dev_all_scenarios" on public.scenarios for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "vitalis_dev_all_characters" on public.characters;
+create policy "vitalis_dev_all_characters" on public.characters for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "vitalis_dev_all_hazard_data" on public.character_hazard_data;
+create policy "vitalis_dev_all_hazard_data" on public.character_hazard_data for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "vitalis_dev_all_hazard_samples" on public.character_hazard_samples;
+create policy "vitalis_dev_all_hazard_samples" on public.character_hazard_samples for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "vitalis_dev_all_dtn" on public.dtn_messages;
+create policy "vitalis_dev_all_dtn" on public.dtn_messages for all to anon, authenticated using (true) with check (true);
+
+drop policy if exists "vitalis_dev_all_audit" on public.emergency_audit_logs;
+create policy "vitalis_dev_all_audit" on public.emergency_audit_logs for all to anon, authenticated using (true) with check (true);
+
 -- Seed starter scenarios (optional; safe to re-run with ON CONFLICT DO NOTHING)
 insert into public.scenarios (id, name, phase, duration_context, comms_delay_label, active_hazards_highlight, scenario_description, environment)
 values
