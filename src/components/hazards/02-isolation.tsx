@@ -10,26 +10,20 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
-  HeartHandshake,
-  Home,
   Info,
   Lock,
   ShieldAlert,
-  Sparkles,
   Users,
   Volume2,
   WifiOff,
-  Wrench,
   X,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
 import { evaluateHazardForActor } from "@/lib/evaluator";
 import {
-  deriveShipLayoutProfile,
   ISOLATION_PIPELINE_VALUES,
   ISOLATION_RESEARCH_METADATA,
   type IsolationInfoEntry,
-  type ShipLayoutProfile,
 } from "@/lib/hazards/02-isolation";
 import type { HazardChartSpec, HazardDataRecord } from "@/lib/hazards/types";
 import type { HazardScreenProps } from "./types";
@@ -148,11 +142,6 @@ function formatNum(value: number | null, unit = "", digits?: number): string {
   if (value === null) return "—";
   const formatted = typeof digits === "number" ? value.toFixed(digits) : String(value);
   return unit ? `${formatted} ${unit}` : formatted;
-}
-
-function shortCallsign(callsign: string): string {
-  const parts = callsign.split("—");
-  return (parts[1] ?? parts[0]).trim();
 }
 
 /**
@@ -328,331 +317,11 @@ function KpiCard({
   );
 }
 
-function SharedZoneBadgeIcon({ category }: { category: ShipLayoutProfile["sharedZones"][number]["category"] }) {
-  if (category === "commons") return <HeartHandshake className="h-3.5 w-3.5 text-sky-700" aria-hidden="true" />;
-  if (category === "biophilia") return <Sparkles className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />;
-  if (category === "eclss") return <Wrench className="h-3.5 w-3.5 text-slate-700" aria-hidden="true" />;
-  if (category === "exercise") return <Activity className="h-3.5 w-3.5 text-indigo-700" aria-hidden="true" />;
-  return <BedDouble className="h-3.5 w-3.5 text-slate-700" aria-hidden="true" />;
-}
-
-function ShipHabitatLayoutCard({
-  layout,
-  activeCharacterId,
-  activeInfo,
-  onSelectInfo,
-}: {
-  layout: ShipLayoutProfile;
-  activeCharacterId: string;
-  activeInfo: IsolationInfoEntry | null;
-  onSelectInfo: (entry: IsolationInfoEntry | null) => void;
-}) {
-  const privacyRatio = layout.privateQuartersCount / Math.max(1, layout.crewCount);
-  const densityStatus: StatusKey = layout.hasVolumeDeficit
-    ? "CRITICAL"
-    : layout.hasPrivacyDeficit
-    ? "ELEVATED"
-    : "NOMINAL";
-
-  const densityLabel = layout.hasPrivacyDeficit
-    ? `[V2 7071] Privacy Deficit: ${layout.crewCount} crew / ${layout.privateQuartersCount} quarters`
-    : layout.hasVolumeDeficit
-    ? `NHV Below Floor: ${layout.nhvPerCrewM3.toFixed(1)} < ${V.minNetHabitableVolumeM3PerCrew} m³/crew`
-    : `[V2 7071] 1:1 Private Quarters Compliant`;
-
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Home className="h-4 w-4 text-sky-700" aria-hidden="true" />
-          <h2 className="text-sm font-bold text-slate-900">
-            Ship &amp; Habitat Layout — Rooms vs. Crew Density
-          </h2>
-          <InfoCircle
-            entry={ISOLATION_RESEARCH_METADATA.ship_layout}
-            activeInfo={activeInfo}
-            onSelectInfo={onSelectInfo}
-          />
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[densityStatus].badge}`}
-          >
-            <StatusIcon status={densityStatus} className="h-3.5 w-3.5" />
-            {densityLabel}
-          </span>
-        </div>
-
-        <span className="text-xs font-medium text-slate-600">
-          {layout.profileName} ·{" "}
-          {layout.isDbOverride ? "DB Telemetry Override" : "NASA Reference + Live Crew"}
-        </span>
-      </div>
-
-      {/* Density Summary Metrics */}
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-slate-600">Astronauts Onboard</span>
-            <InfoCircle
-              entry={ISOLATION_RESEARCH_METADATA.ship_layout}
-              activeInfo={activeInfo}
-              onSelectInfo={onSelectInfo}
-            />
-          </div>
-          <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
-            {layout.crewCount} crew
-          </p>
-          <p className="text-xs text-slate-500">Live from public.characters</p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-slate-600">Private Sleep Quarters</span>
-            <InfoCircle
-              entry={ISOLATION_RESEARCH_METADATA.ship_layout}
-              activeInfo={activeInfo}
-              onSelectInfo={onSelectInfo}
-            />
-          </div>
-          <p
-            className={`mt-1 text-lg font-bold tabular-nums ${
-              layout.hasPrivacyDeficit ? "text-amber-800" : "text-slate-900"
-            }`}
-          >
-            {layout.privateQuartersCount} rooms
-          </p>
-          <p className="text-xs text-slate-500">
-            {privacyRatio.toFixed(2)} rooms/crew ([V2 7071] &ge; 1.0)
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-slate-600">Total Habitat Rooms</span>
-            <InfoCircle
-              entry={ISOLATION_RESEARCH_METADATA.ship_layout}
-              activeInfo={activeInfo}
-              onSelectInfo={onSelectInfo}
-            />
-          </div>
-          <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
-            {layout.totalHabitatRooms} rooms
-          </p>
-          <p className="text-xs text-slate-500">
-            {layout.privateQuartersCount} private + {layout.sharedFunctionalRoomsCount} shared bays
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-slate-600">Net Habitable Volume</span>
-            <InfoCircle
-              entry={ISOLATION_RESEARCH_METADATA.ship_layout}
-              activeInfo={activeInfo}
-              onSelectInfo={onSelectInfo}
-            />
-          </div>
-          <p
-            className={`mt-1 text-lg font-bold tabular-nums ${
-              layout.hasVolumeDeficit ? "text-red-700" : "text-slate-900"
-            }`}
-          >
-            {layout.nhvPerCrewM3.toFixed(1)} m³/crew
-          </p>
-          <p className="text-xs text-slate-500">
-            {layout.habitableVolumeM3} m³ total (min {V.minNetHabitableVolumeM3PerCrew} m³/crew)
-          </p>
-        </div>
-      </div>
-
-      {/* Responsive Architectural Habitat Deck Blueprint (HTML Grid inside pressurized hull frame) */}
-      <div className="mt-4 rounded-2xl border-2 border-slate-300 bg-slate-50 p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-          <span className="font-semibold text-slate-800">
-            Pressurized Deck Plan — Private Quarters &amp; Shared Functional Bays
-          </span>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" />
-              Nominal / Private
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" aria-hidden="true" />
-              Shared Berth / Conditional
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-              Hold / NC-40 Breach
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_auto_1fr]">
-          {/* Left Wing: Private Crew Quarters */}
-          <div className="space-y-2">
-            <p className="text-xs font-bold tracking-wide text-slate-700 uppercase">
-              Private Crew Quarters ({layout.privateQuartersCount})
-            </p>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {layout.quarters.map((q) => {
-                const containsActive = q.occupants.some((o) => o.characterId === activeCharacterId);
-                const hasHold = q.occupants.some((o) => o.readinessState === "HOLD");
-                const hasCond = q.occupants.some((o) => o.readinessState === "CONDITIONAL");
-
-                const quarterStatus: StatusKey =
-                  q.nc40Breached || hasHold
-                    ? "CRITICAL"
-                    : q.isOverflowShared || hasCond
-                    ? "ELEVATED"
-                    : "NOMINAL";
-
-                const cardBorder = containsActive
-                  ? "border-sky-500 ring-2 ring-sky-200 bg-sky-50/50"
-                  : quarterStatus === "CRITICAL"
-                  ? "border-red-300 bg-red-50/50"
-                  : quarterStatus === "ELEVATED"
-                  ? "border-amber-300 bg-amber-50/50"
-                  : "border-slate-200 bg-white";
-
-                return (
-                  <div key={q.roomId} className={`rounded-xl border p-3 ${cardBorder}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-900">
-                        {q.roomId}
-                        {containsActive && (
-                          <span className="ml-1.5 rounded bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                            YOU
-                          </span>
-                        )}
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[quarterStatus].badge}`}
-                      >
-                        <StatusIcon status={quarterStatus} className="h-3 w-3" />
-                        {q.isOverflowShared ? `Shared (${q.occupants.length})` : quarterStatus}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 space-y-1">
-                      {q.occupants.length === 0 ? (
-                        <p className="text-xs text-slate-500">Unassigned quarter</p>
-                      ) : (
-                        q.occupants.map((occ) => (
-                          <div
-                            key={occ.characterId}
-                            className="flex items-center justify-between gap-2 text-xs"
-                          >
-                            <span className="font-medium text-slate-800">
-                              {shortCallsign(occ.callsign)}
-                            </span>
-                            <span className="text-slate-600 tabular-nums">
-                              {occ.sleepH !== null ? `${occ.sleepH}h` : "—"}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-between border-t border-slate-200/70 pt-1.5 text-[11px]">
-                      <span className="text-slate-600">
-                        Acoustic:{" "}
-                        <strong className={q.nc40Breached ? "text-red-700" : "text-slate-800"}>
-                          {q.noiseDba !== null ? `${q.noiseDba.toFixed(1)} dBA` : "Awaiting stream"}
-                        </strong>
-                      </span>
-                      {q.isOverflowShared && (
-                        <span className="font-semibold text-amber-800">[V2 7071] Deficit</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Center Spine: Pressurized Corridor & Airlock */}
-          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-200/70 px-3 py-2 text-center lg:w-12 lg:py-4">
-            <span className="text-[11px] font-bold tracking-widest text-slate-600 uppercase lg:[writing-mode:vertical-rl] lg:rotate-180">
-              Pressurized Corridor · Airlock Spine
-            </span>
-          </div>
-
-          {/* Right Wing: Shared Functional Bays */}
-          <div className="space-y-2">
-            <p className="text-xs font-bold tracking-wide text-slate-700 uppercase">
-              Shared Habitat Bays ({layout.sharedZones.length} Core Zones)
-            </p>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {layout.sharedZones.map((zone, idx) => (
-                <div
-                  key={zone.id}
-                  className={`rounded-xl border p-3 ${
-                    idx === layout.sharedZones.length - 1 ? "sm:col-span-2" : ""
-                  } ${
-                    zone.alertFlag
-                      ? "border-amber-300 bg-amber-50/50"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <SharedZoneBadgeIcon category={zone.category} />
-                      <span className="text-xs font-bold text-slate-900">{zone.name}</span>
-                    </div>
-                    {zone.alertFlag && (
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-700" aria-hidden="true" />
-                    )}
-                  </div>
-                  <p
-                    className={`mt-1 text-xs leading-snug ${
-                      zone.alertFlag ? "font-medium text-amber-900" : "text-slate-600"
-                    }`}
-                  >
-                    {zone.detail}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {(layout.hasPrivacyDeficit || layout.hasVolumeDeficit) && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-950">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-            <div>
-              <span className="font-bold">Isolation Crowding Risk Detected: </span>
-              {layout.hasPrivacyDeficit
-                ? `${layout.crewCount} astronauts share ${layout.privateQuartersCount} private quarters, breaching NASA-STD-3001 [V2 7071] (>30-day individual privacy requirement) and increasing sleep fragmentation and team tension.`
-                : `Net Habitable Volume (${layout.nhvPerCrewM3.toFixed(1)} m³/crew) falls below the ${V.minNetHabitableVolumeM3PerCrew} m³/crew Stromgren / DRA 5.0 consensus floor.`}
-            </div>
-          </div>
-        )}
-
-        <p className="mt-3 text-xs text-slate-600">
-          {layout.referenceNote}. Optional DB telemetry keys:{" "}
-          <code className="rounded bg-slate-200/80 px-1.5 py-0.5 text-[11px]">
-            private_quarters_count
-          </code>
-          ,{" "}
-          <code className="rounded bg-slate-200/80 px-1.5 py-0.5 text-[11px]">
-            total_habitat_rooms
-          </code>
-          ,{" "}
-          <code className="rounded bg-slate-200/80 px-1.5 py-0.5 text-[11px]">
-            habitable_volume_m3
-          </code>
-          .
-        </p>
-      </div>
-    </section>
-  );
-}
-
 /**
  * HAZARD 2: ISOLATION & CONFINEMENT SCREEN
  * Coherent, astronaut-accessible, 100% Read-Only DB-ingested telemetry view with:
  * - Action-First Ready-to-Act Guidance & Re-Entry overload throttling
  * - High-legibility KPI cards with accessible (i) research modals
- * - Responsive Ship & Habitat Layout (rooms vs. astronauts density)
  * - Strict Lead/Member privacy firewall & thresholded telemetry charts
  */
 export function IsolationHazardScreen({
@@ -733,8 +402,6 @@ export function IsolationHazardScreen({
   const charts: HazardChartSpec[] = snapshot.charts ?? [];
   const primaryCharts = charts.slice(0, 4);
   const hypokinesisChart = charts.find((c) => c.id === "isolation-hypokinesis-activity");
-
-  const shipLayout = deriveShipLayoutProfile(mission, scenarioHazardRecords, hazardRecords);
 
   // Lead-only anonymized crew matrix computed through evaluator (enforcing Lead privacy firewall)
   const crewRows =
@@ -1155,15 +822,7 @@ export function IsolationHazardScreen({
             </section>
           )}
 
-          {/* 4. Ship & Habitat Layout (Rooms vs. Crew Density) */}
-          <ShipHabitatLayoutCard
-            layout={shipLayout}
-            activeCharacterId={activeCharacter.id}
-            activeInfo={activeInfo}
-            onSelectInfo={setActiveInfo}
-          />
-
-          {/* 5. Thresholded Telemetry Charts */}
+          {/* 4. Thresholded Telemetry Charts */}
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-slate-900">

@@ -1,4 +1,3 @@
-import type { MissionProfile } from "@/lib/domain";
 import {
   HazardChartSpec,
   HazardDataRecord,
@@ -59,16 +58,10 @@ export const ISOLATION_PIPELINE_VALUES = {
   circadianMisalignCritMin: 180,
   luxComplianceFloorPct: 70,
 
-  // Habitability, Acoustics & Privacy Quarters (NASA-STD-3001 Vol. 2 [V2 6079], [V2 7071]; Stromgren et al.)
+  // Habitability & Acoustics (NASA-STD-3001 Vol. 2 [V2 6079])
   sleepQuarterNoiseLimitNc40Dba: 49, // [V2 6079] NC-40 continuous sleep-quarter limit (>30 day missions)
   workAreaNoiseLimitNc50Dba: 58, // NC-50 continuous work-area limit
   impulseNoiseSleepElevCount: 2,
-  privateQuartersMinDurationDays: 30, // [V2 7071] Individual private quarters required for >30 day missions
-  privateQuartersPerCrewMin: 1,
-  minNetHabitableVolumeM3PerCrew: 25, // Stromgren et al. / NASA DRA 5.0 consensus minimum NHV (25 m³ / 883 ft³)
-  targetNetHabitableVolumeM3PerCrew: 50, // Mars Transit Habitat point-of-departure design baseline (~50–60 m³)
-  mars500HabitableVolumeM3: 550, // Mars500 520-day 6-crew analog volume (Basner et al., 2014)
-  chapeaFloorAreaSqFt: 1700, // CHAPEA Mars Dune Alpha (~158 m², 4 private quarters + shared bays)
 
   // Mars500 / HERA Confinement & Hypokinesis (Basner et al., 2014)
   thirdQuarterStartPct: 50,
@@ -202,28 +195,6 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
       {
         label: "NASA Human Research Roadmap (BMed, Team, Sleep Risks)",
         url: "https://humanresearchroadmap.nasa.gov/Risks/",
-      },
-    ],
-  },
-  ship_layout: {
-    id: "ship_layout",
-    title: "Ship Habitat Layout, Private Quarters & Crew Density",
-    explanation:
-      "Maps the number of private sleep quarters and shared functional rooms against the live astronaut headcount in Supabase. Insufficient private quarters or cramped Net Habitable Volume (NHV) elevates crowding stress, interpersonal tension, and acoustic sleep disruption.",
-    benchmark:
-      "NASA-STD-3001 Vol. 2 [V2 7071]: >= 1 private quarter per crew member for missions > 30 days. Stromgren et al. / DRA 5.0: >= 25 m³ NHV/crew minimum (~50 m³/crew target). CHAPEA Mars Dune Alpha = 1,700 sq ft (~158 m²), 4 quarters.",
-    links: [
-      {
-        label: "NASA-STD-3001 Vol. 2 [V2 7071] Standards",
-        url: "https://standards.nasa.gov/",
-      },
-      {
-        label: "NASA Technical Reports Server (Stromgren NHV >= 25 m³)",
-        url: "https://ntrs.nasa.gov/",
-      },
-      {
-        label: "CHAPEA Mars Dune Alpha Habitat Layout",
-        url: "https://www.nasa.gov/mission/chapea/",
       },
     ],
   },
@@ -539,258 +510,6 @@ function detectCrossHazardHabitatStress(
   };
 }
 
-export interface ShipQuarterSlot {
-  roomId: string;
-  label: string;
-  occupants: Array<{
-    characterId: string;
-    callsign: string;
-    roleTitle: string;
-    readinessState: MissionProfile["crew"][number]["readinessState"];
-    sleepH: number | null;
-    noiseDba: number | null;
-  }>;
-  isOverflowShared: boolean;
-  noiseDba: number | null;
-  nc40Breached: boolean;
-}
-
-export interface ShipLayoutProfile {
-  profileName: string;
-  referenceNote: string;
-  isDbOverride: boolean;
-  crewCount: number;
-  privateQuartersCount: number;
-  sharedFunctionalRoomsCount: number;
-  totalHabitatRooms: number;
-  habitableVolumeM3: number;
-  nhvPerCrewM3: number;
-  hasPrivacyDeficit: boolean;
-  hasVolumeDeficit: boolean;
-  quarters: ShipQuarterSlot[];
-  sharedZones: Array<{
-    id: string;
-    name: string;
-    category: "commons" | "biophilia" | "eclss" | "exercise" | "medical";
-    detail: string;
-    alertFlag: boolean;
-  }>;
-}
-
-function readRecordString(
-  records: readonly HazardDataRecord[],
-  streamName: string,
-  keys: string[]
-): string | null {
-  const rec = records.find((r) => r.streamName === streamName);
-  if (!rec) return null;
-  for (const key of keys) {
-    const val = rec.payload?.[key];
-    if (typeof val === "string" && val.trim() !== "") return val.trim();
-  }
-  return null;
-}
-
-export function deriveShipLayoutProfile(
-  mission: MissionProfile,
-  scenarioHazardRecords: readonly HazardDataRecord[],
-  allHazardRecords: readonly HazardDataRecord[] = []
-): ShipLayoutProfile {
-  const V = ISOLATION_PIPELINE_VALUES;
-  const crew = mission.crew;
-  const crewCount = crew.length;
-
-  const habitatRecords = scenarioHazardRecords.filter(
-    (r) => r.hazardSlug === "isolation" && r.streamName === STREAM_HABITAT
-  );
-
-  // Check if DB explicitly specifies habitat room counts or habitable volume
-  let dbPrivateQuarters: number | null = null;
-  let dbTotalRooms: number | null = null;
-  let dbVolumeM3: number | null = null;
-
-  for (const rec of habitatRecords) {
-    if (dbPrivateQuarters === null) {
-      dbPrivateQuarters = toFiniteNumber(rec.payload?.private_quarters_count);
-    }
-    if (dbTotalRooms === null) {
-      dbTotalRooms = toFiniteNumber(rec.payload?.total_habitat_rooms);
-    }
-    if (dbVolumeM3 === null) {
-      dbVolumeM3 = toFiniteNumber(rec.payload?.habitable_volume_m3);
-    }
-  }
-
-  const lowerId = mission.id.toLowerCase();
-  const lowerName = mission.name.toLowerCase();
-  const lowerPhase = mission.phase.toUpperCase();
-
-  let profileName = "Mars Transit Habitat (DRA 5.0 Reference)";
-  let referenceNote = "4 private quarters + 6 shared functional bays (~240 m³ baseline)";
-  let refPrivateQuarters = 4;
-  let refSharedRooms = 6;
-  let refVolumeM3 = 240;
-
-  if (lowerId.includes("chapea") || lowerName.includes("chapea") || lowerPhase.includes("SURFACE")) {
-    profileName = "CHAPEA Mars Dune Alpha Profile";
-    referenceNote = "1,700 sq ft (~158 m² / ~380 m³) · 4 private crew quarters + 6 shared bays";
-    refPrivateQuarters = 4;
-    refSharedRooms = 6;
-    refVolumeM3 = 380;
-  } else if (lowerId.includes("iss") || lowerName.includes("iss") || lowerPhase.includes("ORBITAL")) {
-    profileName = "ISS Closed Orbital Habitat Profile";
-    referenceNote = "6 crew berths (4 Harmony Node 2 + 2 Zvezda) + 6 shared modules (~388 m³ NHV)";
-    refPrivateQuarters = 6;
-    refSharedRooms = 6;
-    refVolumeM3 = 388;
-  } else if (lowerId.includes("artemis") || lowerName.includes("artemis") || lowerPhase.includes("EVA")) {
-    profileName = "Artemis Orion / Gateway Profile";
-    referenceNote = "4 crew berths + 4 shared compartments (~110 m³ pressurized baseline)";
-    refPrivateQuarters = 4;
-    refSharedRooms = 4;
-    refVolumeM3 = 110;
-  }
-
-  const isDbOverride =
-    dbPrivateQuarters !== null || dbTotalRooms !== null || dbVolumeM3 !== null;
-  const privateQuartersCount = Math.max(1, Math.round(dbPrivateQuarters ?? refPrivateQuarters));
-  const sharedFunctionalRoomsCount = Math.max(
-    1,
-    dbTotalRooms !== null
-      ? Math.max(1, Math.round(dbTotalRooms) - privateQuartersCount)
-      : refSharedRooms
-  );
-  const totalHabitatRooms =
-    dbTotalRooms !== null
-      ? Math.max(privateQuartersCount + 1, Math.round(dbTotalRooms))
-      : privateQuartersCount + sharedFunctionalRoomsCount;
-  const habitableVolumeM3 = Math.max(10, dbVolumeM3 ?? refVolumeM3);
-  const nhvPerCrewM3 = habitableVolumeM3 / Math.max(1, crewCount);
-
-  const hasPrivacyDeficit = crewCount > privateQuartersCount;
-  const hasVolumeDeficit = nhvPerCrewM3 < V.minNetHabitableVolumeM3PerCrew;
-
-  // Build private quarter slots and map crew members from DB or berth order
-  const quarterSlots: ShipQuarterSlot[] = Array.from({ length: privateQuartersCount }, (_, idx) => ({
-    roomId: `CQ-${idx + 1}`,
-    label: `Crew Quarter ${idx + 1}`,
-    occupants: [],
-    isOverflowShared: false,
-    noiseDba: null,
-    nc40Breached: false,
-  }));
-
-  crew.forEach((member, idx) => {
-    const memberRecords = scenarioHazardRecords.filter(
-      (r) => r.hazardSlug === "isolation" && r.characterId === member.id
-    );
-    const sleepH = readRecordField(memberRecords, STREAM_WEARABLE, ["sleep_duration_h"]);
-    const noiseDba = readRecordField(memberRecords, STREAM_HABITAT, ["sleep_quarter_noise_dba"]);
-    const explicitRoom = readRecordString(memberRecords, STREAM_HABITAT, ["sleep_quarter_id"]);
-
-    let targetSlot = quarterSlots[idx % privateQuartersCount];
-    if (explicitRoom) {
-      const matched = quarterSlots.find(
-        (q) =>
-          q.roomId.toLowerCase() === explicitRoom.toLowerCase() ||
-          q.label.toLowerCase() === explicitRoom.toLowerCase()
-      );
-      if (matched) targetSlot = matched;
-    }
-
-    targetSlot.occupants.push({
-      characterId: member.id,
-      callsign: member.callsign,
-      roleTitle: member.assignedRoleTitle,
-      readinessState: member.readinessState,
-      sleepH,
-      noiseDba,
-    });
-
-    if (noiseDba !== null) {
-      targetSlot.noiseDba =
-        targetSlot.noiseDba === null ? noiseDba : Math.max(targetSlot.noiseDba, noiseDba);
-      if (noiseDba > V.sleepQuarterNoiseLimitNc40Dba) {
-        targetSlot.nc40Breached = true;
-      }
-    }
-    if (targetSlot.occupants.length > 1) {
-      targetSlot.isOverflowShared = true;
-    }
-  });
-
-  // Shared zone status from DB streams (strictly non-private aggregate)
-  const connectRecords = scenarioHazardRecords.filter(
-    (r) => r.hazardSlug === "isolation" && r.streamName === STREAM_CONNECT
-  );
-  const veggieActive = connectRecords.filter(
-    (r) => toBooleanFlag(r.payload?.veggie_plant_care_done) === true
-  ).length;
-  const socialActive = connectRecords.filter(
-    (r) => toBooleanFlag(r.payload?.crew_social_checkin_done) === true
-  ).length;
-
-  const { sharedEnvCause } = detectCrossHazardHabitatStress(
-    allHazardRecords,
-    mission.commsDelayLabel
-  );
-  const nc40QuartersCount = quarterSlots.filter((q) => q.nc40Breached).length;
-
-  const sharedZones: ShipLayoutProfile["sharedZones"] = [
-    {
-      id: "zone-commons",
-      name: "Galley / CONNECT Commons",
-      category: "commons",
-      detail: `${socialActive}/${crewCount} social check-in(s) logged`,
-      alertFlag: crewCount > 0 && socialActive === 0 && connectRecords.length > 0,
-    },
-    {
-      id: "zone-veggie",
-      name: "Veggie / Biophilia Bay",
-      category: "biophilia",
-      detail: `${veggieActive}/${crewCount} plant-care rotation(s)`,
-      alertFlag: false,
-    },
-    {
-      id: "zone-eclss",
-      name: "ECLSS & Work Bay (NC-50)",
-      category: "eclss",
-      detail: sharedEnvCause ?? `<= ${V.workAreaNoiseLimitNc50Dba} dBA work limit`,
-      alertFlag: Boolean(sharedEnvCause) || nc40QuartersCount >= 2,
-    },
-    {
-      id: "zone-exercise",
-      name: "ARED / Exercise Zone",
-      category: "exercise",
-      detail: "Anti-hypokinesis aerobic & resistance countermeasure",
-      alertFlag: false,
-    },
-    {
-      id: "zone-med",
-      name: "Medical / Quiet Bay 2",
-      category: "medical",
-      detail: nc40QuartersCount > 0 ? "ANC / earplugs bridge ready" : "Nominal acoustic buffer",
-      alertFlag: nc40QuartersCount > 0,
-    },
-  ];
-
-  return {
-    profileName,
-    referenceNote,
-    isDbOverride,
-    crewCount,
-    privateQuartersCount,
-    sharedFunctionalRoomsCount,
-    totalHabitatRooms,
-    habitableVolumeM3,
-    nhvPerCrewM3,
-    hasPrivacyDeficit,
-    hasVolumeDeficit,
-    quarters: quarterSlots,
-    sharedZones,
-  };
-}
-
 export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEvaluationResult {
   const V = ISOLATION_PIPELINE_VALUES;
   const {
@@ -974,9 +693,21 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const teamSleepBuffActive =
     crewSleepValues.length >= 2 && crewGoodSleepCount / crewSleepValues.length >= 0.75;
 
-  const shipLayout = deriveShipLayoutProfile(mission, scenarioHazardRecords, allHazardRecords);
-  const dbPrivacyOrVolumeDeficit =
-    shipLayout.isDbOverride && (shipLayout.hasPrivacyDeficit || shipLayout.hasVolumeDeficit);
+  const hasAnyIsolationTelemetry =
+    sleepDurationH !== null ||
+    sleepEfficiencyPct !== null ||
+    circadianShiftMin !== null ||
+    sleepNoiseDba !== null ||
+    pvtMedianRtMs !== null ||
+    pvtLapsesCount !== null ||
+    subjectiveFatigue !== null ||
+    workloadStrain !== null ||
+    daytimeActivity !== null ||
+    restingHrv !== null;
+
+  const workloadElevated = workloadStrain !== null && workloadStrain >= V.workloadStrainElev;
+  const leadSharedAcousticFlag = role === "lead" && sharedAcousticDebuff;
+  const crossHazardFlag = Boolean(sharedEnvCause);
 
   // 8. Composite Readiness Score (1–9 single-digit per OUTLINE.md) & Overall Status
   const pSleep = sleepCritical ? 3 : sleepElevated ? 2 : 0;
@@ -985,7 +716,9 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const pHab =
     (acousticElevated ? 1.5 : 0) +
     (monotonyElevated ? 1 : 0) +
-    (dbPrivacyOrVolumeDeficit ? 1 : 0);
+    (workloadElevated ? 1 : 0) +
+    (leadSharedAcousticFlag ? 1 : 0) +
+    (crossHazardFlag ? 1 : 0);
   const readinessIndex = Math.round(clamp(9 - pSleep - pPvt - pCirc - pHab, 1, 9));
 
   const hasCriticalTelemetry = sleepCritical || pvtCritical;
@@ -995,16 +728,23 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     circadianElevated ||
     acousticElevated ||
     monotonyElevated ||
-    sharedAcousticDebuff ||
-    dbPrivacyOrVolumeDeficit ||
-    (workloadStrain !== null && workloadStrain >= V.workloadStrainElev);
+    workloadElevated ||
+    leadSharedAcousticFlag ||
+    crossHazardFlag;
 
-  const status: HazardEvaluationResult["status"] =
-    hasCriticalTelemetry || actor.readinessState === "HOLD"
+  // Drive status from actual Isolation telemetry when DB streams are loaded;
+  // only fall back to actor.readinessState when no Isolation telemetry exists yet.
+  const status: HazardEvaluationResult["status"] = hasAnyIsolationTelemetry
+    ? hasCriticalTelemetry
       ? "CRITICAL"
-      : hasElevatedTelemetry || actor.readinessState === "CONDITIONAL"
+      : hasElevatedTelemetry
       ? "ELEVATED"
-      : "NOMINAL";
+      : "NOMINAL"
+    : actor.readinessState === "HOLD"
+    ? "CRITICAL"
+    : actor.readinessState === "CONDITIONAL"
+    ? "ELEVATED"
+    : "NOMINAL";
 
   // 9. Compute Auditable ETA & Horizon Summaries
   let eta = actor.metrics.etaSlot;
@@ -1021,9 +761,11 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     eta = `~${solsRounded} sol${solsRounded === 1 ? "" : "s"} to severe circadian misalignment (${V.circadianMisalignCritMin} min threshold)`;
   } else if (monotonyElevated) {
     eta = "7–14 days to entrenched Third-Quarter motivation & vigilance slump";
-  } else if (acousticElevated) {
-    eta = "24–48 h (cumulative sleep fragmentation if NC-40 breach persists)";
-  } else if (sleepDurationH !== null || pvtMedianRtMs !== null) {
+  } else if (acousticElevated || leadSharedAcousticFlag || crossHazardFlag) {
+    eta = "24–48 h (cumulative sleep fragmentation if habitat stressor persists)";
+  } else if (workloadElevated) {
+    eta = "24–72 h (workload strain risking sleep compression)";
+  } else if (hasAnyIsolationTelemetry) {
     eta = `Nominal — Isolation Readiness Index ${readinessIndex}/9`;
   }
 
@@ -1044,6 +786,9 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       `Sleep-quarter noise ${sleepNoiseDba ?? "—"} dBA (exceeds NASA-STD-3001 NC-40 limit of ${V.sleepQuarterNoiseLimitNc40Dba} dBA)`
     );
   }
+  if (workloadElevated) {
+    immediateFindings.push(`Workload strain ${workloadStrain}/5 (>= ${V.workloadStrainElev}/5 threshold)`);
+  }
   if (sharedEnvCause) {
     immediateFindings.push(`Cross-Hazard Link: ${sharedEnvCause}`);
   }
@@ -1051,7 +796,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const immediateHorizon =
     immediateFindings.length > 0
       ? `[Readiness ${readinessIndex}/9] ${immediateFindings.join(" · ")}`
-      : sleepDurationH !== null || pvtMedianRtMs !== null || sleepNoiseDba !== null
+      : hasAnyIsolationTelemetry
       ? `[Readiness ${readinessIndex}/9] Nominal — ${[
           sleepDurationH !== null ? `Sleep ${sleepDurationH}h` : null,
           pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (${pvtLapsesCount ?? 0} lapses)` : null,
@@ -1089,63 +834,97 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
         (crewVeggieCount > 0 ? ` · Biophilia Buff (${crewVeggieCount} logged)` : "")
     );
   }
-  if (shipLayout.hasPrivacyDeficit || shipLayout.hasVolumeDeficit) {
-    prolongedFindings.push(
-      `Habitat Capacity [V2 7071]: ${shipLayout.crewCount} crew vs. ${shipLayout.privateQuartersCount} private quarters (${shipLayout.nhvPerCrewM3.toFixed(1)} m³/crew NHV vs. ${V.minNetHabitableVolumeM3PerCrew} m³ floor)`
-    );
-  }
 
   const prolongedHorizon =
     prolongedFindings.length > 0
       ? prolongedFindings.join(" | ")
       : isolationHazard.outputSlots.prolongedHorizon;
 
-  // 10. Actionable 1–2 Solutions (CONNECT + Veggie + NASA-STD-3001; capped to 1 in reentryMode)
+  // 10. Actionable 1–2 Solutions (100% telemetry-grounded, capped to 1 in reentryMode)
   const rankedSolutions: string[] = [];
-  if (acousticElevated || sharedEnvCause || (role === "lead" && sharedAcousticDebuff)) {
+  if (acousticElevated || sharedEnvCause || leadSharedAcousticFlag) {
     rankedSolutions.push(
-      "Immediate (15 min): Inspect ECLSS fan muffler in affected quarters & issue foam earplugs/ANC headsets from Med Kit Bay 2 (In Stock); cross-check Hazard 05 cabin CO₂/acoustics."
+      `Acoustic / Habitat Mitigation: ${
+        sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba
+          ? `Quarter noise is ${sleepNoiseDba} dBA (> ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
+          : sharedEnvCause ?? `Shared NC-40 breach across ${crewNoiseBreachCount} crew quarters`
+      } — inspect ECLSS fan muffler & issue ANC/earplugs from Med Kit Bay 2.`
     );
   }
   if (sleepCritical || pvtCritical) {
     rankedSolutions.push(
-      "Pre-EVA Safety Gate: Defer precision EVA/rover tasks; protect an 8.0–8.5h recovery sleep window until automated actigraphy & PVT-B telemetry clear hold limits."
+      `Pre-EVA Safety Gate: ${
+        sleepDurationH !== null && sleepDurationH < V.criticalSleepHours
+          ? `Sleep ${sleepDurationH}h (< ${V.criticalSleepHours}h floor)`
+          : `PVT-B ${pvtMedianRtMs ?? "—"} ms / ${pvtLapsesCount ?? 0} lapses`
+      } — defer precision EVA/rover tasks until an 8.0–8.5h recovery sleep window clears limits.`
     );
   } else if (sleepElevated || pvtElevated) {
     rankedSolutions.push(
-      "Needs / Recovery: Shift non-critical maintenance by 60 min tonight to reclaim >= 7.5h sleep and cut rolling sleep debt below 2.0h."
+      `Sleep Recovery: Rolling mean sleep is ${rollingMeanSleep?.toFixed(1) ?? sleepDurationH ?? "—"}h (debt ${rollingSleepDebt.toFixed(1)}h vs. ${V.rollingDebtElevHours}h floor) — shift non-critical tasks by 60 min tonight.`
+    );
+  }
+  if (workloadElevated) {
+    rankedSolutions.push(
+      `Workload Decompression: Reported strain ${workloadStrain}/5 (>= ${V.workloadStrainElev}/5 threshold) — rebalance duty load before sleep window.`
     );
   }
   if (circadianElevated) {
     rankedSolutions.push(
-      `Circadian Entrainment (V2 8055): Apply high-melanopic blue-enriched light on wake and dim red-shifted lighting 2h pre-sleep to counter ${isMarsSurface ? "+39 min/sol Martian drift" : "phase shift"}.`
+      `Circadian Entrainment [V2 8055]: Phase shift ${circadianShiftMin ?? 0} min (lighting match ${luxCompliancePct ?? "—"}%) — apply blue-enriched wake light and dim red-shifted pre-sleep lighting.`
     );
   }
-  if (monotonyElevated || veggieCareDone === false) {
+  if (monotonyElevated) {
     rankedSolutions.push(
-      "CONNECT + Biophilia (10 min): Complete ISS Veggie plant-module care/misting for sensory enrichment and pair a 30-min aerobic/resistance session with a crewmate."
+      `Anti-Hypokinesis Countermeasure: ${
+        activityChangePct !== null
+          ? `Daytime activity changed ${activityChangePct.toFixed(0)}% vs. baseline`
+          : "Mars500 Third-Quarter monotony trigger"
+      } — schedule 30-min aerobic/resistance exercise + 10-min ISS Veggie care.`
     );
   }
-  if (dbPrivacyOrVolumeDeficit) {
-    rankedSolutions.push(
-      `Habitat Privacy [V2 7071]: Stagger sleep/quiet-bay schedules across ${shipLayout.crewCount} crew for ${shipLayout.privateQuartersCount} private quarters to preserve individual decompression windows.`
-    );
-  }
-  if (commsDelayMin !== null && commsDelayMin >= V.highCommsDelayMin && socialCheckinDone !== true) {
-    rankedSolutions.push(
-      "CONNECT Networking: Schedule a shared crew briefing/meal and queue an async family video message (offline-ready) to buffer Earth-link isolation."
-    );
-  }
+
   if (rankedSolutions.length === 0) {
-    rankedSolutions.push(
-      reentryMode
-        ? "Re-Entry Pacing: Keep routine stable with one low-stimulus break today; non-critical alerts remain throttled to prevent sensory/decision fatigue."
-        : "Maintain Baseline: Wearable & cognition telemetry nominal; keep sleep-quarter noise <= 49 dBA (NC-40)."
-    );
-    if (!reentryMode) {
+    if (!hasAnyIsolationTelemetry) {
       rankedSolutions.push(
-        "Proactive Buff: Rotate 10-min Veggie plant care or shared crew check-in to sustain CONNECT cohesion."
+        "Awaiting DB Telemetry: Ingest Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to generate telemetry-backed countermeasures."
       );
+    } else if (reentryMode) {
+      rankedSolutions.push(
+        `Re-Entry Pacing (Readiness ${readinessIndex}/9): Observed telemetry is within NASA bounds — keep routine steady with one low-stimulus break today.`
+      );
+    } else {
+      const verifiedChecks = [
+        sleepDurationH !== null ? `Sleep ${sleepDurationH}h (>= ${V.safeSleepFloorHours}h floor)` : null,
+        pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (< ${V.pvtLapseThresholdMs} ms lapse)` : null,
+        sleepNoiseDba !== null ? `Noise ${sleepNoiseDba} dBA (<= ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      rankedSolutions.push(
+        `Within NASA Bounds: ${verifiedChecks} — preserve scheduled ${V.scheduledSleepHours}h sleep & pre-sleep lighting window.`
+      );
+
+      if (inThirdQuarter && veggieCareDone !== true) {
+        rankedSolutions.push(
+          `Third-Quarter Monitor (${missionDayPct}% elapsed · Mars500 50–75% window): Veggie plant-care status is ${
+            veggieCareDone === false ? "pending" : "unlogged"
+          } in DB — complete 10-min Veggie sensory care to buffer monotony.`
+        );
+      } else if (socialCheckinDone !== true) {
+        rankedSolutions.push(
+          `CONNECT Check-In (${missionDayPct !== null ? `${missionDayPct}% elapsed` : "active cycle"}): Crew/async check-in is ${
+            socialCheckinDone === false ? "pending" : "unlogged"
+          } in DB — log shared briefing or async Earth message.`
+        );
+      } else if (veggieCareDone === true && socialCheckinDone === true) {
+        rankedSolutions.push(
+          `Protective Buffs Verified in DB: Veggie biophilia care and CONNECT crew check-in are both complete${
+            missionDayPct !== null ? ` at ${missionDayPct}% mission elapsed` : ""
+          } — maintain exercise cadence.`
+        );
+      }
     }
   }
 
@@ -1335,33 +1114,6 @@ export const isolationHazard: HazardSpec = {
           fieldType: "number",
           unit: "%",
           prompt: "Add your info: Mission progress % (50–75% = Third Quarter)",
-        },
-        {
-          key: "sleep_quarter_id",
-          label: "Sleep Quarter ID",
-          fieldType: "text",
-          prompt: "Add your info: Assigned quarter ID (e.g., CQ-1..CQ-4)",
-        },
-        {
-          key: "private_quarters_count",
-          label: "Private Quarters Count",
-          fieldType: "number",
-          unit: "rooms",
-          prompt: "Add your info: Total private crew quarters ([V2 7071] >= 1/crew >30d)",
-        },
-        {
-          key: "total_habitat_rooms",
-          label: "Total Habitat Rooms",
-          fieldType: "number",
-          unit: "rooms",
-          prompt: "Add your info: Total habitable rooms/bays on vehicle/base",
-        },
-        {
-          key: "habitable_volume_m3",
-          label: "Net Habitable Volume",
-          fieldType: "number",
-          unit: "m³",
-          prompt: "Add your info: Total NHV m³ (Stromgren/DRA 5.0 min 25 m³/crew)",
         },
       ],
     },
