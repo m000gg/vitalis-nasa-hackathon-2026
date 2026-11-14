@@ -15,7 +15,9 @@
     "start": "next start -H 127.0.0.1 -p 1654",
     "lint": "eslint",
     "test:radiation": "node --experimental-strip-types --test tests/radiation.test.mjs tests/radiation-simulation.test.mjs tests/radiation-regressions.test.mjs",
-    "test:radiation:api": "node --test tests/radiation-methods.http.mjs"
+    "test:radiation:api": "node --test tests/radiation-methods.http.mjs",
+    "test:spacecraft": "node --experimental-strip-types --test tests/spacecraft-map.test.mjs",
+    "test:core": "npm run test:radiation && npm run test:spacecraft"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

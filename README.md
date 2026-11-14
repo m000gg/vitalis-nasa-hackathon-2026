@@ -34,10 +34,27 @@ The radiation page contains three complementary surfaces:
 
 Simulation values are labelled `simulated`, `modeled` or `experimental`. DONKI events never become astronaut dose, Gy and Sv are never mixed, and unsupported clinical/organ-risk calculations are refused.
 
+## Spacecraft Map Engine
+
+The shared Spacecraft Map Engine provides a deterministic seeded 2D ship, connected compartments, crew placement, editable hazard zones, door-aware A* routing, route comparison, shelter allocation, movement simulation, event history, local snapshots and alternative mission branches.
+
+Start the application and open [http://127.0.0.1:1654/mission-studio/map](http://127.0.0.1:1654/mission-studio/map). The surface works in isolated Demo Mode; when the existing Supabase configuration is available it reads crew identities without writing simulated positions or exposure into shared astronaut records.
+
+```ts
+import { createInitialMapState, findRoute, generateSpacecraft } from "@/lib/spacecraft";
+
+const blueprint = generateSpacecraft({ includePowerSection: true }, "MARS-126");
+const state = createInitialMapState(blueprint, "mars-transit-126", crew);
+const route = findRoute(blueprint, state, start, destination, { mode: "safe" });
+```
+
+Architecture, data contracts, hazard adapters, persistence proposal and integration examples are documented in [`docs/SPACECRAFT_MAP_ENGINE.md`](docs/SPACECRAFT_MAP_ENGINE.md).
+
 ## Verification
 
 ```powershell
 npm run test:radiation
+npm run test:spacecraft
 npm run lint
 npm run build
 ```
@@ -74,10 +91,7 @@ Never commit `.env.local` or expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 
 ## Documentation
 
-- `docs/AGENTS.md` — repository architecture and safety rules
-- `docs/hazards/01-space-radiation.md` — scientific/product specification
-- `docs/RADIATION_AUDIT.md` — implementation audit
-- `docs/RADIATION_AUDIT_RESPONSE.md` — independent-audit fixes and remaining boundaries
-- `docs/RADIATION_TRACEABILITY.md` — requirements traceability matrix
-- `docs/RADIATION_DEMO.md` — jury walkthrough
-- `docs/RADIATION_MODULE.md` — API and integration guide
+- [`docs/AGENTS.md`](docs/AGENTS.md) — repository architecture and safety rules
+- [`docs/SPACECRAFT_MAP_ENGINE.md`](docs/SPACECRAFT_MAP_ENGINE.md) — complete map engine developer guide
+- [`docs/RADIATION_MODULE.md`](docs/RADIATION_MODULE.md) — radiation API and integration guide
+- [`docs/hazards/`](docs/hazards/) — source scientific and product specifications for all five hazards
