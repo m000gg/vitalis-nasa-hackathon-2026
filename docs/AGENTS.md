@@ -31,7 +31,7 @@ This guide instructs both human teammates and AI coding agents on how to develop
 ## 3. Supabase Remote Database Structure (3 Areas)
 
 Database schema lives in `supabase/schema.sql` and server helpers live in `src/lib/supabase/server.ts`.
-When `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are not set in `.env.local`, the app automatically falls back to local `MISSIONS` data (`"local"` source) and never crashes.
+When `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are not set in `.env.local`, the app automatically falls back to local `MISSIONS` data (`"local"` source) and never crashes.
 
 | Area | Table (`supabase/schema.sql`) | Purpose | API Route |
 | :--- | :--- | :--- | :--- |
