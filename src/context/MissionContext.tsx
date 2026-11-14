@@ -1,8 +1,18 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AuditLogEntry, CrewSlot, DtnMessage, MissionProfile, UserRole } from "@/lib/domain";
-import { HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
+import { HAZARDS, HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
+import { evaluateHazardForActor } from "@/lib/evaluator";
+import { useAlerts } from "@/context/AlertContext";
 
 export interface SaveActorInputOptions {
   payload?: Record<string, unknown>;
@@ -75,6 +85,8 @@ interface MissionContextValue {
   hazardSamples: HazardSampleRecord[];
   scenarioHazardRecords: HazardDataRecord[];
   scenarioHazardSamples: HazardSampleRecord[];
+  lastTelemetrySyncAt: string | null;
+  refreshHazardTelemetry: () => Promise<void>;
   saveActorInput: (
     streamName: string,
     value: string,
@@ -101,6 +113,7 @@ interface MissionContextValue {
 const MissionContext = createContext<MissionContextValue | null>(null);
 
 const STORAGE_KEY = "vitalis_session_v2";
+const TELEMETRY_POLL_INTERVAL_MS = 12_000;
 
 function parseOptionalNumber(raw: string): number | null {
   const trimmed = raw.trim();
@@ -133,6 +146,7 @@ function buildInitialDtnForMission(m: MissionProfile): DtnMessage[] {
 }
 
 export function MissionProvider({ children }: { children: React.ReactNode }) {
+  const { pushToast, triggerAlarm } = useAlerts();
   const [scenarios, setScenarios] = useState<MissionProfile[]>([]);
   const [dbStatus, setDbStatus] = useState<DbStatus>("loading");
   const [dbError, setDbError] = useState<string | null>(null);
@@ -143,9 +157,15 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
   const [scenarioHazardRecords, setScenarioHazardRecords] = useState<HazardDataRecord[]>([]);
   const [scenarioHazardSamples, setScenarioHazardSamples] = useState<HazardSampleRecord[]>([]);
+  const [lastTelemetrySyncAt, setLastTelemetrySyncAt] = useState<string | null>(null);
   const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
+  const hasLoadedScenarioTelemetryRef = useRef<string | null>(null);
+  const evaluatedBaselineRef = useRef<{
+    actorKey: string;
+    statuses: Record<string, "NOMINAL" | "ELEVATED" | "CRITICAL">;
+  } | null>(null);
 
   const persistSession = (nextMissionId: string, nextCharacterId: string) => {
     try {
@@ -255,17 +275,9 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
 
   const missionIdLoaded = mission?.id ?? "";
 
-  useEffect(() => {
-    if (!missionIdLoaded) {
-      setScenarioHazardRecords([]);
-      setScenarioHazardSamples([]);
-      return;
-    }
-
-    let active = true;
-
-    async function loadScenarioHazardData() {
-      const qs = `scenarioId=${encodeURIComponent(missionIdLoaded)}`;
+  const fetchScenarioTelemetry = useCallback(
+    async (targetMissionId: string, isCancelled?: () => boolean) => {
+      const qs = `scenarioId=${encodeURIComponent(targetMissionId)}`;
       try {
         const [dataRes, sampleRes] = await Promise.all([
           fetch(`/api/hazard-data?${qs}`),
@@ -281,7 +293,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
           error?: string;
         };
 
-        if (!active) return;
+        if (isCancelled?.()) return;
 
         if (!dataRes.ok) {
           throw new Error(data.error || `HTTP ${dataRes.status} loading hazard_data from Supabase`);
@@ -293,41 +305,70 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         }
 
         const recs = Array.isArray(data.records) ? data.records : [];
-        setScenarioHazardRecords(recs);
-        if (recs.length > 0) {
-          setActorInputs((prev) => {
-            const next = { ...prev };
-            recs.forEach((rec) => {
-              const existing = next[rec.characterId] ?? {};
-              if (!existing[rec.streamName] && rec.rawValue) {
-                next[rec.characterId] = {
-                  ...existing,
-                  [rec.streamName]: rec.rawValue,
-                };
-              }
-            });
-            return next;
-          });
-        }
+        const samples = Array.isArray(sampleData.samples) ? sampleData.samples : [];
 
-        setScenarioHazardSamples(Array.isArray(sampleData.samples) ? sampleData.samples : []);
+        setScenarioHazardRecords(recs);
+        setScenarioHazardSamples(samples);
+
+        const nextInputs: Record<string, Record<string, string>> = {};
+        recs.forEach((rec) => {
+          if (rec.rawValue) {
+            nextInputs[rec.characterId] = {
+              ...(nextInputs[rec.characterId] ?? {}),
+              [rec.streamName]: rec.rawValue,
+            };
+          }
+        });
+        setActorInputs(nextInputs);
+
+        hasLoadedScenarioTelemetryRef.current = targetMissionId;
+        setLastTelemetrySyncAt(new Date().toLocaleTimeString());
         setDbStatus("connected");
+        setDbError(null);
       } catch (err) {
-        if (!active) return;
+        if (isCancelled?.()) return;
         const message =
-          err instanceof Error ? err.message : "Failed to load scenario hazard telemetry from Supabase";
+          err instanceof Error
+            ? err.message
+            : "Failed to load scenario hazard telemetry from Supabase";
         setDbStatus("error");
         setDbError(message);
-        setScenarioHazardRecords([]);
-        setScenarioHazardSamples([]);
       }
+    },
+    []
+  );
+
+  const refreshHazardTelemetry = useCallback(async () => {
+    if (!missionIdLoaded) return;
+    await fetchScenarioTelemetry(missionIdLoaded);
+  }, [missionIdLoaded, fetchScenarioTelemetry]);
+
+  useEffect(() => {
+    if (!missionIdLoaded) {
+      hasLoadedScenarioTelemetryRef.current = null;
+      evaluatedBaselineRef.current = null;
+      setScenarioHazardRecords([]);
+      setScenarioHazardSamples([]);
+      setActorInputs({});
+      setLastTelemetrySyncAt(null);
+      return;
     }
 
-    loadScenarioHazardData();
+    let active = true;
+    hasLoadedScenarioTelemetryRef.current = null;
+    evaluatedBaselineRef.current = null;
+
+    void fetchScenarioTelemetry(missionIdLoaded, () => !active);
+
+    const intervalId = setInterval(() => {
+      void fetchScenarioTelemetry(missionIdLoaded, () => !active);
+    }, TELEMETRY_POLL_INTERVAL_MS);
+
     return () => {
       active = false;
+      clearInterval(intervalId);
     };
-  }, [missionIdLoaded]);
+  }, [missionIdLoaded, fetchScenarioTelemetry]);
 
   const hazardRecords = useMemo(
     () =>
@@ -344,6 +385,72 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         : [],
     [scenarioHazardSamples, activeCharacter]
   );
+
+  useEffect(() => {
+    if (!mission || !activeCharacter) return;
+    if (hasLoadedScenarioTelemetryRef.current !== mission.id) return;
+
+    const actorKey = `${mission.id}::${activeCharacter.id}::${role}`;
+    const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
+    const nextStatuses: Record<string, "NOMINAL" | "ELEVATED" | "CRITICAL"> = {};
+    const snapshots = HAZARDS.map((h) => {
+      const snap = evaluateHazardForActor(mission, activeCharacter, h, {
+        actorInputs: currentActorInputs,
+        hazardRecords,
+        hazardSamples,
+        scenarioHazardRecords,
+        scenarioHazardSamples,
+        role,
+        linkOnline,
+        reentryMode,
+      });
+      nextStatuses[h.slug] = snap.status;
+      return { hazard: h, snap };
+    });
+
+    const prev = evaluatedBaselineRef.current;
+    if (!prev || prev.actorKey !== actorKey) {
+      evaluatedBaselineRef.current = { actorKey, statuses: nextStatuses };
+      return;
+    }
+
+    for (const { hazard, snap } of snapshots) {
+      const prevStatus = prev.statuses[hazard.slug];
+      if (snap.status === "CRITICAL" && prevStatus !== "CRITICAL") {
+        pushToast({
+          title: `${hazard.shortTitle}: CRITICAL Threshold Triggered`,
+          message: snap.immediateHorizon,
+          variant: "hazard",
+        });
+        triggerAlarm({
+          hazardNumber: hazard.number,
+          hazardTitle: hazard.title,
+          ...hazard.alarmPreset,
+        });
+      } else if (snap.status === "ELEVATED" && prevStatus !== "ELEVATED") {
+        pushToast({
+          title: `${hazard.shortTitle}: ELEVATED Status`,
+          message: snap.immediateHorizon,
+          variant: "warning",
+        });
+      }
+    }
+
+    evaluatedBaselineRef.current = { actorKey, statuses: nextStatuses };
+  }, [
+    mission,
+    activeCharacter,
+    role,
+    linkOnline,
+    reentryMode,
+    actorInputs,
+    hazardRecords,
+    hazardSamples,
+    scenarioHazardRecords,
+    scenarioHazardSamples,
+    pushToast,
+    triggerAlarm,
+  ]);
 
   const privateCheckIns = useMemo<PrivateCheckIn[]>(() => {
     if (!activeCharacter) return [];
@@ -777,6 +884,8 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         hazardSamples,
         scenarioHazardRecords,
         scenarioHazardSamples,
+        lastTelemetrySyncAt,
+        refreshHazardTelemetry,
         saveActorInput,
         appendHazardSample,
         dtnQueue,

@@ -1,19 +1,26 @@
 import type { ComponentType } from "react";
 import type { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
-import type { HazardSlug } from "@/lib/hazards";
-import type { SaveActorInputOptions } from "@/context/MissionContext";
+import type { HazardActorSnapshot } from "@/lib/evaluator";
+import type {
+  HazardDataRecord,
+  HazardSampleRecord,
+  HazardSpec,
+} from "@/lib/hazards";
 
 export interface HazardCustomWidgetProps {
+  hazard: HazardSpec;
   mission: MissionProfile;
   activeCharacter: CrewSlot;
   role: UserRole;
-  saveActorInput: (
-    streamName: string,
-    value: string,
-    hazardSlug?: HazardSlug,
-    options?: SaveActorInputOptions
-  ) => Promise<void>;
-  onFillSubfields: (streamName: string, values: Record<string, string>) => void;
+  snapshot: HazardActorSnapshot;
+  hazardRecords: readonly HazardDataRecord[];
+  hazardSamples: readonly HazardSampleRecord[];
+  scenarioHazardRecords: readonly HazardDataRecord[];
+  scenarioHazardSamples: readonly HazardSampleRecord[];
+  linkOnline: boolean;
+  reentryMode: boolean;
 }
 
+export type HazardScreenProps = HazardCustomWidgetProps;
 export type HazardWidgetComponent = ComponentType<HazardCustomWidgetProps>;
+export type HazardScreenComponent = HazardWidgetComponent;

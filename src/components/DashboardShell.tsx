@@ -28,6 +28,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     dbStatus,
     dbError,
     refreshScenarios,
+    lastTelemetrySyncAt,
+    refreshHazardTelemetry,
     role,
     linkOnline,
     setLinkOnline,
@@ -47,7 +49,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     },
     {
       href: "/dashboard/crew",
-      label: role === "lead" ? "Crew Matrix" : "60s Check-In & EVA",
+      label: role === "lead" ? "Crew Matrix" : "Readiness & EVA",
       icon: Users,
     },
     {
@@ -107,6 +109,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 ? "DB Error"
                 : "Loading..."}
             </span>
+
+            <button
+              type="button"
+              onClick={() => {
+                void refreshHazardTelemetry();
+              }}
+              title={lastTelemetrySyncAt ? `Last synced at ${lastTelemetrySyncAt}` : "Sync telemetry from Supabase"}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>{lastTelemetrySyncAt ? `Sync (${lastTelemetrySyncAt})` : "Sync DB"}</span>
+            </button>
 
             {mission && activeCharacter && (
               <select

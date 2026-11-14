@@ -264,7 +264,7 @@ export default function DashboardOverviewPage() {
                 href="/dashboard/crew"
                 className="rounded-xl bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
               >
-                60s Self-Check &amp; EVA Gate →
+                Readiness &amp; EVA Gate →
               </Link>
               <Link
                 href="/dashboard/alerts"
