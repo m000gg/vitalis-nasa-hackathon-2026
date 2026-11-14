@@ -24,7 +24,8 @@ This guide instructs both human teammates and AI coding agents on how to develop
 - **No Fake Placeholders:** Do not invent medical numbers, fake sensor values, or Lorem Ipsum outside real reference constants you intentionally add to your hazard's Section 1. Use explicit slot prompts:
   - Input prompts: `"Add your info: <field> here"`
   - Display outputs: `"Here is: <slot description>"`
-- **No Synthetic Test UI:** Do not re-add "Test Toast" or "Test Alarm" buttons; popups (`useAlerts()`) and full-screen alarms must trigger from real actions and hazard thresholds.
+- **Zero-Astronaut-Input (DB-Driven) Policy:** Do **not** build manual telemetry input forms, save buttons, or manual self-check/EVA checkboxes for astronauts in hazard screens or shared pages. Telemetry is ingested into Supabase (`public.character_hazard_data` and `public.character_hazard_samples`) by external devices, cron jobs, or API seeders. `MissionContext` polls Supabase every 12 seconds (plus a manual `Sync DB` button in `DashboardShell`) and automatically fires `useAlerts()` toasts/alarms whenever an evaluated hazard transitions into `"ELEVATED"` or `"CRITICAL"`.
+- **No Synthetic Test UI:** Do not re-add "Test Toast" or "Test Alarm" buttons; popups (`useAlerts()`) and full-screen alarms must trigger from real DB telemetry transitions and hazard thresholds.
 
 ---
 
@@ -57,54 +58,61 @@ Behavior & Strict Error Policy (No Silent DB Fallbacks):
 
 ---
 
-## 4. Isolated Hazard Ownership (1 File per Person)
+## 4. Isolated Hazard Ownership (2 Files per Person: Logic + Screen UI)
 
-Each of the **5 NASA HRP Hazards** owns **one isolated TypeScript module** under `src/lib/hazards/`.
-If you (or an AI agent working for you) are updating logic, thresholds, or formulas for a specific hazard, **ONLY edit that hazard's dedicated file**. Do **not** modify `src/lib/evaluator.ts`, `src/context/MissionContext.tsx`, or UI pages unless you are intentionally changing shared platform behavior.
+Each of the **5 NASA HRP Hazards** owns **two isolated files**—one for logic/thresholds/privacy schema (`src/lib/hazards/0N-*.ts`) and one for its dedicated screen UI (`src/components/hazards/0N-*.tsx`).
+`src/app/dashboard/hazards/[slug]/page.tsx` renders only a minimal shared header bar above `<HazardScreen {...props} />`, and all 5 screens are **pre-registered** in `src/components/hazards/index.ts`.
+If you (or an AI agent working for you) are implementing a specific hazard, **ONLY edit your 2 dedicated files**. Do **not** edit `src/components/hazards/index.ts`, `src/components/hazards/types.ts`, `src/app/dashboard/hazards/[slug]/page.tsx`, `src/lib/evaluator.ts`, or `src/context/MissionContext.tsx`.
 
-| Hazard # | `hazardSlug` | Isolated File (Edit ONLY This) | Pipeline Constants Symbol | NASA Source Spec |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | `radiation` | `src/lib/hazards/01-radiation.ts` | `RADIATION_PIPELINE_VALUES` | `docs/hazards/01-space-radiation.md` |
-| **2** | `isolation` | `src/lib/hazards/02-isolation.ts` | `ISOLATION_PIPELINE_VALUES` | `docs/hazards/02-isolation-and-confinement.md` |
-| **3** | `distance` | `src/lib/hazards/03-distance.ts` | `DISTANCE_PIPELINE_VALUES` | `docs/hazards/03-distance-from-earth.md` |
-| **4** | `gravity` | `src/lib/hazards/04-gravity.ts` | `GRAVITY_PIPELINE_VALUES` | `docs/hazards/04-gravity-fields-enviroments.md` |
-| **5** | `environment` | `src/lib/hazards/05-environment.ts` | `ENVIRONMENT_PIPELINE_VALUES` | `docs/hazards/05-hostile-closed-environments.md` |
+| Hazard # | `hazardSlug` | Logic & Schema File | Screen UI File | Pipeline Constants Symbol | NASA Source Spec |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | `radiation` | `src/lib/hazards/01-radiation.ts` | `src/components/hazards/01-radiation.tsx` | `RADIATION_PIPELINE_VALUES` | `docs/hazards/01-space-radiation.md` |
+| **2** | `isolation` | `src/lib/hazards/02-isolation.ts` | `src/components/hazards/02-isolation.tsx` | `ISOLATION_PIPELINE_VALUES` | `docs/hazards/02-isolation-and-confinement.md` |
+| **3** | `distance` | `src/lib/hazards/03-distance.ts` | `src/components/hazards/03-distance.tsx` | `DISTANCE_PIPELINE_VALUES` | `docs/hazards/03-distance-from-earth.md` |
+| **4** | `gravity` | `src/lib/hazards/04-gravity.ts` | `src/components/hazards/04-gravity.tsx` | `GRAVITY_PIPELINE_VALUES` | `docs/hazards/04-gravity-fields-enviroments.md` |
+| **5** | `environment` | `src/lib/hazards/05-environment.ts` | `src/components/hazards/05-environment.tsx` | `ENVIRONMENT_PIPELINE_VALUES` | `docs/hazards/05-hostile-closed-environments.md` |
 
 ### Internal 3-Section Contract Inside Every `src/lib/hazards/0*-*.ts` File
 
-Every hazard file is organized into three clearly labeled comment sections so AI agents and humans know **exact edit boundaries**:
+Every hazard logic file is organized into three clearly labeled comment sections so AI agents and humans know **exact edit boundaries**:
 
 1. **`// [SECTION 1: HAZARD N VALUES & THRESHOLD SLOTS]`**
    - Put all numeric thresholds, safe bounds, unit constants, and stream names inside `<HAZARD>_PIPELINE_VALUES`.
 2. **`// [SECTION 2: HAZARD N FORMULAS & EVALUATION PIPELINE]`**
    - Put pure, side-effect-free evaluation formulas inside `evaluate<Hazard>Hazard(input: HazardEvaluationInput): HazardEvaluationResult`.
-   - Read generalized inputs from:
+   - Read generalized, DB-synced inputs from:
      - `input.mission` (scenario environment slots)
      - `input.actor` (character metrics & states)
-     - `input.actorInputs` (`Record<streamName, rawValue>` from live form edits)
-     - `input.hazardRecords` (latest `HazardDataRecord[]` + flexible `payload` JSONB from `character_hazard_data`, filtered to your `hazardSlug`)
-     - `input.hazardSamples` (historical `HazardSampleRecord[]` from `character_hazard_samples`, filtered to your `hazardSlug`)
-     - `input.allHazardRecords` & `input.allHazardSamples` (**read-only** across all 5 hazards for this scenario/character—use e.g. `input.allHazardRecords.find(r => r.hazardSlug === "isolation" && ...)` to combine Hazard 02 sleep with Hazard 01 without touching `02-isolation.ts`)
+     - `input.role` (`"lead" | "member"` — tailor outputs and enforce role-specific rules)
+     - `input.actorInputs` (`Record<streamName, rawValue>` synced from DB)
+     - `input.hazardRecords` & `input.hazardSamples` (latest snapshots + historical time-series for this character & hazard, privacy-sanitized for `role`)
+     - `input.allHazardRecords` & `input.allHazardSamples` (**read-only** across all 5 hazards for this character, privacy-sanitized for `role`)
+     - `input.scenarioHazardRecords` & `input.scenarioHazardSamples` (**read-only** across all crew in the active scenario, privacy-sanitized for `role`)
      - `input.linkOnline`, `input.reentryMode`
-   - Return `status` (`"NOMINAL" | "ELEVATED" | "CRITICAL"`), `scenarioStatusSlot`, `immediateHorizon`, `prolongedHorizon`, `eta`, `solutions` (respect `reentryMode` 1-action cap when enabled), and optional `charts?: HazardChartSpec[]` (automatically rendered by `<HazardTelemetryChart />`).
+   - Return `status` (`"NOMINAL" | "ELEVATED" | "CRITICAL"`), `scenarioStatusSlot`, `immediateHorizon`, `prolongedHorizon`, `eta`, `solutions` (respect `reentryMode` 1-action cap when enabled), and optional `charts?: HazardChartSpec[]` (supports `thresholds?: HazardChartThreshold[]` for dashed reference lines).
 3. **`// [SECTION 3: HAZARD N UI METADATA, INPUT STREAMS & ALARMS]`**
-   - Update `inputSlots` (supports `fieldType: "text" | "number"`, `unit`, `recordSample: true` for automatic graph logging, and `subfields` for structured multi-field inputs like `{ systolic, diastolic }` saved to `payload` JSONB with zero SQL changes), `leadView` / `memberView` modules & privacy rules, `proposedEndpoints`, and `alarmPreset`.
+   - Keep `inputSlots` (`isPrivate: true`, labels, units, `fieldType`, `subfields`) accurate—`evaluator.ts` (`sanitizeHazardRecordsForRole` / `sanitizeHazardSamplesForRole`) uses `inputSlots` as the **schema & privacy-firewall contract** to strip private streams/subfields when `role === "lead"`.
    - Always keep `evaluate: evaluate<Hazard>Hazard` wired to Section 2.
 
-### Adding New Inputs, Custom Fields, or Graphs Without Touching Shared SQL
+### Screen UI Contract Inside Every `src/components/hazards/0*-*.tsx` File
 
-- **Add/reshape fields:** Add a new entry or `subfields` array to `inputSlots` in your `0*-*.ts` file. `character_hazard_data.payload` (JSONB) stores any shape automatically.
-- **Add a graph:** Set `recordSample: true` and `fieldType: "number"` on an input slot (auto-renders a graph from `character_hazard_samples`), or return custom `charts` from Section 2 `evaluate()`.
-- **Do not create per-hazard SQL tables** unless the whole team agrees; `character_hazard_data` + `character_hazard_samples` already isolate every hazard via `hazard_slug`.
+- Each screen receives ready-to-use, privacy-sanitized `HazardScreenProps` (`HazardCustomWidgetProps`) directly from `[slug]/page.tsx`:
+  - `hazard`, `mission`, `activeCharacter`, `role`, `snapshot` (`status`, `immediateHorizon`, `prolongedHorizon`, `eta`, `solutions`, `charts`), `hazardRecords`, `hazardSamples`, `scenarioHazardRecords`, `scenarioHazardSamples`, `linkOnline`, `reentryMode`.
+- Render read-only DB-synced views tailored to `role` (`"lead"` vs `"member"`). Do **not** add astronaut input/save forms inside `0N-*.tsx`.
+- Import `<HazardTelemetryChart />` from `@/components/HazardTelemetryChart` whenever you want to render `snapshot.charts` (including `thresholds` dashed lines).
+- **Do not create per-hazard SQL tables**; `character_hazard_data` + `character_hazard_samples` already isolate every hazard via `hazard_slug` and store arbitrary JSONB payloads.
 
 ---
 
 ## 5. Shared Files (Do Not Modify for Single-Hazard Work)
 
+- `src/app/dashboard/hazards/[slug]/page.tsx` — Minimal hazard header shell + `<HazardScreen {...props} />` canvas.
+- `src/components/hazards/index.ts` & `src/components/hazards/types.ts` — Pre-wired `HAZARD_SCREEN_REGISTRY` and shared screen props contract.
+- `src/components/HazardTelemetryChart.tsx` — Optional reusable SVG telemetry chart component with threshold reference lines.
 - `src/lib/hazards/types.ts` & `src/lib/hazards/index.ts` — Shared TypeScript interfaces (`HazardSpec`, `HazardEvaluationInput`, `HazardEvaluationResult`, `HazardDataRecord`) and registry array `HAZARDS`.
-- `src/lib/evaluator.ts` — Info-agnostic overview evaluators (`evaluateCharacterDashboard`, `evaluateLeaderDashboard`, `evaluateHazardForActor`).
+- `src/lib/evaluator.ts` — Info-agnostic overview evaluators (`evaluateCharacterDashboard`, `evaluateLeaderDashboard`, `evaluateHazardForActor`) and privacy firewall (`sanitizeHazardRecordsForRole`, `sanitizeHazardSamplesForRole`).
 - `src/lib/domain.ts` — Core types (`MissionProfile`, `CrewSlot`, `DtnMessage`, `AuditLogEntry`) and static domain reference lists (`MEDICAL_INVENTORY_SLOTS`, `BUDDY_RESCUE_STEPS`, `TEAM_BUFFS_SLOTS`, `TEAM_DEBUFFS_SLOTS`).
-- `src/context/MissionContext.tsx` & `src/context/AlertContext.tsx` — App state, Supabase `/api/*` synchronization, toasts, and alarms.
+- `src/context/MissionContext.tsx` & `src/context/AlertContext.tsx` — App state, 12s Supabase `/api/*` polling + manual sync, automatic threshold transition alerts, toasts, and alarms.
 
 ---
 

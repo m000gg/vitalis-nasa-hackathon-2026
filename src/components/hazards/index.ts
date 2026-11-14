@@ -1,16 +1,38 @@
-import type { HazardSlug } from "@/lib/hazards";
-import type { HazardWidgetComponent } from "./types";
+"use client";
 
-export type { HazardCustomWidgetProps, HazardWidgetComponent } from "./types";
+import React from "react";
+import type { HazardSlug } from "@/lib/hazards";
+import type { HazardScreenComponent, HazardScreenProps } from "./types";
+import { RadiationHazardScreen } from "./01-radiation";
+import { IsolationHazardScreen } from "./02-isolation";
+import { DistanceHazardScreen } from "./03-distance";
+import { GravityHazardScreen } from "./04-gravity";
+import { EnvironmentHazardScreen } from "./05-environment";
+
+export type {
+  HazardCustomWidgetProps,
+  HazardScreenComponent,
+  HazardScreenProps,
+  HazardWidgetComponent,
+} from "./types";
 
 /**
- * Optional per-hazard interactive widget registry keyed by HazardSlug.
- * Individual hazard modules can register custom UI widgets here (e.g. an
- * interactive PVT-B reaction-time test for `isolation`) without modifying
- * shared HazardDetailPage code.
+ * Pre-wired registry mapping each HazardSlug to its isolated 0N-*.tsx screen.
+ * Teammates only edit their own src/components/hazards/0N-*.tsx file.
  */
-export const HAZARD_WIDGET_REGISTRY: Partial<Record<HazardSlug, HazardWidgetComponent>> = {};
+export const HAZARD_SCREEN_REGISTRY: Record<HazardSlug, HazardScreenComponent> = {
+  radiation: RadiationHazardScreen,
+  isolation: IsolationHazardScreen,
+  distance: DistanceHazardScreen,
+  gravity: GravityHazardScreen,
+  environment: EnvironmentHazardScreen,
+};
 
-export function getHazardWidget(slug: HazardSlug): HazardWidgetComponent | undefined {
-  return HAZARD_WIDGET_REGISTRY[slug];
+export function getHazardScreen(slug: HazardSlug): HazardScreenComponent {
+  return HAZARD_SCREEN_REGISTRY[slug];
+}
+
+export function HazardScreen(props: HazardScreenProps) {
+  const Screen = HAZARD_SCREEN_REGISTRY[props.hazard.slug];
+  return React.createElement(Screen, props);
 }

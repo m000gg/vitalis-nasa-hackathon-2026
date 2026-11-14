@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckSquare, Lock, ShieldCheck, Unlock } from "lucide-react";
+import { CheckSquare, Database, Lock, RefreshCw, ShieldCheck, Unlock } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
@@ -15,32 +15,22 @@ export default function CrewOrCheckInPage() {
     linkOnline,
     reentryMode,
     actorInputs,
+    hazardRecords,
     scenarioHazardRecords,
     scenarioHazardSamples,
+    lastTelemetrySyncAt,
+    refreshHazardTelemetry,
     shelterConfirmations,
     toggleCrewShelter,
     auditLog,
     addAuditEntry,
     privateCheckIns,
-    addPrivateCheckIn,
   } = useMission();
   const { pushToast } = useAlerts();
 
   const [unlockTarget, setUnlockTarget] = useState("");
   const [unlockReason, setUnlockReason] = useState("");
   const [rotationNote, setRotationNote] = useState("");
-
-  const [fatigueScore, setFatigueScore] = useState("");
-  const [sleepHoursInput, setSleepHoursInput] = useState("");
-  const [privateJournalNote, setPrivateJournalNote] = useState("");
-  const [evaChecks, setEvaChecks] = useState<Record<string, boolean>>({
-    pfe: false,
-    grip: false,
-    ergometry: false,
-    prebreathe: false,
-    health48h: false,
-    isle: true,
-  });
 
   if (!mission || !activeCharacter) {
     return <DashboardShell>{null}</DashboardShell>;
@@ -60,6 +50,10 @@ export default function CrewOrCheckInPage() {
     reentryMode,
   });
   const myPrivateCheckIns = privateCheckIns.filter((entry) => entry.actorId === activeCharacter.id);
+  const evaChainRecord = hazardRecords.find(
+    (r) => r.hazardSlug === "gravity" && r.streamName === "EVA Readiness Chain"
+  );
+  const evaPayload = evaChainRecord?.payload ?? {};
 
   const handleSaveRotation = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,31 +89,6 @@ export default function CrewOrCheckInPage() {
       message: `Here is: Audit entry recorded for ${effectiveUnlockTarget} and member notified.`,
       variant: "warning",
     });
-  };
-
-  const handleSubmitPrivateCheckIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await addPrivateCheckIn({
-        fatigueScore: fatigueScore.trim() || "Add your info: Fatigue 1–5 here",
-        sleepHoursInput: sleepHoursInput.trim() || "Add your info: Sleep hours here",
-        privateJournalNote: privateJournalNote.trim() || "Add your info: Private mood/journal note here",
-      });
-      setFatigueScore("");
-      setSleepHoursInput("");
-      setPrivateJournalNote("");
-      pushToast({
-        title: "Private Check-In Saved to Supabase",
-        message: `Here is: Check-in recorded privately for ${activeCharacter.callsign}.`,
-        variant: "success",
-      });
-    } catch (err) {
-      pushToast({
-        title: "Supabase Write Error",
-        message: err instanceof Error ? err.message : "Failed to persist 60s private check-in.",
-        variant: "hazard",
-      });
-    }
   };
 
   return (
@@ -256,52 +225,61 @@ export default function CrewOrCheckInPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-xl font-bold text-slate-900">
-                60-Second Self-Check &amp; EVA Gate ({activeCharacter.callsign})
+                Readiness &amp; EVA Status ({activeCharacter.callsign})
               </h1>
-              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                <Lock className="h-3 w-3" /> Private to {activeCharacter.callsign}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void refreshHazardTelemetry();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  {lastTelemetrySyncAt ? `Synced ${lastTelemetrySyncAt}` : "Refresh DB Sync"}
+                </button>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                  <Lock className="h-3 w-3" /> Private to {activeCharacter.callsign}
+                </span>
+              </div>
             </div>
             <p className="mt-1 text-sm text-slate-600">
-              Here is: Your mood notes and private reflection stay hidden from the Lead matrix.
+              Here is: Read-only readiness, biometrics, and EVA gate status synced automatically from
+              Supabase. Private notes stay hidden from the Lead matrix.
             </p>
           </section>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-              <h2 className="text-sm font-bold text-slate-900">Guided Self-Check &amp; Private Journal</h2>
-              <form onSubmit={handleSubmitPrivateCheckIn} className="space-y-3 text-xs">
-                <input
-                  type="text"
-                  value={fatigueScore}
-                  onChange={(e) => setFatigueScore(e.target.value)}
-                  placeholder="Add your info: Subjective fatigue (1–5) & PVT-B note here"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400"
-                />
-                <input
-                  type="text"
-                  value={sleepHoursInput}
-                  onChange={(e) => setSleepHoursInput(e.target.value)}
-                  placeholder="Add your info: Sleep duration (h) & environment note here"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400"
-                />
-                <textarea
-                  rows={3}
-                  value={privateJournalNote}
-                  onChange={(e) => setPrivateJournalNote(e.target.value)}
-                  placeholder="Add your info: Private mood/reflection text here (hidden from Lead)"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-800 placeholder:text-slate-400"
-                />
-                <button
-                  type="submit"
-                  className="rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white hover:bg-emerald-700"
-                >
-                  Save Private Check-In
-                </button>
-              </form>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Synced Private Readiness &amp; Telemetry
+                </h2>
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                  <Database className="h-3 w-3" /> DB Read-Only
+                </span>
+              </div>
 
-              {myPrivateCheckIns.length > 0 && (
-                <div className="space-y-2 pt-2">
+              <div className="space-y-2 text-xs">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-700">Sleep &amp; Actigraphy</p>
+                  <p className="mt-0.5 text-slate-600">{activeCharacter.metrics.sleepSlot}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-700">Vigilance &amp; Fatigue</p>
+                  <p className="mt-0.5 text-slate-600">{activeCharacter.metrics.fatigueSlot}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="font-semibold text-slate-700">Private Member Notes</p>
+                  <p className="mt-0.5 text-emerald-800">{activeCharacter.privateMemberNotesSlot}</p>
+                </div>
+              </div>
+
+              {myPrivateCheckIns.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Synced Supabase Private Check-In History
+                  </p>
                   {myPrivateCheckIns.map((item) => (
                     <div key={item.id} className="rounded-xl bg-slate-50 p-3 text-xs">
                       <p className="text-slate-400">{item.timestamp}</p>
@@ -311,13 +289,34 @@ export default function CrewOrCheckInPage() {
                     </div>
                   ))}
                 </div>
+              ) : (
+                <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
+                  No synced private check-in records in public.character_hazard_data yet.
+                </p>
+              )}
+
+              {hazardRecords.length > 0 && (
+                <div className="space-y-1.5 pt-1 text-xs">
+                  <p className="font-semibold text-slate-700">
+                    Synced Hazard Streams ({hazardRecords.length})
+                  </p>
+                  {hazardRecords.map((rec) => (
+                    <div key={rec.id} className="rounded-lg bg-slate-50 p-2.5 text-slate-600">
+                      <span className="font-semibold text-slate-800">{rec.streamName}:</span>{" "}
+                      {rec.rawValue || "(structured payload synced)"}
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
 
             <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
-              <div className="flex items-center gap-2 text-sky-700">
-                <ShieldCheck className="h-4 w-4" />
-                <h2 className="text-sm font-bold">Personal EVA Readiness Chain</h2>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sky-700">
+                  <ShieldCheck className="h-4 w-4" />
+                  <h2 className="text-sm font-bold">Personal EVA Readiness Chain</h2>
+                </div>
+                <span className="text-[11px] text-slate-400">Synced from DB</span>
               </div>
               <div className="space-y-2 text-xs">
                 {[
@@ -328,25 +327,42 @@ export default function CrewOrCheckInPage() {
                   { key: "health48h", label: "Pre-EVA health status within 48h (MEDB 6.1)" },
                   { key: "isle", label: "ISLE pre-launch training completed (MR090L)" },
                 ].map((item) => {
-                  const checked = !!evaChecks[item.key];
+                  const syncedVal = evaPayload[item.key];
+                  const verified =
+                    syncedVal === true ||
+                    syncedVal === "true" ||
+                    activeCharacter.evaGateState === "GO";
                   return (
-                    <button
+                    <div
                       key={item.key}
-                      type="button"
-                      onClick={() => setEvaChecks((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
-                      className={`flex w-full items-center gap-2.5 rounded-xl p-3 text-left ${
-                        checked ? "bg-emerald-50 text-emerald-900" : "bg-slate-50 text-slate-700"
+                      className={`flex items-center justify-between gap-2.5 rounded-xl p-3 ${
+                        verified ? "bg-emerald-50 text-emerald-900" : "bg-slate-50 text-slate-700"
                       }`}
                     >
-                      <CheckSquare className={`h-4 w-4 shrink-0 ${checked ? "text-emerald-600" : "text-slate-400"}`} />
-                      <span>{item.label}</span>
-                    </button>
+                      <span className="flex items-center gap-2.5">
+                        <CheckSquare
+                          className={`h-4 w-4 shrink-0 ${
+                            verified ? "text-emerald-600" : "text-slate-400"
+                          }`}
+                        />
+                        <span>{item.label}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">
+                        {verified ? "Verified" : "Pending"}
+                      </span>
+                    </div>
                   );
                 })}
               </div>
-              <p className="rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-800">
-                Evaluated Gate Status: {Object.values(evaChecks).every(Boolean) ? "GO" : activeCharacter.evaGateState}
-              </p>
+              <div className="space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs">
+                <p className="font-semibold text-slate-800">
+                  DB Gate Status: {activeCharacter.evaGateState} · Readiness:{" "}
+                  {activeCharacter.readinessState}
+                </p>
+                {evaChainRecord?.rawValue && (
+                  <p className="text-slate-600">Synced Chain: {evaChainRecord.rawValue}</p>
+                )}
+              </div>
             </section>
           </div>
         </div>
