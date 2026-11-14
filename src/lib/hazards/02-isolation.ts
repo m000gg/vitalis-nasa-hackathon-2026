@@ -11,13 +11,17 @@ import {
  * ============================================================================
  * HAZARD 2: ISOLATION & CONFINEMENT
  * Owner: Teammate 2 — Edit ONLY this file (src/lib/hazards/02-isolation.ts)
- * and the registered Hazard 02 PVT-B widget component.
+ * and the registered Hazard 02 screen component.
  * ============================================================================
  */
 
 // [SECTION 1: HAZARD 2 VALUES & THRESHOLD SLOTS]
-// Grounded in NASA-STD-3001 Vol. 2, Barger et al. (2014), Basner & Dinges PVT-B,
-// Mars500 520-Day Confinement Study, CHAPEA, and NASA OSDR Standard Measures.
+// Strictly limited to published NASA standards and NASA-supported peer-reviewed studies:
+// - NASA-STD-3001 Vol. 1 & Vol. 2 ([V2 6079], [V2 8055])
+// - NASA OCHMO-TB-004 (Carbon Dioxide) & OCHMO Acoustics Technical Brief
+// - Barger et al. (2014), The Lancet Neurology (ISS & Shuttle sleep study)
+// - Basner, Mollicone & Dinges (2011) & Basner et al. (2015) (NASA Cognition PVT-B)
+// - Basner et al. (2014), PLOS ONE (Mars500 520-day study) & CHAPEA
 export const ISOLATION_PIPELINE_VALUES = {
   supportedStreams: [
     "Wearable / Actigraphy",
@@ -26,52 +30,30 @@ export const ISOLATION_PIPELINE_VALUES = {
     "CONNECT & Countermeasure Log",
   ] as const,
 
-  // Sleep & Fatigue Benchmarks (Barger et al., 2014, The Lancet Neurology)
-  scheduledSleepHours: 8.5,
-  issHistoricalMeanSleepHours: 6.09,
-  shuttleHistoricalMeanSleepHours: 5.96,
-  issHypnoticUsePct: 75,
-  safeSleepFloorHours: 7.0,
-  elevatedSleepHours: 6.5,
-  criticalSleepHours: 5.5,
-  sleepEfficiencyWarnPct: 80,
-  sleepEfficiencyCritPct: 75,
-  rollingDebtWindowSamples: 3,
-  rollingDebtElevHours: 2.0,
-  rollingDebtCritHours: 4.5,
+  // Sleep Benchmarks (NASA-STD-3001 Vol. 1 + Barger et al., 2014, The Lancet Neurology)
+  scheduledSleepHours: 8.5, // Scheduled sleep opportunity in ISS operations (Barger et al., 2014)
+  nasaStd3001SleepReqHours: 8.0, // NASA-STD-3001 Vol. 1 daily sleep requirement
+  issHistoricalMeanSleepHours: 6.09, // Observed ISS mean sleep duration (Barger et al., 2014)
+  shuttleHistoricalMeanSleepHours: 5.96, // Observed Space Shuttle mean sleep duration (Barger et al., 2014)
+  issHypnoticUsePct: 75, // Observed ISS crew sleep-medication prevalence (Barger et al., 2014)
 
-  // NASA Cognition / PVT-B Vigilance Benchmarks (Basner, Mollicone & Dinges, 2011; Basner et al., 2015)
-  pvtLapseThresholdMs: 355, // Validated 3-min PVT-B lapse threshold (vs 500 ms on 10-min PVT)
-  pvtDefaultBaselineMeanMs: 245,
-  pvtDefaultBaselineSdMs: 25,
-  pvtMinSdMs: 10,
-  pvtZScoreElev: 1.5,
-  pvtZScoreCrit: 2.0,
-  pvtLapsesElev: 3,
-  pvtLapsesCrit: 5,
-  subjectiveFatigueElev: 4,
-  workloadStrainElev: 4,
+  // NASA Cognition / PVT-B Benchmark (Basner, Mollicone & Dinges, 2011)
+  pvtLapseThresholdMs: 355, // Validated 3-min PVT-B lapse threshold (vs. 500 ms on 10-min PVT)
 
-  // Circadian & Lighting Standards (CHAPEA Martian Sol + NASA-STD-3001 Vol. 2 [V2 8055])
-  martianSolDriftMinPerDay: 39, // 24h 39m 35s sol vs 24h Earth day
-  circadianPhaseElevMin: 39,
-  circadianMisalignCritMin: 180,
-  luxComplianceFloorPct: 70,
+  // Circadian Benchmark (CHAPEA Martian Sol)
+  martianSolDriftMinPerDay: 39, // 24h 39m 35s Martian sol vs. 24h Earth day
+  chapeaMaxCommsRttMin: 44, // Up to 44-min round-trip comms delay in CHAPEA
 
   // Habitability & Acoustics (NASA-STD-3001 Vol. 2 [V2 6079])
-  sleepQuarterNoiseLimitNc40Dba: 49, // [V2 6079] NC-40 continuous sleep-quarter limit (>30 day missions)
+  sleepQuarterNoiseLimitNc40Dba: 49, // NC-40 continuous sleep-quarter limit (>30 day missions)
   workAreaNoiseLimitNc50Dba: 58, // NC-50 continuous work-area limit
-  impulseNoiseSleepElevCount: 2,
 
-  // Mars500 / HERA Confinement & Hypokinesis (Basner et al., 2014)
+  // Mars500 / HERA Confinement Window (Basner et al., 2014)
   thirdQuarterStartPct: 50,
   thirdQuarterEndPct: 75,
-  hypokinesisDropElevPct: -15,
-  hrvDropElevPct: -15,
 
-  // Cross-Hazard & Autonomy Context (CHAPEA / SIRIUS + NASA OCHMO CO₂ Technical Brief)
-  highCommsDelayMin: 10,
-  co2SharedDebuffMmHg: 4.0,
+  // Cross-Hazard Habitat CO2 Limit (NASA-STD-3001 Vol. 2 / OCHMO-TB-004)
+  co2LimitMmHg: 3.0, // <= 3 mmHg nominal habitable volume ppCO2 limit
 };
 
 export interface ResearchReferenceLink {
@@ -92,9 +74,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "actigraphy_sleep",
     title: "Actigraphy Sleep, Efficiency & HRV",
     explanation:
-      "Tracks nightly sleep duration, sleep efficiency (time asleep vs. in bed), and resting heart rate variability (HRV RMSSD) from wrist actigraphy. Chronic sleep loss degrades mood, immune function, and vigilance before astronauts feel sleepy.",
+      "Tracks nightly sleep duration, sleep efficiency, and resting heart rate variability (HRV RMSSD) from wrist actigraphy, matching NASA ARCHeR and OSDR Standard Measures.",
     benchmark:
-      "NASA schedules 8.5 h/night; ISS crew averaged 6.09 h (Shuttle 5.96 h) with 75% using hypnotics. Safe floor >= 7.0 h; Elevated < 6.5 h; Critical < 5.5 h; Efficiency warn < 80% / crit < 75%.",
+      "NASA schedules 8.5 h/night (NASA-STD-3001 Vol. 1 requires 8.0 h); ISS crew averaged 6.09 h (Shuttle 5.96 h) with 75% using sleep aids (Barger et al., 2014).",
     links: [
       {
         label: "Barger et al. (2014) — Lancet Neurology (DOI)",
@@ -114,9 +96,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "pvt_cognition",
     title: "Cognition PVT-B Vigilance & Circadian Shift",
     explanation:
-      "The 3-minute Brief Psychomotor Vigilance Test (PVT-B) from NASA's Cognition battery detects microsleeps and attentional lapses caused by sleep debt or circadian misalignment (such as the 24h 39m Martian sol drift).",
+      "The 3-minute Brief Psychomotor Vigilance Test (PVT-B) from NASA's Cognition battery detects microsleeps and attentional lapses caused by sleep loss or circadian misalignment (such as the 24h 39m Martian sol drift).",
     benchmark:
-      "Lapse threshold >= 355 ms (vs. 500 ms on 10-min PVT). Elevated at >= +1.5 SD or >= 3 lapses; Critical at >= 355 ms median RT, >= +2.0 SD, or >= 5 lapses. Mars sol drift = +39 min/day.",
+      "Validated PVT-B lapse threshold >= 355 ms (Basner et al., 2011; vs. 500 ms on 10-min PVT). Mars sol drift = +39 min/day (24h 39m 35s sol, CHAPEA).",
     links: [
       {
         label: "Basner, Mollicone & Dinges (2011) — PVT-B 355 ms (DOI)",
@@ -136,9 +118,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "sleep_acoustics",
     title: "Sleep-Quarter Acoustics & Circadian Lighting",
     explanation:
-      "Measures continuous and impulse noise in crew sleep bays alongside compliance with blue-enriched wake / dim red pre-sleep lighting. Shared ECLSS fan noise causes multi-crew sleep fragmentation.",
+      "Measures continuous and impulse noise in crew sleep bays alongside compliance with NASA's tunable circadian lighting schedule (blue-enriched wake light, dim red-shifted pre-sleep light).",
     benchmark:
-      "NASA-STD-3001 Vol. 2 [V2 6079]: <= NC-40 (~49 dBA) in sleep quarters and <= NC-50 (~58 dBA) in work areas for >30-day missions. [V2 8055]: Tunable circadian lighting >= 70% schedule match.",
+      "NASA-STD-3001 Vol. 2 [V2 6079]: <= NC-40 (~49 dBA) in sleep quarters and <= NC-50 (~58 dBA) in work areas for >30-day missions. [V2 8055]: Dynamic circadian lighting.",
     links: [
       {
         label: "NASA-STD-3001 Standards Portal",
@@ -154,13 +136,13 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
       },
     ],
   },
-  readiness_connect: {
-    id: "readiness_connect",
-    title: "Composite Isolation Readiness & CONNECT Countermeasures",
+  mission_connect: {
+    id: "mission_connect",
+    title: "Third-Quarter Window & NASA CONNECT / Veggie",
     explanation:
-      "Combines sleep debt, PVT-B vigilance, circadian shift, acoustics, and Mars500 monotony/hypokinesis into a non-clinical 1–9 Readiness Index, paired with NASA CONNECT and ISS Veggie biophilia countermeasures.",
+      "Tracks mission elapsed % (Mars500 50%–75% Third-Quarter phenomenon) alongside NASA CONNECT resilience check-ins and ISS Veggie space gardening countermeasures.",
     benchmark:
-      "Readiness 1–9 scale (9 = nominal). Tracks mission elapsed % (50%–75% Third-Quarter dip), Veggie plant-module care, and CONNECT social/async check-ins.",
+      "Mars500 & HERA documented motivation/cohesion dips in the 50%–75% mission window; ISS Veggie and NASA CONNECT support sensory enrichment and crew cohesion.",
     links: [
       {
         label: "NASA HRP Hazard 2: Isolation & Confinement",
@@ -178,11 +160,11 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
   },
   ready_to_act_guidance: {
     id: "ready_to_act_guidance",
-    title: "Dual-Horizon Guidance, ETA & Re-Entry Throttling",
+    title: "Dual-Horizon Guidance & Re-Entry Throttling",
     explanation:
-      "Separates immediate safety gates (2–6h pre-EVA hold) from prolonged trends (circadian drift, Third-Quarter slump, cross-hazard CO₂). In Re-Entry Mode, caps action cards to 1 step to prevent post-isolation decision fatigue.",
+      "Separates immediate NASA safety limits (355 ms PVT-B lapse ceiling, ISS sleep floor, NC-40/50 acoustics) from prolonged trends (Martian sol drift, Third-Quarter window, Hazard 05 CO₂). In Re-Entry Mode, caps action cards to 1 step per NASA post-isolation guidance.",
     benchmark:
-      "Cross-correlates Hazard 05 CO₂ (> 4.0 mmHg) & acoustics with sleep loss; caps solutions to 1 step in Re-Entry mode per NASA Emerging from Isolation guidance.",
+      "Cross-correlates Hazard 05 ppCO2 (> 3.0 mmHg per NASA-STD-3001 / OCHMO-TB-004) & acoustics with sleep loss; caps solutions to 1 step in Re-Entry mode per NASA Emerging from Isolation.",
     links: [
       {
         label: "Five Tips from NASA Crew on Emerging from Isolation",
@@ -200,11 +182,11 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
   },
   crew_matrix: {
     id: "crew_matrix",
-    title: "Anonymized Crew Readiness Matrix (Privacy Firewall)",
+    title: "Anonymized Crew Matrix",
     explanation:
-      "Allows the Commander/Lead to detect team-wide environmental debuffs (e.g. >= 2 quarters breaching 49 dBA NC-40 or shared sleep deficit) while strictly masking personal journal text, mood scores, and sleep-aid usage.",
+      "Allows the Commander/Lead to detect shared habitat stressors (such as quarters exceeding 49 dBA NC-40 or crew sleep falling below the 6.09 h ISS historical mean) while masking private journal text, mood scores, and sleep-aid usage.",
     benchmark:
-      "Shared Acoustic Debuff triggers when >= 2 quarters exceed 49 dBA (NC-40). Synchronized Sleep Buff activates when >= 75% of crew achieve >= 7.0 h sleep.",
+      "Evaluates each crew slot against NASA-STD-3001 NC-40 (49 dBA), Barger et al. (2014) 8.5 h / 6.09 h benchmarks, and Basner et al. (2011) 355 ms PVT-B ceiling.",
     links: [
       {
         label: "NASA Life Sciences Portal (NLSP / Standard Measures)",
@@ -224,9 +206,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "personal_fatigue_strain",
     title: "Subjective Fatigue, Workload Strain & Hypokinesis",
     explanation:
-      "Captures self-rated fatigue and crew workload strain (1–5) alongside wearable daytime activity counts. Mars500 showed progressive crew hypokinesis (sedentary drift) during prolonged confinement.",
+      "Displays self-rated fatigue and workload strain (1–5) alongside wearable daytime activity counts. Mars500 showed protracted crew hypokinesis (progressive sedentary drift) during prolonged confinement.",
     benchmark:
-      "Alert elevates at Subjective Fatigue >= 4/5, Workload Strain >= 4/5, or Daytime Activity / HRV drop <= -15% vs. baseline (especially during 50%–75% Third-Quarter window).",
+      "Mars500 520-day study (Basner et al., 2014) tracked daily actigraphy counts and self-ratings to identify progressive hypokinesis and Third-Quarter (50%–75%) strain.",
     links: [
       {
         label: "Basner et al. (2014) — Mars500 520-Day Study (DOI)",
@@ -240,11 +222,11 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
   },
   private_journal_firewall: {
     id: "private_journal_firewall",
-    title: "Private Journal, Mood & Sleep-Aid Privacy Firewall",
+    title: "Astronaut Journal, Mood & Sleep-Aid Privacy",
     explanation:
-      "Private astronaut reflections, mood valence (1–5), and sleep-medication logs stay strictly visible only to the individual crew member. The Commander privacy firewall strips these fields before Leader evaluation.",
+      "Personal astronaut reflections, mood valence (1–5), and sleep-medication logs remain visible only to the individual crew member and are stripped before Leader evaluation.",
     benchmark:
-      "Barger et al. (2014) found 75% of ISS crew used sleep aids; NASA journaling research emphasizes psychological safety and strict confidentiality for honest self-reporting.",
+      "Barger et al. (2014) found 75% of ISS crew used sleep medication; NASA journaling research highlights strict confidentiality for honest behavioral self-reporting.",
     links: [
       {
         label: "NASA Video — Journaling: Astronauts Chronicle Missions",
@@ -260,9 +242,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "chart_sleep",
     title: "Sleep Duration vs. NASA Benchmarks Chart",
     explanation:
-      "Plots historical actigraphy sleep duration samples against NASA's 8.5h scheduled target, 6.5h alert floor, and 5.5h pre-EVA critical hold threshold.",
+      "Plots historical actigraphy sleep duration samples against NASA's 8.5 h scheduled opportunity, 8.0 h NASA-STD-3001 requirement, and 6.09 h ISS historical mean.",
     benchmark:
-      "Dashed lines: 8.5 h Scheduled Target (Barger 2014), 6.5 h Alert Floor, 5.5 h Pre-EVA Critical Hold (ISS historical mean = 6.09 h).",
+      "Dashed lines: 8.5 h Scheduled Target (Barger et al., 2014), 8.0 h NASA-STD-3001 Vol. 1 Requirement, 6.09 h ISS Historical Mean (Barger et al., 2014).",
     links: [
       {
         label: "Barger et al. (2014) — Lancet Neurology (DOI)",
@@ -274,31 +256,13 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
       },
     ],
   },
-  chart_sleep_debt: {
-    id: "chart_sleep_debt",
-    title: "Rolling 3-Sample Operational Sleep Debt Chart",
-    explanation:
-      "Accumulates nightly sleep deficit below the 7.0h healthy floor across the most recent 3 actigraphy samples to predict when cumulative fatigue will breach EVA safety limits.",
-    benchmark:
-      "Sum of max(0, 7.0 h - sleep_h) over last 3 samples. Elevated >= 2.0 h debt; Critical Hold >= 4.5 h debt.",
-    links: [
-      {
-        label: "NASA HRR Sleep Loss & Fatigue Risk",
-        url: "https://humanresearchroadmap.nasa.gov/Risks/",
-      },
-      {
-        label: "Barger et al. (2014) — Sleep Deficit Benchmark (DOI)",
-        url: "https://doi.org/10.1016/S1474-4422(14)70122-X",
-      },
-    ],
-  },
   chart_pvt: {
     id: "chart_pvt",
     title: "PVT-B Median Reaction Time (Cognition) Chart",
     explanation:
-      "Tracks 3-minute PVT-B reaction times against the personal +2 SD baseline and NASA's validated 355 ms cognitive lapse ceiling.",
+      "Tracks 3-minute PVT-B reaction times against NASA's validated 355 ms cognitive lapse threshold and your personal +2 SD baseline (computed once >= 3 prior samples exist).",
     benchmark:
-      "355 ms = validated PVT-B lapse threshold (Basner et al. 2011); default baseline 245 +/- 25 ms (+2 SD = 295 ms, dynamically adapted once >= 3 prior samples exist).",
+      "355 ms = validated PVT-B lapse threshold (Basner, Mollicone & Dinges, 2011).",
     links: [
       {
         label: "Basner, Mollicone & Dinges (2011) — PVT-B (DOI)",
@@ -316,7 +280,7 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     explanation:
       "Monitors continuous dBA readings in crew sleep quarters relative to NASA-STD-3001 Vol. 2 acoustic curves. Hearing protection cannot be used to claim NC-40 design compliance.",
     benchmark:
-      "NC-40 Sleep Limit = 49 dBA (>30-day missions); NC-50 Work Area Limit = 58 dBA.",
+      "NC-40 Sleep Limit = 49 dBA (>30-day missions); NC-50 Work Area Limit = 58 dBA (NASA-STD-3001 Vol. 2 [V2 6079]).",
     links: [
       {
         label: "NASA OCHMO Acoustics Technical Brief (PDF)",
@@ -332,9 +296,9 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     id: "chart_hypokinesis",
     title: "Daytime Activity (Mars500 Hypokinesis Monitor)",
     explanation:
-      "Tracks daily actigraphy movement counts to catch protracted hypokinesis (progressive sedentary behavior) and Third-Quarter monotony documented in the 520-day Mars500 analog.",
+      "Tracks daily actigraphy movement counts to monitor for protracted hypokinesis (progressive sedentary behavior) documented in the 520-day Mars500 analog.",
     benchmark:
-      "Elevates alert when recent daytime activity drops <= -15% vs. early-mission baseline or during 50%–75% mission elapsed window.",
+      "Mars500 (Basner et al., 2014) demonstrated progressive declines in daytime actigraphy counts during long-duration confinement, especially across the 50%–75% Third-Quarter window.",
     links: [
       {
         label: "Basner et al. (2014) — Mars500 520-Day Study (DOI)",
@@ -435,10 +399,6 @@ function sampleStdDev(nums: number[]): number {
   return Math.sqrt(variance);
 }
 
-function clamp(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
-}
-
 function buildChartSeries(
   samples: readonly HazardSampleRecord[],
   keys: string[],
@@ -455,17 +415,6 @@ function buildChartSeries(
     }
   });
   return points;
-}
-
-function buildRollingDebtSeries(sleepSeries: Array<{ label: string; value: number }>) {
-  const V = ISOLATION_PIPELINE_VALUES;
-  const windowSize = V.rollingDebtWindowSamples;
-  return sleepSeries.map((pt, idx) => {
-    const start = Math.max(0, idx - windowSize + 1);
-    const windowSlice = sleepSeries.slice(start, idx + 1);
-    const debt = windowSlice.reduce((sum, item) => sum + Math.max(0, V.safeSleepFloorHours - item.value), 0);
-    return { label: pt.label, value: Number(debt.toFixed(2)) };
-  });
 }
 
 function detectCrossHazardHabitatStress(
@@ -489,8 +438,10 @@ function detectCrossHazardHabitatStress(
     toFiniteNumber(envAcoustics?.rawValue);
 
   const causes: string[] = [];
-  if (co2Val !== null && co2Val > ISOLATION_PIPELINE_VALUES.co2SharedDebuffMmHg) {
-    causes.push(`Hazard 05 Cabin CO₂ ${co2Val} mmHg (> ${ISOLATION_PIPELINE_VALUES.co2SharedDebuffMmHg} mmHg)`);
+  if (co2Val !== null && co2Val > ISOLATION_PIPELINE_VALUES.co2LimitMmHg) {
+    causes.push(
+      `Hazard 05 Cabin CO₂ ${co2Val} mmHg (> ${ISOLATION_PIPELINE_VALUES.co2LimitMmHg} mmHg NASA-STD-3001 / OCHMO-TB-004 limit)`
+    );
   }
   if (moduleNoiseVal !== null && moduleNoiseVal > ISOLATION_PIPELINE_VALUES.sleepQuarterNoiseLimitNc40Dba) {
     causes.push(
@@ -521,7 +472,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     hazardSamples,
     allHazardRecords,
     scenarioHazardRecords = [],
-    linkOnline,
     reentryMode,
   } = input;
 
@@ -531,7 +481,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     mission.name.toLowerCase().includes("chapea") ||
     mission.name.toLowerCase().includes("mars");
 
-  // 1. Parse actor-level numeric inputs (structured payload -> crew check-in fallback -> raw text override)
+  // 1. Parse actor-level numeric inputs from DB streams
   const wearableSamples = hazardSamples.filter((s) => s.streamName === STREAM_WEARABLE);
   const habitatSamples = hazardSamples.filter((s) => s.streamName === STREAM_HABITAT);
   const selfCheckSamples = hazardSamples.filter((s) => s.streamName === STREAM_SELF_CHECK);
@@ -549,7 +499,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const sleepNoiseDba =
     readRecordField(hazardRecords, STREAM_HABITAT, ["sleep_quarter_noise_dba"]) ??
     toFiniteNumber(actorInputs[STREAM_HABITAT]);
-  const impulseNoiseCount = readRecordField(hazardRecords, STREAM_HABITAT, ["impulse_noise_events_sleep"]);
   const luxCompliancePct = readRecordField(hazardRecords, STREAM_HABITAT, ["ambient_lux_schedule_match"]);
   const missionDayPct = readRecordField(hazardRecords, STREAM_HABITAT, ["mission_day_pct"]);
 
@@ -563,75 +512,45 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const veggieCareDone = readRecordBool(hazardRecords, STREAM_CONNECT, ["veggie_plant_care_done"]);
   const socialCheckinDone = readRecordBool(hazardRecords, STREAM_CONNECT, ["crew_social_checkin_done"]);
 
-  // 2. Formula A: Rolling Cumulative Sleep Debt (Barger 2014 + Two-Process)
+  // 2. Sleep Duration vs. NASA Benchmarks (NASA-STD-3001 Vol. 1 8.0h & Barger et al. 2014 8.5h / 6.09h ISS mean)
   const sleepHistory = buildChartSeries(wearableSamples, ["sleep_duration_h"], true);
   if (sleepDurationH !== null && sleepHistory.length === 0) {
     sleepHistory.push({ label: "Latest", value: sleepDurationH });
   }
-  const recentSleepWindow = sleepHistory.slice(-V.rollingDebtWindowSamples).map((p) => p.value);
-  const rollingMeanSleep = recentSleepWindow.length > 0 ? mean(recentSleepWindow) : sleepDurationH;
-  const rollingSleepDebt =
-    recentSleepWindow.length > 0
-      ? recentSleepWindow.reduce((sum, h) => sum + Math.max(0, V.safeSleepFloorHours - h), 0)
-      : sleepDurationH !== null
-      ? Math.max(0, V.safeSleepFloorHours - sleepDurationH)
-      : 0;
+  const sleepBelowIssMean = sleepDurationH !== null && sleepDurationH < V.issHistoricalMeanSleepHours;
+  const sleepBelowNasaReq =
+    !sleepBelowIssMean && sleepDurationH !== null && sleepDurationH < V.nasaStd3001SleepReqHours;
 
-  const sleepCritical =
-    (sleepDurationH !== null && sleepDurationH < V.criticalSleepHours) ||
-    rollingSleepDebt >= V.rollingDebtCritHours ||
-    (sleepEfficiencyPct !== null && sleepEfficiencyPct < V.sleepEfficiencyCritPct);
-  const sleepElevated =
-    !sleepCritical &&
-    ((rollingMeanSleep !== null && rollingMeanSleep < V.elevatedSleepHours) ||
-      rollingSleepDebt >= V.rollingDebtElevHours ||
-      (sleepEfficiencyPct !== null && sleepEfficiencyPct < V.sleepEfficiencyWarnPct));
-
-  // 3. Formula B: PVT-B Cognitive Vigilance Z-Score (Basner & Dinges, 355 ms lapse floor)
+  // 3. PVT-B Cognitive Vigilance (Basner, Mollicone & Dinges, 2011: 355 ms lapse threshold; personal baseline when >= 3 prior samples)
   const pvtRtHistory = buildChartSeries(selfCheckSamples, ["pvt_median_rt_ms"], false);
-  const priorPvtPts = pvtRtHistory.length > 1 ? pvtRtHistory.slice(0, -1).map((p) => p.value) : [];
-  const pvtBaseMean = priorPvtPts.length >= 3 ? mean(priorPvtPts) : V.pvtDefaultBaselineMeanMs;
-  const pvtBaseSd =
-    priorPvtPts.length >= 3 ? Math.max(V.pvtMinSdMs, sampleStdDev(priorPvtPts)) : V.pvtDefaultBaselineSdMs;
-  const pvtZScore = pvtMedianRtMs !== null ? (pvtMedianRtMs - pvtBaseMean) / pvtBaseSd : null;
-
-  const pvtCritical =
-    (pvtMedianRtMs !== null && pvtMedianRtMs >= V.pvtLapseThresholdMs) ||
-    (pvtZScore !== null && pvtZScore >= V.pvtZScoreCrit) ||
-    (pvtLapsesCount !== null && pvtLapsesCount >= V.pvtLapsesCrit);
-  const pvtElevated =
-    !pvtCritical &&
-    ((pvtZScore !== null && pvtZScore >= V.pvtZScoreElev) ||
-      (pvtLapsesCount !== null && pvtLapsesCount >= V.pvtLapsesElev) ||
-      (subjectiveFatigue !== null && subjectiveFatigue >= V.subjectiveFatigueElev));
-
-  // 4. Formula C: Martian Sol Circadian Drift & NASA-STD-3001 [V2 8055] Lighting
-  const luxPct = luxCompliancePct ?? 100;
-  const effectiveDriftRate =
-    V.martianSolDriftMinPerDay * (1 - 0.7 * clamp(luxPct / 100, 0, 1));
-  const circadianElevated =
-    (circadianShiftMin !== null && Math.abs(circadianShiftMin) >= V.circadianPhaseElevMin) ||
-    (luxCompliancePct !== null && luxCompliancePct < V.luxComplianceFloorPct);
-  const solsToSevereDesync =
-    circadianShiftMin !== null && circadianElevated
-      ? Math.max(
-          0,
-          (V.circadianMisalignCritMin - Math.abs(circadianShiftMin)) / Math.max(5, effectiveDriftRate)
-        )
+  const priorPvtPts = pvtRtHistory.length > 3 ? pvtRtHistory.slice(0, -1).map((p) => p.value) : [];
+  const pvtBaseMean = priorPvtPts.length >= 3 ? mean(priorPvtPts) : null;
+  const pvtBaseSd = priorPvtPts.length >= 3 ? sampleStdDev(priorPvtPts) : null;
+  const pvtZScore =
+    pvtMedianRtMs !== null && pvtBaseMean !== null && pvtBaseSd !== null && pvtBaseSd > 0
+      ? (pvtMedianRtMs - pvtBaseMean) / pvtBaseSd
       : null;
 
-  // 5. Formula D: NASA-STD-3001 [V2 6079] Acoustics + Cross-Hazard Attribution
-  const acousticExcessDba =
-    sleepNoiseDba !== null ? Math.max(0, sleepNoiseDba - V.sleepQuarterNoiseLimitNc40Dba) : 0;
+  const pvtCritical = pvtMedianRtMs !== null && pvtMedianRtMs >= V.pvtLapseThresholdMs;
+  const pvtElevated =
+    !pvtCritical &&
+    ((pvtLapsesCount !== null && pvtLapsesCount > 0) || (pvtZScore !== null && pvtZScore >= 2.0));
+
+  // 4. Martian Sol Circadian Drift (+39 min/day, CHAPEA)
+  const circadianElevated =
+    circadianShiftMin !== null && Math.abs(circadianShiftMin) >= V.martianSolDriftMinPerDay;
+
+  // 5. NASA-STD-3001 Vol. 2 [V2 6079] Acoustics (49 dBA NC-40 sleep quarters, 58 dBA NC-50 work areas) + Cross-Hazard CO2 (<= 3.0 mmHg)
+  const acousticCritical = sleepNoiseDba !== null && sleepNoiseDba >= V.workAreaNoiseLimitNc50Dba;
   const acousticElevated =
-    acousticExcessDba > 0 || (impulseNoiseCount !== null && impulseNoiseCount >= V.impulseNoiseSleepElevCount);
+    !acousticCritical && sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba;
 
   const { sharedEnvCause, commsDelayMin } = detectCrossHazardHabitatStress(
     allHazardRecords,
     mission.commsDelayLabel
   );
 
-  // 6. Formula E: Mars500 Third-Quarter Monotony & Hypokinesis Slope
+  // 6. Mars500 Third-Quarter Window (50%–75%) & Actigraphy Slope (descriptive vs. early-mission samples)
   const activityHistory = buildChartSeries(wearableSamples, ["daytime_activity_counts"], false);
   let activityChangePct: number | null = null;
   if (activityHistory.length >= 4) {
@@ -647,27 +566,12 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     }
   }
 
-  const hrvHistory = buildChartSeries(wearableSamples, ["resting_hrv_rmssd"], false);
-  let hrvChangePct: number | null = null;
-  if (restingHrv !== null && hrvHistory.length >= 3) {
-    const baseHrv = mean(hrvHistory.slice(0, -1).map((p) => p.value));
-    if (baseHrv > 0) {
-      hrvChangePct = ((restingHrv - baseHrv) / baseHrv) * 100;
-    }
-  }
-
   const inThirdQuarter =
     missionDayPct !== null &&
     missionDayPct >= V.thirdQuarterStartPct &&
     missionDayPct <= V.thirdQuarterEndPct;
-  const hypokinesisTriggered =
-    (activityChangePct !== null && activityChangePct <= V.hypokinesisDropElevPct) ||
-    (hrvChangePct !== null && hrvChangePct <= V.hrvDropElevPct);
-  const monotonyElevated =
-    (inThirdQuarter && (hypokinesisTriggered || (subjectiveFatigue !== null && subjectiveFatigue >= 3.5))) ||
-    hypokinesisTriggered;
 
-  // 7. Scenario-Wide Crew Aggregation (strictly privacy-sanitized)
+  // 7. Scenario-Wide Crew Aggregation (privacy-sanitized)
   const crewIsolationRecords = scenarioHazardRecords.filter((r) => r.hazardSlug === "isolation");
   const crewSleepValues = crewIsolationRecords
     .filter((r) => r.streamName === STREAM_WEARABLE)
@@ -677,8 +581,9 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     }))
     .filter((item): item is { characterId: string; sleepH: number } => item.sleepH !== null);
 
-  const crewLowSleepCount = crewSleepValues.filter((item) => item.sleepH < V.elevatedSleepHours).length;
-  const crewGoodSleepCount = crewSleepValues.filter((item) => item.sleepH >= V.safeSleepFloorHours).length;
+  const crewBelowIssMeanCount = crewSleepValues.filter(
+    (item) => item.sleepH < V.issHistoricalMeanSleepHours
+  ).length;
   const crewNoiseBreachCount = crewIsolationRecords
     .filter((r) => r.streamName === STREAM_HABITAT)
     .filter((r) => {
@@ -688,10 +593,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const crewVeggieCount = crewIsolationRecords
     .filter((r) => r.streamName === STREAM_CONNECT)
     .filter((r) => toBooleanFlag(r.payload?.veggie_plant_care_done) === true).length;
-
-  const sharedAcousticDebuff = crewNoiseBreachCount >= 2;
-  const teamSleepBuffActive =
-    crewSleepValues.length >= 2 && crewGoodSleepCount / crewSleepValues.length >= 0.75;
 
   const hasAnyIsolationTelemetry =
     sleepDurationH !== null ||
@@ -705,35 +606,20 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     daytimeActivity !== null ||
     restingHrv !== null;
 
-  const workloadElevated = workloadStrain !== null && workloadStrain >= V.workloadStrainElev;
-  const leadSharedAcousticFlag = role === "lead" && sharedAcousticDebuff;
   const crossHazardFlag = Boolean(sharedEnvCause);
+  const leadSharedAcousticFlag = role === "lead" && crewNoiseBreachCount > 0;
 
-  // 8. Composite Readiness Score (1–9 single-digit per OUTLINE.md) & Overall Status
-  const pSleep = sleepCritical ? 3 : sleepElevated ? 2 : 0;
-  const pPvt = pvtCritical ? 3 : pvtElevated ? 2 : 0;
-  const pCirc = circadianElevated ? 1.5 : 0;
-  const pHab =
-    (acousticElevated ? 1.5 : 0) +
-    (monotonyElevated ? 1 : 0) +
-    (workloadElevated ? 1 : 0) +
-    (leadSharedAcousticFlag ? 1 : 0) +
-    (crossHazardFlag ? 1 : 0);
-  const readinessIndex = Math.round(clamp(9 - pSleep - pPvt - pCirc - pHab, 1, 9));
-
-  const hasCriticalTelemetry = sleepCritical || pvtCritical;
+  // 8. Overall Status (driven strictly by NASA-STD-3001, Cognition PVT-B, Barger 2014, CHAPEA, Mars500)
+  const hasCriticalTelemetry = sleepBelowIssMean || pvtCritical || acousticCritical;
   const hasElevatedTelemetry =
-    sleepElevated ||
+    sleepBelowNasaReq ||
     pvtElevated ||
     circadianElevated ||
     acousticElevated ||
-    monotonyElevated ||
-    workloadElevated ||
+    inThirdQuarter ||
     leadSharedAcousticFlag ||
     crossHazardFlag;
 
-  // Drive status from actual Isolation telemetry when DB streams are loaded;
-  // only fall back to actor.readinessState when no Isolation telemetry exists yet.
   const status: HazardEvaluationResult["status"] = hasAnyIsolationTelemetry
     ? hasCriticalTelemetry
       ? "CRITICAL"
@@ -746,48 +632,36 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     ? "ELEVATED"
     : "NOMINAL";
 
-  // 9. Compute Auditable ETA & Horizon Summaries
+  // 9. Factual Operational Window & Horizon Summaries (no invented countdown formulas)
   let eta = actor.metrics.etaSlot;
   if (hasCriticalTelemetry) {
-    eta = "Immediate (2–6 h pre-EVA / precision-task safety gate)";
-  } else if (sleepElevated && rollingMeanSleep !== null) {
-    const daysToCrit = Math.max(
-      1,
-      Math.ceil((V.rollingDebtCritHours - rollingSleepDebt) / Math.max(0.25, V.safeSleepFloorHours - rollingMeanSleep))
-    );
-    eta = `${daysToCrit} day${daysToCrit === 1 ? "" : "s"} to cumulative sleep-debt hold (${rollingSleepDebt.toFixed(1)}h / ${V.rollingDebtCritHours}h limit)`;
-  } else if (solsToSevereDesync !== null) {
-    const solsRounded = Math.max(1, Math.round(solsToSevereDesync));
-    eta = `~${solsRounded} sol${solsRounded === 1 ? "" : "s"} to severe circadian misalignment (${V.circadianMisalignCritMin} min threshold)`;
-  } else if (monotonyElevated) {
-    eta = "7–14 days to entrenched Third-Quarter motivation & vigilance slump";
-  } else if (acousticElevated || leadSharedAcousticFlag || crossHazardFlag) {
-    eta = "24–48 h (cumulative sleep fragmentation if habitat stressor persists)";
-  } else if (workloadElevated) {
-    eta = "24–72 h (workload strain risking sleep compression)";
+    eta = "Pre-task hold — NASA threshold exceeded";
+  } else if (hasElevatedTelemetry) {
+    eta = "Active — mitigate before next sleep or duty cycle";
   } else if (hasAnyIsolationTelemetry) {
-    eta = `Nominal — Isolation Readiness Index ${readinessIndex}/9`;
+    eta = "Nominal — within NASA-STD-3001 & Cognition bounds";
   }
 
   const immediateFindings: string[] = [];
-  if (sleepCritical || sleepElevated) {
+  if (sleepBelowIssMean) {
     immediateFindings.push(
-      `Sleep ${sleepDurationH !== null ? `${sleepDurationH}h` : `${rollingMeanSleep?.toFixed(1)}h avg`} (3-sample debt: ${rollingSleepDebt.toFixed(1)}h vs. NASA ${V.scheduledSleepHours}h target / ${V.issHistoricalMeanSleepHours}h ISS mean)`
+      `Sleep ${sleepDurationH} h (below ${V.issHistoricalMeanSleepHours} h ISS historical mean, Barger et al. 2014; NASA-STD-3001 req ${V.nasaStd3001SleepReqHours} h)`
+    );
+  } else if (sleepBelowNasaReq) {
+    immediateFindings.push(
+      `Sleep ${sleepDurationH} h (below ${V.nasaStd3001SleepReqHours} h NASA-STD-3001 Vol. 1 requirement; ${V.scheduledSleepHours} h scheduled)`
     );
   }
   if (pvtCritical || pvtElevated) {
     const zLabel = pvtZScore !== null ? ` (${pvtZScore >= 0 ? "+" : ""}${pvtZScore.toFixed(1)} SD)` : "";
     immediateFindings.push(
-      `PVT-B ${pvtMedianRtMs ?? "—"} ms${zLabel}, ${pvtLapsesCount ?? 0} lapses > ${V.pvtLapseThresholdMs} ms`
+      `PVT-B ${pvtMedianRtMs ?? "—"} ms${zLabel}, ${pvtLapsesCount ?? 0} lapses (threshold ${V.pvtLapseThresholdMs} ms)`
     );
   }
-  if (acousticElevated) {
+  if (acousticCritical || acousticElevated) {
     immediateFindings.push(
       `Sleep-quarter noise ${sleepNoiseDba ?? "—"} dBA (exceeds NASA-STD-3001 NC-40 limit of ${V.sleepQuarterNoiseLimitNc40Dba} dBA)`
     );
-  }
-  if (workloadElevated) {
-    immediateFindings.push(`Workload strain ${workloadStrain}/5 (>= ${V.workloadStrainElev}/5 threshold)`);
   }
   if (sharedEnvCause) {
     immediateFindings.push(`Cross-Hazard Link: ${sharedEnvCause}`);
@@ -795,10 +669,10 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
 
   const immediateHorizon =
     immediateFindings.length > 0
-      ? `[Readiness ${readinessIndex}/9] ${immediateFindings.join(" · ")}`
+      ? immediateFindings.join(" · ")
       : hasAnyIsolationTelemetry
-      ? `[Readiness ${readinessIndex}/9] Nominal — ${[
-          sleepDurationH !== null ? `Sleep ${sleepDurationH}h` : null,
+      ? `Nominal — ${[
+          sleepDurationH !== null ? `Sleep ${sleepDurationH} h` : null,
           pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (${pvtLapsesCount ?? 0} lapses)` : null,
           sleepNoiseDba !== null
             ? `Quarter noise ${sleepNoiseDba} dBA (<= ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
@@ -811,27 +685,28 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const prolongedFindings: string[] = [];
   if (circadianElevated) {
     prolongedFindings.push(
-      `Circadian phase shift ${circadianShiftMin ?? 0} min${isMarsSurface ? ` (24h 39m Martian sol drift)` : ""}, lighting match ${luxCompliancePct ?? "—"}%`
+      `Circadian phase shift ${circadianShiftMin ?? 0} min${isMarsSurface ? ` (24h 39m Martian sol drift)` : ""}${
+        luxCompliancePct !== null ? `, lighting match ${luxCompliancePct}%` : ""
+      }`
     );
   }
-  if (inThirdQuarter || monotonyElevated) {
+  if (inThirdQuarter) {
     const actText =
       activityChangePct !== null
-        ? Math.abs(activityChangePct) >= 5
-          ? `, daytime activity ${activityChangePct.toFixed(0)}% vs baseline`
-          : ", daytime activity steady vs baseline"
+        ? `, daytime activity ${activityChangePct >= 0 ? "+" : ""}${activityChangePct.toFixed(0)}% vs. early samples`
         : "";
-    prolongedFindings.push(`Third-Quarter window (${missionDayPct ?? "50–75"}%)${actText}`);
+    prolongedFindings.push(`Mars500 Third-Quarter window (${missionDayPct}% elapsed)${actText}`);
   }
-  if (commsDelayMin !== null && commsDelayMin >= V.highCommsDelayMin) {
-    prolongedFindings.push(`High Earth-comms autonomy lag (${commsDelayMin} min delay${linkOnline ? "" : ", offline"})`);
+  if (commsDelayMin !== null && commsDelayMin > 0) {
+    prolongedFindings.push(
+      `Earth-comms delay ${commsDelayMin} min RTT (CHAPEA max ${V.chapeaMaxCommsRttMin} min)`
+    );
   }
   if (role === "lead" && crewSleepValues.length > 0) {
     prolongedFindings.push(
-      `Crew Sleep Aggregate (Anonymized): ${crewLowSleepCount}/${crewSleepValues.length} below ${V.elevatedSleepHours}h` +
-        (sharedAcousticDebuff ? ` · SHARED NC-40 DEBUFF (${crewNoiseBreachCount} quarters)` : "") +
-        (teamSleepBuffActive ? " · Synchronized Sleep Buff ACTIVE" : "") +
-        (crewVeggieCount > 0 ? ` · Biophilia Buff (${crewVeggieCount} logged)` : "")
+      `Crew Aggregate (Anonymized): ${crewBelowIssMeanCount}/${crewSleepValues.length} below ${V.issHistoricalMeanSleepHours} h ISS mean` +
+        (crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} quarter(s) > 49 dBA NC-40` : "") +
+        (crewVeggieCount > 0 ? ` · ISS Veggie (${crewVeggieCount} logged)` : "")
     );
   }
 
@@ -840,62 +715,57 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       ? prolongedFindings.join(" | ")
       : isolationHazard.outputSlots.prolongedHorizon;
 
-  // 10. Actionable 1–2 Solutions (100% telemetry-grounded, capped to 1 in reentryMode)
+  // 10. Actionable 1–2 Solutions (grounded in NASA-STD-3001, Barger 2014, Cognition, CONNECT, ISS Veggie, Emerging from Isolation)
   const rankedSolutions: string[] = [];
-  if (acousticElevated || sharedEnvCause || leadSharedAcousticFlag) {
+  if (acousticCritical || acousticElevated || sharedEnvCause || leadSharedAcousticFlag) {
     rankedSolutions.push(
-      `Acoustic / Habitat Mitigation: ${
+      `Acoustic / Habitat Mitigation [NASA-STD-3001 V2 6079]: ${
         sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba
           ? `Quarter noise is ${sleepNoiseDba} dBA (> ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
-          : sharedEnvCause ?? `Shared NC-40 breach across ${crewNoiseBreachCount} crew quarters`
-      } — inspect ECLSS fan muffler & issue ANC/earplugs from Med Kit Bay 2.`
+          : sharedEnvCause ?? `${crewNoiseBreachCount} crew quarter(s) > ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40`
+      } — inspect habitat fan/ECLSS noise source and provide onboard hearing protection.`
     );
   }
-  if (sleepCritical || pvtCritical) {
+  if (pvtCritical || sleepBelowIssMean) {
     rankedSolutions.push(
-      `Pre-EVA Safety Gate: ${
-        sleepDurationH !== null && sleepDurationH < V.criticalSleepHours
-          ? `Sleep ${sleepDurationH}h (< ${V.criticalSleepHours}h floor)`
-          : `PVT-B ${pvtMedianRtMs ?? "—"} ms / ${pvtLapsesCount ?? 0} lapses`
-      } — defer precision EVA/rover tasks until an 8.0–8.5h recovery sleep window clears limits.`
+      `Pre-Task Hold & Recovery Sleep [NASA-STD-3001 / Cognition]: ${
+        pvtCritical
+          ? `PVT-B ${pvtMedianRtMs} ms (>= ${V.pvtLapseThresholdMs} ms lapse ceiling)`
+          : `Sleep ${sleepDurationH} h (< ${V.issHistoricalMeanSleepHours} h ISS mean)`
+      } — defer precision EVA/rover tasks until an ${V.nasaStd3001SleepReqHours}–${V.scheduledSleepHours} h sleep window is completed.`
     );
-  } else if (sleepElevated || pvtElevated) {
+  } else if (sleepBelowNasaReq || pvtElevated) {
     rankedSolutions.push(
-      `Sleep Recovery: Rolling mean sleep is ${rollingMeanSleep?.toFixed(1) ?? sleepDurationH ?? "—"}h (debt ${rollingSleepDebt.toFixed(1)}h vs. ${V.rollingDebtElevHours}h floor) — shift non-critical tasks by 60 min tonight.`
-    );
-  }
-  if (workloadElevated) {
-    rankedSolutions.push(
-      `Workload Decompression: Reported strain ${workloadStrain}/5 (>= ${V.workloadStrainElev}/5 threshold) — rebalance duty load before sleep window.`
+      `Sleep Window Protection [NASA-STD-3001 Vol. 1]: ${
+        sleepDurationH !== null
+          ? `Sleep ${sleepDurationH} h (< ${V.nasaStd3001SleepReqHours} h requirement)`
+          : `PVT-B ${pvtMedianRtMs ?? "—"} ms (${pvtLapsesCount ?? 0} lapses)`
+      } — protect the scheduled ${V.scheduledSleepHours} h sleep opportunity.`
     );
   }
   if (circadianElevated) {
     rankedSolutions.push(
-      `Circadian Entrainment [V2 8055]: Phase shift ${circadianShiftMin ?? 0} min (lighting match ${luxCompliancePct ?? "—"}%) — apply blue-enriched wake light and dim red-shifted pre-sleep lighting.`
+      `Circadian Lighting Entrainment [NASA-STD-3001 V2 8055]: Phase shift ${circadianShiftMin ?? 0} min — align with blue-enriched wake light and dim red-shifted pre-sleep lighting.`
     );
   }
-  if (monotonyElevated) {
+  if (inThirdQuarter) {
     rankedSolutions.push(
-      `Anti-Hypokinesis Countermeasure: ${
-        activityChangePct !== null
-          ? `Daytime activity changed ${activityChangePct.toFixed(0)}% vs. baseline`
-          : "Mars500 Third-Quarter monotony trigger"
-      } — schedule 30-min aerobic/resistance exercise + 10-min ISS Veggie care.`
+      `Mars500 Third-Quarter Countermeasure: Mission at ${missionDayPct}% (50%–75% window) — schedule physical exercise and ISS Veggie plant care / CONNECT crew check-in.`
     );
   }
 
   if (rankedSolutions.length === 0) {
     if (!hasAnyIsolationTelemetry) {
       rankedSolutions.push(
-        "Awaiting DB Telemetry: Ingest Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to generate telemetry-backed countermeasures."
+        "Awaiting DB Telemetry: Ingest Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to evaluate against NASA benchmarks."
       );
     } else if (reentryMode) {
       rankedSolutions.push(
-        `Re-Entry Pacing (Readiness ${readinessIndex}/9): Observed telemetry is within NASA bounds — keep routine steady with one low-stimulus break today.`
+        "Post-Isolation Re-Entry Pacing [NASA Emerging from Isolation]: Telemetry is within NASA bounds — limit choices and maintain steady rest routines."
       );
     } else {
       const verifiedChecks = [
-        sleepDurationH !== null ? `Sleep ${sleepDurationH}h (>= ${V.safeSleepFloorHours}h floor)` : null,
+        sleepDurationH !== null ? `Sleep ${sleepDurationH} h (>= ${V.nasaStd3001SleepReqHours} h req)` : null,
         pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (< ${V.pvtLapseThresholdMs} ms lapse)` : null,
         sleepNoiseDba !== null ? `Noise ${sleepNoiseDba} dBA (<= ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)` : null,
       ]
@@ -903,26 +773,24 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
         .join(", ");
 
       rankedSolutions.push(
-        `Within NASA Bounds: ${verifiedChecks} — preserve scheduled ${V.scheduledSleepHours}h sleep & pre-sleep lighting window.`
+        `Within NASA Bounds: ${verifiedChecks} — preserve scheduled ${V.scheduledSleepHours} h sleep opportunity & pre-sleep lighting.`
       );
 
-      if (inThirdQuarter && veggieCareDone !== true) {
+      if (veggieCareDone !== true) {
         rankedSolutions.push(
-          `Third-Quarter Monitor (${missionDayPct}% elapsed · Mars500 50–75% window): Veggie plant-care status is ${
+          `ISS Veggie Countermeasure: Plant-module care is ${
             veggieCareDone === false ? "pending" : "unlogged"
-          } in DB — complete 10-min Veggie sensory care to buffer monotony.`
+          } in DB — complete scheduled Veggie sensory care.`
         );
       } else if (socialCheckinDone !== true) {
         rankedSolutions.push(
-          `CONNECT Check-In (${missionDayPct !== null ? `${missionDayPct}% elapsed` : "active cycle"}): Crew/async check-in is ${
+          `NASA CONNECT Check-In: Crew/async check-in is ${
             socialCheckinDone === false ? "pending" : "unlogged"
-          } in DB — log shared briefing or async Earth message.`
+          } in DB — log shared crew briefing or async Earth message.`
         );
-      } else if (veggieCareDone === true && socialCheckinDone === true) {
+      } else {
         rankedSolutions.push(
-          `Protective Buffs Verified in DB: Veggie biophilia care and CONNECT crew check-in are both complete${
-            missionDayPct !== null ? ` at ${missionDayPct}% mission elapsed` : ""
-          } — maintain exercise cadence.`
+          "NASA Countermeasures Logged in DB: ISS Veggie care and CONNECT check-in are both complete."
         );
       }
     }
@@ -930,9 +798,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
 
   const solutions = rankedSolutions.slice(0, maxSolutions);
 
-  // 11. Build Thresholded Telemetry Charts (rendered by <HazardTelemetryChart />)
-  // Match evaluator.ts autoId (`sample-<slugified-streamName>`) for primary stream charts
-  // so evaluator.ts does not append duplicate un-thresholded fallback graphs.
+  // 11. Build Thresholded Telemetry Charts (strictly NASA threshold lines)
   const charts: HazardChartSpec[] = [];
 
   if (sleepHistory.length > 0) {
@@ -943,37 +809,29 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       series: sleepHistory,
       thresholds: [
         { label: "Scheduled Target", value: V.scheduledSleepHours, color: "#10b981" },
-        { label: "Alert Floor", value: V.elevatedSleepHours, color: "#f59e0b" },
-        { label: "Pre-EVA Hold", value: V.criticalSleepHours, color: "#ef4444" },
-      ],
-    });
-
-    charts.push({
-      id: "isolation-sleep-debt",
-      title: `Rolling ${V.rollingDebtWindowSamples}-Sample Operational Sleep Debt`,
-      unit: "h",
-      series: buildRollingDebtSeries(sleepHistory),
-      thresholds: [
-        { label: "Elevated Debt", value: V.rollingDebtElevHours, color: "#f59e0b" },
-        { label: "Critical Hold", value: V.rollingDebtCritHours, color: "#ef4444" },
+        { label: "NASA-STD-3001 Req", value: V.nasaStd3001SleepReqHours, color: "#0284c7" },
+        { label: "ISS Mean (Barger 2014)", value: V.issHistoricalMeanSleepHours, color: "#ef4444" },
       ],
     });
   }
 
   if (pvtRtHistory.length > 0) {
+    const pvtThresholds: HazardChartSpec["thresholds"] = [
+      { label: "PVT-B Lapse", value: V.pvtLapseThresholdMs, color: "#ef4444" },
+    ];
+    if (pvtBaseMean !== null && pvtBaseSd !== null && pvtBaseSd > 0) {
+      pvtThresholds.push({
+        label: "+2 SD Personal Baseline",
+        value: Math.round(pvtBaseMean + 2 * pvtBaseSd),
+        color: "#f59e0b",
+      });
+    }
     charts.push({
       id: "sample-60-second-self-check-private-",
       title: "PVT-B Median Reaction Time (Cognition)",
       unit: "ms",
       series: pvtRtHistory,
-      thresholds: [
-        { label: "PVT-B Lapse", value: V.pvtLapseThresholdMs, color: "#ef4444" },
-        {
-          label: "+2 SD Baseline",
-          value: Math.round(pvtBaseMean + 2 * pvtBaseSd),
-          color: "#f59e0b",
-        },
-      ],
+      thresholds: pvtThresholds,
     });
   }
 
@@ -985,8 +843,8 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       unit: "dBA",
       series: noiseSeries,
       thresholds: [
-        { label: "NC-40 Sleep Limit", value: V.sleepQuarterNoiseLimitNc40Dba, color: "#ef4444" },
-        { label: "NC-50 Work Limit", value: V.workAreaNoiseLimitNc50Dba, color: "#f59e0b" },
+        { label: "NC-40 Sleep Limit", value: V.sleepQuarterNoiseLimitNc40Dba, color: "#f59e0b" },
+        { label: "NC-50 Work Limit", value: V.workAreaNoiseLimitNc50Dba, color: "#ef4444" },
       ],
     });
   }
@@ -1002,8 +860,8 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
 
   const scenarioStatusSlot =
     role === "lead"
-      ? `${mission.environment.isolationStatusSlot} · Readiness Index ${readinessIndex}/9 (${crewSleepValues.length} crew actigraphy stream(s) loaded, private notes masked)`
-      : `${mission.environment.isolationStatusSlot} · Personal Isolation Readiness ${readinessIndex}/9`;
+      ? `${mission.environment.isolationStatusSlot} · ${status} (${crewSleepValues.length} crew actigraphy stream(s) loaded, private notes masked)`
+      : `${mission.environment.isolationStatusSlot} · ${status}`;
 
   return {
     status,
@@ -1026,13 +884,13 @@ export const isolationHazard: HazardSpec = {
   sourceDoc: "docs/hazards/02-isolation-and-confinement.md",
   nasaReferences: [
     "NASA HRP Isolation & Confinement",
-    "NASA-STD-3001 Vol. 2 (NC-40 / Lighting / Privacy)",
+    "NASA-STD-3001 Vol. 1 & Vol. 2 (NC-40 / Lighting / Sleep)",
     "HERA, CHAPEA & Mars500 (520-Day)",
     "Cognition (PVT-B 355 ms) & CONNECT Framework",
     "ISS Veggie Space Gardening & OSDR Standard Measures",
   ],
   overviewSlot:
-    "Here is: Sleep-debt & Martian sol circadian modeling, NASA-STD-3001 NC-40 acoustic habitability correlation, Cognition PVT-B vigilance monitoring, privacy-protected behavioral logs, and CONNECT/biophilia countermeasures.",
+    "Here is: Sleep benchmarking (NASA-STD-3001 & Barger et al. 2014), Martian sol circadian monitoring, NC-40 acoustic limits, Cognition PVT-B vigilance, private behavioral logs, and CONNECT/Veggie countermeasures.",
   inputSlots: [
     {
       streamName: STREAM_WEARABLE,
@@ -1047,14 +905,14 @@ export const isolationHazard: HazardSpec = {
           label: "Sleep Duration",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours slept (NASA target 8.5h, ISS mean 6.09h)",
+          prompt: "Add your info: Hours slept (NASA scheduled 8.5h, req 8.0h, ISS mean 6.09h)",
         },
         {
           key: "sleep_efficiency_pct",
           label: "Sleep Efficiency",
           fieldType: "number",
           unit: "%",
-          prompt: "Add your info: Sleep efficiency % (warn < 80%)",
+          prompt: "Add your info: Sleep efficiency %",
         },
         {
           key: "circadian_phase_shift_min",
@@ -1068,7 +926,7 @@ export const isolationHazard: HazardSpec = {
           label: "Daytime Activity",
           fieldType: "number",
           unit: "counts/day",
-          prompt: "Add your info: Actigraphy daytime counts (hypokinesis check)",
+          prompt: "Add your info: Actigraphy daytime counts (Mars500 hypokinesis)",
         },
         {
           key: "resting_hrv_rmssd",
@@ -1099,7 +957,7 @@ export const isolationHazard: HazardSpec = {
           label: "Sleep Impulse Spikes",
           fieldType: "number",
           unit: "events",
-          prompt: "Add your info: Spikes > +10 dB during sleep",
+          prompt: "Add your info: Impulse noise events during sleep",
         },
         {
           key: "ambient_lux_schedule_match",
@@ -1113,7 +971,7 @@ export const isolationHazard: HazardSpec = {
           label: "Mission Elapsed",
           fieldType: "number",
           unit: "%",
-          prompt: "Add your info: Mission progress % (50–75% = Third Quarter)",
+          prompt: "Add your info: Mission progress % (50–75% = Mars500 Third Quarter)",
         },
       ],
     },
@@ -1130,14 +988,14 @@ export const isolationHazard: HazardSpec = {
           label: "PVT-B Median RT",
           fieldType: "number",
           unit: "ms",
-          prompt: "Add your info: Median reaction time ms (lapse > 355 ms)",
+          prompt: "Add your info: Median reaction time ms (lapse >= 355 ms)",
         },
         {
           key: "pvt_lapses_count",
-          label: "PVT-B Lapses (>355 ms)",
+          label: "PVT-B Lapses (>= 355 ms)",
           fieldType: "number",
           unit: "lapses",
-          prompt: "Add your info: Count of trials > 355 ms",
+          prompt: "Add your info: Count of trials >= 355 ms",
         },
         {
           key: "subjective_fatigue_1_5",
@@ -1180,13 +1038,13 @@ export const isolationHazard: HazardSpec = {
           key: "veggie_plant_care_done",
           label: "Veggie Plant Care Completed",
           fieldType: "boolean",
-          prompt: "10-min sensory plant-module care completed today",
+          prompt: "ISS Veggie plant-module care completed today",
         },
         {
           key: "crew_social_checkin_done",
           label: "CONNECT Crew / Async Check-In",
           fieldType: "boolean",
-          prompt: "Shared crew meal/briefing or async family check-in logged",
+          prompt: "Shared crew briefing or async Earth check-in logged",
         },
         {
           key: "sleep_med_used_private",
@@ -1199,53 +1057,53 @@ export const isolationHazard: HazardSpec = {
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Pre-EVA / precision-task vigilance alert when sleep debt or PVT-B (>355 ms) lapses spike.",
-    prolongedHorizon: "Here is: Martian sol (24h 39m) circadian drift, NC-40 acoustic sleep debt, or Third-Quarter monotony window.",
-    etaSlot: "Here is: Estimated Time of Action before critical vigilance threshold or circadian desynchronization.",
-    solutionsSlot: "Here is: 1–2 CONNECT / Veggie / acoustic-mitigation actions constrained by onboard kit & schedule.",
+    immediateHorizon: "Here is: Sleep vs. NASA-STD-3001/ISS benchmarks, PVT-B (>=355 ms), or NC-40 acoustic alert.",
+    prolongedHorizon: "Here is: Martian sol (24h 39m) circadian drift, NC-40 acoustic exposure, or Mars500 Third-Quarter window.",
+    etaSlot: "Here is: Operational gate status against NASA-STD-3001 and Cognition thresholds.",
+    solutionsSlot: "Here is: 1–2 NASA CONNECT / Veggie / acoustic-mitigation actions.",
   },
   leadView: {
     summary:
-      "Anonymized Crew-Wide Sleep Readiness Index, shared NC-40 acoustic/lighting debuffs, Third-Quarter banner, and Re-Entry UI throttling.",
+      "Anonymized crew sleep & PVT-B overview, NC-40 acoustic breaches, Mars500 Third-Quarter context, and Re-Entry UI throttling.",
     privacyRule:
       "STRICT PRIVACY FIREWALL: Raw journal entries, personal mood scores, and sleep-aid usage are masked and NEVER shown to Lead.",
     modules: [
       {
-        title: "Crew-Wide Readiness Matrix (Anonymized)",
+        title: "Crew Matrix (Anonymized)",
         detail:
-          "Here is: Aggregate % below 6.5h sleep threshold & non-clinical 1–9 readiness from crew telemetry.",
-        actionSlot: "Ready-to-act: Shift crew maintenance schedule or protect an 8h recovery sleep window.",
+          "Here is: Crew sleep vs. 6.09h ISS historical mean, PVT-B vs. 355 ms ceiling, and NC-40 compliance.",
+        actionSlot: "Ready-to-act: Protect an 8.0–8.5h sleep window when crew averages fall below NASA benchmarks.",
       },
       {
         title: "Shared Habitat Debuff Attribution",
         detail:
-          "Here is: Distinguishes shared ECLSS fan noise (>49 dBA NC-40) or Hazard 05 CO₂ from individual insomnia.",
-        actionSlot: "Ready-to-act: Dispatch acoustic muffler inspection in flagged crew quarters.",
+          "Here is: Distinguishes shared habitat noise (>49 dBA NC-40) or Hazard 05 CO₂ (>3.0 mmHg) from individual sleep loss.",
+        actionSlot: "Ready-to-act: Inspect acoustic source in flagged crew quarters.",
       },
       {
         title: "Post-Isolation Re-Entry Mode Toggle",
         detail:
-          "Here is: Reduces non-essential alerts & caps action cards to 1 step to prevent decision/sensory overload.",
+          "Here is: Reduces non-essential alerts & caps action cards to 1 step per NASA Emerging from Isolation guidance.",
         actionSlot: "Ready-to-act: Toggle Re-Entry mode in header when transitioning post-isolation.",
       },
     ],
   },
   memberView: {
     summary:
-      "Personal readiness briefing combining wrist actigraphy, habitat NC-40 sensors, and Cognition PVT-B telemetry, with strictly private reflection records.",
+      "Personal telemetry view combining wrist actigraphy, habitat NC-40 sensors, and Cognition PVT-B telemetry, with private reflection records.",
     privacyRule:
       "PRIVATE TO YOU: Your journal text, mood score, and sleep-medication logs are masked from Lead and stay private.",
     modules: [
       {
-        title: "Actigraphy & PVT-B Vigilance Readiness",
+        title: "Actigraphy & PVT-B Vigilance",
         detail:
-          "Here is: Sleep debt, circadian drift, and >355 ms PVT-B lapse monitoring calibrated to NASA baselines.",
-        actionSlot: "Ready-to-act: Follow pre-EVA hold or protected sleep recovery guidance when flagged.",
+          "Here is: Sleep duration, circadian drift, and >=355 ms PVT-B lapse monitoring calibrated to NASA benchmarks.",
+        actionSlot: "Ready-to-act: Follow pre-task hold or protected sleep recovery guidance when flagged.",
       },
       {
-        title: "CONNECT & Biophilia Countermeasures",
+        title: "CONNECT & ISS Veggie Countermeasures",
         detail:
-          "Here is: 1–2 actions (e.g., 10-min Veggie plant-module care; scheduled aerobic/resistance session with crewmate).",
+          "Here is: 1–2 actions grounded in ISS Veggie plant care, NASA CONNECT, and acoustic/lighting compliance.",
         actionSlot: "Ready-to-act: Execute top-ranked countermeasure aligned with current mission phase.",
       },
     ],
@@ -1265,16 +1123,16 @@ export const isolationHazard: HazardSpec = {
   alarmPreset: {
     title: "CIRCADIAN & VIGILANCE DEBUFF — PRE-TASK HOLD",
     severity: "WARNING",
-    etaLabel: "Here is: Estimated Time of Action prior to scheduled precision task / EVA",
+    etaLabel: "Here is: Operational gate status prior to scheduled precision task / EVA",
     descriptionSlot:
-      "Here is: Critical sleep debt, PVT-B lapse spike (>355 ms), or shared sleep-quarter acoustic breach (>49 dBA NC-40) detected in device streams.",
+      "Here is: Sleep below 6.09 h ISS mean, PVT-B lapse (>=355 ms), or sleep-quarter acoustic breach (>49 dBA NC-40) detected in device streams.",
     leadActions: [
-      "1. Order ECLSS fan muffler inspection & issue ANC/earplugs from Med Kit Bay 2.",
+      "1. Inspect habitat acoustic source and provide hearing protection for NC-40 (>49 dBA) compliance.",
       "2. Shift non-critical maintenance to restore protected 8.0–8.5h sleep window.",
     ],
     memberActions: [
-      "1. Defer precision EVA tasks and enter protected 8.0–8.5h recovery sleep window.",
-      "2. Use temporary acoustic mitigation and follow pre-sleep dim/red lighting schedule.",
+      "1. Defer precision EVA tasks and complete a protected 8.0–8.5h recovery sleep window.",
+      "2. Use hearing protection and follow pre-sleep dim/red lighting schedule.",
     ],
   },
   evaluate: evaluateIsolationHazard,

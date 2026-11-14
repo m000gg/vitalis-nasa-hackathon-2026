@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   BedDouble,
   Brain,
@@ -15,7 +14,6 @@ import {
   ShieldAlert,
   Users,
   Volume2,
-  WifiOff,
   X,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
@@ -74,27 +72,11 @@ const TONE_SURFACE_CLASS: Record<Tone, string> = {
   critical: "border-red-300 bg-red-50/30",
 };
 
-const CHART_META_MAP: Record<string, { metaKey: string; sourceTag: string }> = {
-  "sample-wearable-actigraphy": {
-    metaKey: "chart_sleep",
-    sourceTag: "Barger et al. (2014) · Lancet Neurol.",
-  },
-  "isolation-sleep-debt": {
-    metaKey: "chart_sleep_debt",
-    sourceTag: "NASA HRR Sleep Risk · 3-Sample Debt",
-  },
-  "sample-60-second-self-check-private-": {
-    metaKey: "chart_pvt",
-    sourceTag: "Basner & Dinges (2011) · PVT-B 355 ms",
-  },
-  "sample-habitat-acoustics-lighting": {
-    metaKey: "chart_acoustics",
-    sourceTag: "NASA-STD-3001 [V2 6079] · NC-40",
-  },
-  "isolation-hypokinesis-activity": {
-    metaKey: "chart_hypokinesis",
-    sourceTag: "Mars500 Basner et al. (2014) · PLOS ONE",
-  },
+const CHART_META_MAP: Record<string, string> = {
+  "sample-wearable-actigraphy": "chart_sleep",
+  "sample-60-second-self-check-private-": "chart_pvt",
+  "sample-habitat-acoustics-lighting": "chart_acoustics",
+  "isolation-hypokinesis-activity": "chart_hypokinesis",
 };
 
 function StatusIcon({ status, className = "h-3.5 w-3.5" }: { status: StatusKey; className?: string }) {
@@ -133,16 +115,13 @@ function getStr(record: HazardDataRecord | undefined, key: string): string | nul
   return typeof val === "string" && val.trim() !== "" ? val.trim() : null;
 }
 
-function parseReadinessScore(immediateHorizon: string): string {
-  const match = immediateHorizon.match(/\[Readiness\s+(\d+\/9)\]/i);
-  return match ? match[1] : "—";
-}
-
 function formatNum(value: number | null, unit = "", digits?: number): string {
   if (value === null) return "—";
   const formatted = typeof digits === "number" ? value.toFixed(digits) : String(value);
   return unit ? `${formatted} ${unit}` : formatted;
 }
+
+type ActiveInfoState = { triggerId: string; entry: IsolationInfoEntry } | null;
 
 /**
  * Accessible (i) button with comfortable astronaut-friendly hit target (24x24px).
@@ -154,16 +133,17 @@ function InfoCircle({
   onSelectInfo,
 }: {
   entry: IsolationInfoEntry;
-  activeInfo: IsolationInfoEntry | null;
-  onSelectInfo: (entry: IsolationInfoEntry | null) => void;
+  activeInfo: ActiveInfoState;
+  onSelectInfo: (next: ActiveInfoState) => void;
 }) {
-  const isSelected = activeInfo?.id === entry.id;
+  const triggerId = useId();
+  const isSelected = activeInfo?.triggerId === triggerId;
   return (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onSelectInfo(isSelected ? null : entry);
+        onSelectInfo(isSelected ? null : { triggerId, entry });
       }}
       aria-label={`Explain ${entry.title} and view NASA sources`}
       aria-expanded={isSelected}
@@ -285,8 +265,8 @@ function KpiCard({
   tone?: Tone;
   icon: React.ReactNode;
   infoEntry: IsolationInfoEntry;
-  activeInfo: IsolationInfoEntry | null;
-  onSelectInfo: (entry: IsolationInfoEntry | null) => void;
+  activeInfo: ActiveInfoState;
+  onSelectInfo: (next: ActiveInfoState) => void;
 }) {
   const toneLabel = tone === "critical" ? "Critical" : tone === "elevated" ? "Elevated" : "Nominal";
   return (
@@ -336,7 +316,7 @@ export function IsolationHazardScreen({
   linkOnline,
   reentryMode,
 }: HazardScreenProps) {
-  const [activeInfo, setActiveInfo] = useState<IsolationInfoEntry | null>(null);
+  const [activeInfo, setActiveInfo] = useState<ActiveInfoState>(null);
   const [showAllInReentry, setShowAllInReentry] = useState(false);
 
   const wearable = findRecord(hazardRecords, STREAM_WEARABLE);
@@ -368,20 +348,17 @@ export function IsolationHazardScreen({
   const privateJournal = getStr(selfCheck, "private_journal_note");
   const privateSleepMed = getBool(connect, "sleep_med_used_private");
 
-  const readinessScore = parseReadinessScore(snapshot.immediateHorizon);
-
   const sleepTone: Tone =
-    sleepH !== null && sleepH < V.criticalSleepHours
+    sleepH !== null && sleepH < V.issHistoricalMeanSleepHours
       ? "critical"
-      : sleepH !== null && sleepH < V.elevatedSleepHours
+      : sleepH !== null && sleepH < V.nasaStd3001SleepReqHours
       ? "elevated"
       : "nominal";
 
   const pvtTone: Tone =
-    (pvtRt !== null && pvtRt >= V.pvtLapseThresholdMs) ||
-    (pvtLapses !== null && pvtLapses >= V.pvtLapsesCrit)
+    pvtRt !== null && pvtRt >= V.pvtLapseThresholdMs
       ? "critical"
-      : pvtLapses !== null && pvtLapses >= V.pvtLapsesElev
+      : pvtLapses !== null && pvtLapses > 0
       ? "elevated"
       : "nominal";
 
@@ -392,7 +369,7 @@ export function IsolationHazardScreen({
       ? "elevated"
       : "nominal";
 
-  const readinessTone: Tone =
+  const statusTone: Tone =
     snapshot.status === "CRITICAL"
       ? "critical"
       : snapshot.status === "ELEVATED"
@@ -401,7 +378,6 @@ export function IsolationHazardScreen({
 
   const charts: HazardChartSpec[] = snapshot.charts ?? [];
   const primaryCharts = charts.slice(0, 4);
-  const hypokinesisChart = charts.find((c) => c.id === "isolation-hypokinesis-activity");
 
   // Lead-only anonymized crew matrix computed through evaluator (enforcing Lead privacy firewall)
   const crewRows =
@@ -427,14 +403,13 @@ export function IsolationHazardScreen({
             noiseDba: getNum(mHabitat, "sleep_quarter_noise_dba"),
             pvtRt: getNum(mCheck, "pvt_median_rt_ms"),
             veggieDone: getBool(mConnect, "veggie_plant_care_done"),
-            readiness: parseReadinessScore(memberSnap.immediateHorizon),
             status: memberSnap.status,
           };
         })
       : [];
 
-  const belowSleepFloorCount = crewRows.filter(
-    (r) => r.sleepH !== null && r.sleepH < V.elevatedSleepHours
+  const belowIssMeanCount = crewRows.filter(
+    (r) => r.sleepH !== null && r.sleepH < V.issHistoricalMeanSleepHours
   ).length;
   const nc40BreachCount = crewRows.filter(
     (r) => r.noiseDba !== null && r.noiseDba > V.sleepQuarterNoiseLimitNc40Dba
@@ -491,9 +466,7 @@ export function IsolationHazardScreen({
               <StatusIcon status={snapshot.status} className="h-3.5 w-3.5" />
               {snapshot.status}
             </span>
-            <h2 className="text-base font-bold text-slate-900">
-              Ready-to-Act Briefing · Readiness {readinessScore}
-            </h2>
+            <h2 className="text-base font-bold text-slate-900">Ready-to-Act Briefing</h2>
             <InfoCircle
               entry={ISOLATION_RESEARCH_METADATA.ready_to_act_guidance}
               activeInfo={activeInfo}
@@ -505,12 +478,6 @@ export function IsolationHazardScreen({
             <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700">
               ETA: {snapshot.eta}
             </span>
-            {!linkOnline && (
-              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 font-semibold text-amber-900">
-                <WifiOff className="h-3.5 w-3.5" aria-hidden="true" />
-                Offline-First Local Mode
-              </span>
-            )}
           </div>
         </div>
 
@@ -556,7 +523,7 @@ export function IsolationHazardScreen({
                 {reentryMode ? "· Re-Entry Cap" : "Max"})
               </p>
               <InfoCircle
-                entry={ISOLATION_RESEARCH_METADATA.readiness_connect}
+                entry={ISOLATION_RESEARCH_METADATA.mission_connect}
                 activeInfo={activeInfo}
                 onSelectInfo={setActiveInfo}
               />
@@ -594,7 +561,7 @@ export function IsolationHazardScreen({
           <KpiCard
             label="Cognition PVT-B"
             value={formatNum(pvtRt, "ms")}
-            subline={`${formatNum(pvtLapses, "lapses")} (>355 ms) · Drift ${formatNum(circadianMin, "min")}`}
+            subline={`${formatNum(pvtLapses, "lapses")} (>=355 ms) · Drift ${formatNum(circadianMin, "min")}`}
             tone={pvtTone}
             icon={<Brain className="h-4 w-4 text-indigo-700" aria-hidden="true" />}
             infoEntry={ISOLATION_RESEARCH_METADATA.pvt_cognition}
@@ -612,12 +579,12 @@ export function IsolationHazardScreen({
             onSelectInfo={setActiveInfo}
           />
           <KpiCard
-            label="Readiness & CONNECT"
-            value={`${readinessScore} · ${snapshot.status}`}
-            subline={`Mission ${formatNum(missionPct, "%")} · Veggie: ${veggieDone === true ? "Done" : veggieDone === false ? "Pending" : "—"} · Check-In: ${socialDone === true ? "Done" : socialDone === false ? "Pending" : "—"}`}
-            tone={readinessTone}
+            label="CONNECT & Mission"
+            value={missionPct !== null ? `${missionPct}%` : snapshot.status}
+            subline={`Status: ${snapshot.status} · Veggie: ${veggieDone === true ? "Done" : veggieDone === false ? "Pending" : "—"} · Check-In: ${socialDone === true ? "Done" : socialDone === false ? "Pending" : "—"}`}
+            tone={statusTone}
             icon={<Users className="h-4 w-4 text-emerald-700" aria-hidden="true" />}
-            infoEntry={ISOLATION_RESEARCH_METADATA.readiness_connect}
+            infoEntry={ISOLATION_RESEARCH_METADATA.mission_connect}
             activeInfo={activeInfo}
             onSelectInfo={setActiveInfo}
           />
@@ -633,7 +600,7 @@ export function IsolationHazardScreen({
                 <div className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-slate-600" aria-hidden="true" />
                   <h2 className="text-sm font-bold text-slate-900">
-                    Crew Readiness Matrix (Anonymized)
+                    Crew Telemetry Matrix (Anonymized)
                   </h2>
                   <InfoCircle
                     entry={ISOLATION_RESEARCH_METADATA.crew_matrix}
@@ -643,7 +610,7 @@ export function IsolationHazardScreen({
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
-                    {belowSleepFloorCount}/{crewRows.length} &lt; 6.5h sleep
+                    {belowIssMeanCount}/{crewRows.length} &lt; {V.issHistoricalMeanSleepHours}h ISS mean
                   </span>
                   <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
                     {nc40BreachCount} NC-40 breach
@@ -693,9 +660,9 @@ export function IsolationHazardScreen({
                       </th>
                       <th className="px-3.5 py-2.5 text-right">
                         <span className="inline-flex items-center justify-end gap-1.5">
-                          Readiness
+                          Status
                           <InfoCircle
-                            entry={ISOLATION_RESEARCH_METADATA.readiness_connect}
+                            entry={ISOLATION_RESEARCH_METADATA.mission_connect}
                             activeInfo={activeInfo}
                             onSelectInfo={setActiveInfo}
                           />
@@ -726,7 +693,7 @@ export function IsolationHazardScreen({
                               className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${STATUS_STYLE[row.status].badge}`}
                             >
                               <StatusIcon status={row.status} className="h-3 w-3" />
-                              {row.readiness} · {row.status}
+                              {row.status}
                             </span>
                           </td>
                         </tr>
@@ -738,19 +705,13 @@ export function IsolationHazardScreen({
             </section>
           ) : (
             <section className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-slate-900">Personal Stream Details</h2>
-                  <InfoCircle
-                    entry={ISOLATION_RESEARCH_METADATA.personal_fatigue_strain}
-                    activeInfo={activeInfo}
-                    onSelectInfo={setActiveInfo}
-                  />
-                </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-                  <Lock className="h-3 w-3" aria-hidden="true" />
-                  Private Firewall Active
-                </span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900">Personal Stream Details</h2>
+                <InfoCircle
+                  entry={ISOLATION_RESEARCH_METADATA.personal_fatigue_strain}
+                  activeInfo={activeInfo}
+                  onSelectInfo={setActiveInfo}
+                />
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -797,18 +758,17 @@ export function IsolationHazardScreen({
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5">
+              <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-950">
-                    <Lock className="h-3.5 w-3.5 text-indigo-700" aria-hidden="true" />
-                    Private to You (Strictly Masked from Commander)
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                    Personal Reflection &amp; Sleep Aid
                     <InfoCircle
                       entry={ISOLATION_RESEARCH_METADATA.private_journal_firewall}
                       activeInfo={activeInfo}
                       onSelectInfo={setActiveInfo}
                     />
                   </span>
-                  <span className="text-xs text-indigo-900">
+                  <span className="text-xs text-slate-700">
                     Mood: <strong>{formatNum(privateMood, "/ 5")}</strong> · Sleep Aid:{" "}
                     <strong>
                       {privateSleepMed === true ? "Yes" : privateSleepMed === false ? "No" : "—"}
@@ -824,71 +784,34 @@ export function IsolationHazardScreen({
 
           {/* 4. Thresholded Telemetry Charts */}
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-bold text-slate-900">
-                DB-Synced Telemetry History &amp; NASA Thresholds
-              </h2>
-              <span className="text-xs text-slate-600">
-                Select any <span className="font-semibold">(i)</span> circle to inspect equations and source datasets
-              </span>
-            </div>
+            <h2 className="text-sm font-bold text-slate-900">
+              Telemetry History &amp; NASA Thresholds
+            </h2>
 
             {primaryCharts.length > 0 ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {primaryCharts.map((chart) => {
-                  const metaCfg = CHART_META_MAP[chart.id] ?? {
-                    metaKey: "actigraphy_sleep",
-                    sourceTag: "NASA HRP Telemetry",
-                  };
-                  const infoEntry = ISOLATION_RESEARCH_METADATA[metaCfg.metaKey];
+                  const metaKey = CHART_META_MAP[chart.id] ?? "actigraphy_sleep";
+                  const infoEntry = ISOLATION_RESEARCH_METADATA[metaKey];
                   return (
-                    <div
-                      key={chart.id}
-                      className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3"
-                    >
-                      <div className="flex items-center justify-between gap-2 px-1">
-                        <span className="text-xs font-semibold text-slate-600">
-                          {metaCfg.sourceTag}
-                        </span>
+                    <div key={chart.id} className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <HazardTelemetryChart chart={chart} />
+                      </div>
+                      <div className="pt-3.5">
                         <InfoCircle
                           entry={infoEntry}
                           activeInfo={activeInfo}
                           onSelectInfo={setActiveInfo}
                         />
                       </div>
-                      <HazardTelemetryChart chart={chart} />
                     </div>
                   );
                 })}
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-600">
-                Awaiting DB-ingested telemetry history in <code className="rounded bg-slate-100 px-1">public.character_hazard_samples</code> for thresholded charts.
-              </div>
-            )}
-
-            {hypokinesisChart && hypokinesisChart.series.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-sky-700" aria-hidden="true" />
-                  <span className="font-bold text-slate-900">{hypokinesisChart.title}:</span>
-                  <span className="text-slate-700">
-                    Latest{" "}
-                    <strong className="text-slate-900">
-                      {hypokinesisChart.series[hypokinesisChart.series.length - 1].value}{" "}
-                      {hypokinesisChart.unit}
-                    </strong>{" "}
-                    ({hypokinesisChart.series.length} pts synced)
-                  </span>
-                  <InfoCircle
-                    entry={ISOLATION_RESEARCH_METADATA.chart_hypokinesis}
-                    activeInfo={activeInfo}
-                    onSelectInfo={setActiveInfo}
-                  />
-                </div>
-                <span className="text-slate-600">
-                  Elevates alert if &lt;= {V.hypokinesisDropElevPct}% vs. early-mission baseline
-                </span>
+                Awaiting telemetry history for thresholded charts.
               </div>
             )}
           </section>
@@ -896,7 +819,7 @@ export function IsolationHazardScreen({
       )}
 
       {/* Unified accessible modal for all (i) research explanations & links */}
-      <ResearchModal entry={activeInfo} onClose={() => setActiveInfo(null)} />
+      <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />
     </div>
   );
 }
