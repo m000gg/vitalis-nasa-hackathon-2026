@@ -44,13 +44,14 @@ Behavior & RLS notes:
 - **Database Initialization:** Run `supabase/schema.sql` once in the Supabase SQL Editor to create the tables, indexes, and starter seed rows.
 - **RLS vs Server Key:** If Row Level Security (RLS) is enabled on those tables in Supabase, either add explicit RLS policies for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or provide `SUPABASE_SERVICE_ROLE_KEY` on the server.
 
-### 3-Area Table & API Split
+### 3-Area Table & API Split (+ Time-Series Samples)
 
 | Area | Table (`supabase/schema.sql`) | Purpose | API Route |
 | :--- | :--- | :--- | :--- |
 | **1. Scenarios** | `public.scenarios` | Stores mission/analog scenarios (`id`, `name`, `phase`, `duration_context`, `comms_delay_label`, `scenario_description`, `environment` JSONB). | `GET`, `POST` `/api/scenarios` (`GET` `/api/missions` also reads scenarios) |
 | **2. Characters** | `public.characters` | Stores crew members & leaders linked to a scenario via `scenario_id` FK (`id`, `scenario_id`, `callsign`, `assigned_role_title`, `is_lead_slot`, `readiness_state`, `eva_gate_state`, `metrics` JSONB). | `GET ?scenarioId=...`, `POST` `/api/characters` |
-| **3. Character/Scenario Hazard Data** | `public.character_hazard_data` | Stores per-`(scenario_id, character_id, hazard_slug, stream_name)` inputs, raw values, and structured `payload` JSONB for each hazard pipeline. | `GET ?scenarioId=...&characterId=...&hazardSlug=...`, `POST` `/api/hazard-data` |
+| **3. Character/Scenario Hazard Data (Latest Snapshot)** | `public.character_hazard_data` | Stores latest per-`(scenario_id, character_id, hazard_slug, stream_name)` inputs, `raw_value`, and arbitrary structured JSON in `payload` JSONB (zero SQL migrations needed when adding/changing fields). | `GET ?scenarioId=...&characterId=...&hazardSlug=...`, `POST` `/api/hazard-data` |
+| **3b. Time-Series Samples (Graphs)** | `public.character_hazard_samples` | Append-only history per `(scenario_id, character_id, hazard_slug, stream_name)` storing `numeric_value`, `sample_payload` JSONB, and `recorded_at` for telemetry charts without altering shared schemas. | `GET`, `POST` `/api/hazard-samples` (or `POST /api/hazard-data` with `recordSample: true`) |
 
 *(Operational tables `public.dtn_messages` and `public.emergency_audit_logs` are also defined in `supabase/schema.sql`.)*
 
@@ -81,12 +82,19 @@ Every hazard file is organized into three clearly labeled comment sections so AI
      - `input.mission` (scenario environment slots)
      - `input.actor` (character metrics & states)
      - `input.actorInputs` (`Record<streamName, rawValue>` from live form edits)
-     - `input.hazardRecords` (persisted `HazardDataRecord[]` from `character_hazard_data`, already filtered to your `hazardSlug` by `evaluateHazardForActor`)
+     - `input.hazardRecords` (latest `HazardDataRecord[]` + flexible `payload` JSONB from `character_hazard_data`, filtered to your `hazardSlug`)
+     - `input.hazardSamples` (historical `HazardSampleRecord[]` from `character_hazard_samples`, filtered to your `hazardSlug`)
      - `input.linkOnline`, `input.reentryMode`
-   - Return `status` (`"NOMINAL" | "ELEVATED" | "CRITICAL"`), `scenarioStatusSlot`, `immediateHorizon`, `prolongedHorizon`, `eta`, and `solutions` (respect `reentryMode` 1-action cap when enabled).
+   - Return `status` (`"NOMINAL" | "ELEVATED" | "CRITICAL"`), `scenarioStatusSlot`, `immediateHorizon`, `prolongedHorizon`, `eta`, `solutions` (respect `reentryMode` 1-action cap when enabled), and optional `charts?: HazardChartSpec[]` (automatically rendered by `<HazardTelemetryChart />`).
 3. **`// [SECTION 3: HAZARD N UI METADATA, INPUT STREAMS & ALARMS]`**
-   - Update `inputSlots` (each entry maps to a `stream_name` saved in Supabase `character_hazard_data`), `leadView` / `memberView` modules & privacy rules, `proposedEndpoints`, and `alarmPreset`.
+   - Update `inputSlots` (supports `fieldType: "text" | "number"`, `unit`, `recordSample: true` for automatic graph logging, and `subfields` for structured multi-field inputs like `{ systolic, diastolic }` saved to `payload` JSONB with zero SQL changes), `leadView` / `memberView` modules & privacy rules, `proposedEndpoints`, and `alarmPreset`.
    - Always keep `evaluate: evaluate<Hazard>Hazard` wired to Section 2.
+
+### Adding New Inputs, Custom Fields, or Graphs Without Touching Shared SQL
+
+- **Add/reshape fields:** Add a new entry or `subfields` array to `inputSlots` in your `0*-*.ts` file. `character_hazard_data.payload` (JSONB) stores any shape automatically.
+- **Add a graph:** Set `recordSample: true` and `fieldType: "number"` on an input slot (auto-renders a graph from `character_hazard_samples`), or return custom `charts` from Section 2 `evaluate()`.
+- **Do not create per-hazard SQL tables** unless the whole team agrees; `character_hazard_data` + `character_hazard_samples` already isolate every hazard via `hazard_slug`.
 
 ---
 

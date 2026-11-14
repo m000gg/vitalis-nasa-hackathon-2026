@@ -3,9 +3,10 @@
 import React, { use, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Database, Lock } from "lucide-react";
+import { ArrowLeft, Database, Lock, TrendingUp } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
-import { getHazardBySlug, HAZARDS } from "@/lib/hazards";
+import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import { getHazardBySlug, HazardInputSlot, HAZARDS } from "@/lib/hazards";
 import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
 import { evaluateHazardForActor } from "@/lib/evaluator";
@@ -22,34 +23,95 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     reentryMode,
     actorInputs,
     hazardRecords,
+    hazardSamples,
     saveActorInput,
   } = useMission();
   const { pushToast } = useAlerts();
 
   const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+  const [subfieldDrafts, setSubfieldDrafts] = useState<Record<string, Record<string, string>>>({});
 
   if (!hazard) {
     notFound();
   }
 
   const scopedRecords = hazardRecords.filter((r) => r.hazardSlug === hazard.slug);
+  const scopedSamples = hazardSamples.filter((s) => s.hazardSlug === hazard.slug);
   const roleConfig = role === "lead" ? hazard.leadView : hazard.memberView;
   const snapshot = evaluateHazardForActor(mission, activeCharacter, hazard, {
     actorInputs: currentActorInputs,
     hazardRecords,
+    hazardSamples,
     linkOnline,
     reentryMode,
   });
 
-  const handleSaveSlot = async (streamName: string) => {
-    const persisted = scopedRecords.find((r) => r.streamName === streamName)?.rawValue ?? "";
-    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? persisted).trim();
-    if (val) {
-      await saveActorInput(streamName, val, hazard.slug);
+  const handleSaveSlot = async (slot: HazardInputSlot, forceSample = false) => {
+    const { streamName, subfields, recordSample } = slot;
+    const savedRec = scopedRecords.find((r) => r.streamName === streamName);
+    const shouldSample = Boolean(recordSample || forceSample);
+
+    if (subfields && subfields.length > 0) {
+      const savedPayload = savedRec?.payload ?? {};
+      const currentDrafts = subfieldDrafts[streamName] ?? {};
+      const payloadObj: Record<string, unknown> = {};
+      const summaryParts: string[] = [];
+      let firstNumeric: number | null = null;
+
+      subfields.forEach((sf) => {
+        const prevVal = typeof savedPayload[sf.key] === "string" || typeof savedPayload[sf.key] === "number"
+          ? String(savedPayload[sf.key])
+          : "";
+        const val = (currentDrafts[sf.key] ?? prevVal).trim();
+        if (val) {
+          const num = Number(val);
+          const isNum = sf.fieldType === "number" && Number.isFinite(num);
+          payloadObj[sf.key] = isNum ? num : val;
+          if (isNum && firstNumeric === null) {
+            firstNumeric = num;
+          }
+          summaryParts.push(`${sf.label}: ${val}${sf.unit ? ` ${sf.unit}` : ""}`);
+        }
+      });
+
+      const summaryVal = summaryParts.join(", ");
+      if (summaryVal) {
+        await saveActorInput(streamName, summaryVal, hazard.slug, {
+          payload: payloadObj,
+          numericValue: firstNumeric,
+          recordSample: shouldSample,
+        });
+      }
+
+      pushToast({
+        title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged" : "Structured Input Saved"}`,
+        message: summaryVal
+          ? `Here is: ${summaryVal} stored for ${activeCharacter.callsign} (${
+              dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"
+            }).`
+          : `Here is: Add your info to ${streamName} to update character telemetry.`,
+        variant: summaryVal ? "success" : "info",
+      });
+      return;
     }
+
+    const persisted = savedRec?.rawValue ?? "";
+    const val = (draftValues[streamName] ?? currentActorInputs[streamName] ?? persisted).trim();
+    const numericCandidate = Number(val);
+    const numericValue =
+      val !== "" && Number.isFinite(numericCandidate) ? numericCandidate : null;
+
+    if (val) {
+      await saveActorInput(streamName, val, hazard.slug, {
+        payload: numericValue !== null ? { rawValue: val, value: numericValue, unit: slot.unit } : { rawValue: val },
+        numericValue,
+        recordSample: shouldSample,
+      });
+    }
+
     pushToast({
-      title: `${hazard.shortTitle}: Input Saved`,
+      title: `${hazard.shortTitle}: ${shouldSample ? "Sample Logged" : "Input Saved"}`,
       message: val
         ? `Here is: "${val}" stored for ${activeCharacter.callsign} in ${streamName} (${
             dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"
@@ -58,6 +120,8 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
       variant: val ? "success" : "info",
     });
   };
+
+  const charts = snapshot.charts ?? [];
 
   return (
     <DashboardShell>
@@ -77,7 +141,8 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
               }`}
             >
               <Database className="h-3 w-3" />
-              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"} · {scopedRecords.length} saved
+              {dbSource === "supabase" ? "Supabase Remote" : "Local Fallback"} · {scopedRecords.length} saved ·{" "}
+              {scopedSamples.length} samples
             </span>
             <span className="font-mono text-xs text-slate-400">
               Logic: {hazard.ownerSlot} · Doc: {hazard.sourceDoc}
@@ -140,6 +205,26 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
         </div>
       </section>
 
+      {/* Telemetry Graphs (auto-rendered from snapshot.charts or character_hazard_samples) */}
+      {charts.length > 0 && (
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="inline-flex items-center gap-2 text-base font-bold text-slate-900">
+              <TrendingUp className="h-4 w-4 text-sky-600" />
+              Telemetry Graphs ({activeCharacter.callsign})
+            </h2>
+            <span className="text-xs text-slate-500">
+              Persisted in public.character_hazard_samples ({hazard.slug})
+            </span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {charts.map((chart) => (
+              <HazardTelemetryChart key={chart.id} chart={chart} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Input Slots + Evaluated Output Slots */}
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
@@ -147,34 +232,86 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           <div className="space-y-3">
             {hazard.inputSlots.map((slot) => {
               const savedRec = scopedRecords.find((r) => r.streamName === slot.streamName);
+              const streamSamplesCount = scopedSamples.filter((s) => s.streamName === slot.streamName).length;
               const displayValue =
                 draftValues[slot.streamName] ??
                 currentActorInputs[slot.streamName] ??
                 savedRec?.rawValue ??
                 "";
+
               return (
                 <div key={slot.streamName} className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-900">{slot.streamName}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-900">
+                      {slot.streamName}
+                      {slot.unit ? ` (${slot.unit})` : ""}
+                    </span>
                     <span className="text-slate-400">
                       {savedRec ? `Saved (${new Date(savedRec.updatedAt).toLocaleTimeString()})` : slot.sourceRef}
+                      {streamSamplesCount > 0 ? ` · ${streamSamplesCount} pts` : ""}
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    value={displayValue}
-                    onChange={(e) => setDraftValues((prev) => ({ ...prev, [slot.streamName]: e.target.value }))}
-                    placeholder={slot.inputPrompt}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
-                  />
-                  <div className="flex justify-end">
+
+                  {slot.subfields && slot.subfields.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {slot.subfields.map((sf) => {
+                        const savedSubVal =
+                          savedRec?.payload?.[sf.key] !== undefined ? String(savedRec.payload[sf.key]) : "";
+                        const subVal = subfieldDrafts[slot.streamName]?.[sf.key] ?? savedSubVal;
+                        return (
+                          <label key={sf.key} className="space-y-1">
+                            <span className="block text-[11px] font-medium text-slate-600">
+                              {sf.label}
+                              {sf.unit ? ` (${sf.unit})` : ""}
+                            </span>
+                            <input
+                              type={sf.fieldType === "number" ? "number" : "text"}
+                              step="any"
+                              value={subVal}
+                              onChange={(e) =>
+                                setSubfieldDrafts((prev) => ({
+                                  ...prev,
+                                  [slot.streamName]: {
+                                    ...(prev[slot.streamName] ?? {}),
+                                    [sf.key]: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder={sf.prompt}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <input
+                      type={slot.fieldType === "number" ? "number" : "text"}
+                      step="any"
+                      value={displayValue}
+                      onChange={(e) => setDraftValues((prev) => ({ ...prev, [slot.streamName]: e.target.value }))}
+                      placeholder={slot.inputPrompt}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+                    />
+                  )}
+
+                  <div className="flex flex-wrap justify-end gap-2">
                     <button
                       type="button"
-                      onClick={() => handleSaveSlot(slot.streamName)}
+                      onClick={() => handleSaveSlot(slot, false)}
                       className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
                     >
-                      Save Input
+                      {slot.recordSample ? "Save & Log to Graph" : "Save Input"}
                     </button>
+                    {!slot.recordSample && (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSlot(slot, true)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Log Graph Point
+                      </button>
+                    )}
                   </div>
                 </div>
               );

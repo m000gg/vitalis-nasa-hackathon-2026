@@ -1,7 +1,9 @@
 import { CrewSlot, MissionProfile, ReadinessState } from "@/lib/domain";
 import {
+  HazardChartSpec,
   HazardDataRecord,
   HazardEvaluationResult,
+  HazardSampleRecord,
   HazardSpec,
 } from "@/lib/hazards";
 
@@ -140,6 +142,7 @@ export function evaluateHazardForActor(
   options: {
     actorInputs: Record<string, string>;
     hazardRecords?: HazardDataRecord[];
+    hazardSamples?: HazardSampleRecord[];
     linkOnline: boolean;
     reentryMode: boolean;
   }
@@ -147,17 +150,49 @@ export function evaluateHazardForActor(
   const scopedRecords = (options.hazardRecords ?? []).filter(
     (r) => r.hazardSlug === hazard.slug
   );
+  const scopedSamples = (options.hazardSamples ?? []).filter(
+    (s) => s.hazardSlug === hazard.slug
+  );
   const result = hazard.evaluate({
     mission,
     actor,
     actorInputs: options.actorInputs,
     hazardRecords: scopedRecords,
+    hazardSamples: scopedSamples,
     linkOnline: options.linkOnline,
     reentryMode: options.reentryMode,
   });
 
+  // Auto-generate fallback charts for any numeric time-series streams logged via character_hazard_samples
+  // unless the hazard module already built a custom chart with the same id.
+  const charts: HazardChartSpec[] = [...(result.charts ?? [])];
+  const existingIds = new Set(charts.map((c) => c.id));
+  const streamGroups = new Map<string, HazardSampleRecord[]>();
+  scopedSamples.forEach((s) => {
+    if (s.numericValue === null || !Number.isFinite(s.numericValue)) return;
+    const list = streamGroups.get(s.streamName) ?? [];
+    list.push(s);
+    streamGroups.set(s.streamName, list);
+  });
+
+  streamGroups.forEach((points, streamName) => {
+    const autoId = `sample-${streamName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    if (existingIds.has(autoId)) return;
+    const slotMeta = hazard.inputSlots.find((slot) => slot.streamName === streamName);
+    charts.push({
+      id: autoId,
+      title: `${streamName} Telemetry`,
+      unit: slotMeta?.unit ?? "",
+      series: points.map((p) => ({
+        label: new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        value: p.numericValue as number,
+      })),
+    });
+  });
+
   return {
     ...result,
+    charts,
     hazardSlug: hazard.slug,
     actorStatusLabel: `${actor.callsign} — Readiness: ${actor.readinessState} (EVA: ${actor.evaGateState})`,
     actorInputOverrides: options.actorInputs,

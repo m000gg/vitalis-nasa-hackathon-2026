@@ -20,6 +20,7 @@ export default function DashboardOverviewPage() {
     shelterConfirmations,
     actorInputs,
     hazardRecords,
+    hazardSamples,
   } = useMission();
 
   const characterModel = evaluateCharacterDashboard(activeCharacter, {
@@ -233,6 +234,7 @@ export default function DashboardOverviewPage() {
             const snap = evaluateHazardForActor(mission, activeCharacter, h, {
               actorInputs: actorInputs[activeCharacter.id] ?? {},
               hazardRecords,
+              hazardSamples,
               linkOnline,
               reentryMode,
             });

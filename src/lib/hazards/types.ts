@@ -13,10 +13,45 @@ export interface HazardDataRecord {
   updatedAt: string;
 }
 
+export interface HazardSampleRecord {
+  id: string;
+  scenarioId: string;
+  characterId: string;
+  hazardSlug: HazardSlug;
+  streamName: string;
+  numericValue: number | null;
+  samplePayload: Record<string, unknown>;
+  recordedAt: string;
+}
+
+export interface HazardChartPoint {
+  label: string;
+  value: number;
+}
+
+export interface HazardChartSpec {
+  id: string;
+  title: string;
+  unit: string;
+  series: HazardChartPoint[];
+}
+
+export interface HazardInputSubfield {
+  key: string;
+  label: string;
+  fieldType?: "text" | "number";
+  unit?: string;
+  prompt: string;
+}
+
 export interface HazardInputSlot {
   streamName: string;
   inputPrompt: string;
   sourceRef: string;
+  fieldType?: "text" | "number";
+  unit?: string;
+  recordSample?: boolean;
+  subfields?: HazardInputSubfield[];
 }
 
 export interface HazardEvaluationInput {
@@ -24,6 +59,7 @@ export interface HazardEvaluationInput {
   actor: CrewSlot;
   actorInputs: Record<string, string>;
   hazardRecords: HazardDataRecord[];
+  hazardSamples: HazardSampleRecord[];
   linkOnline: boolean;
   reentryMode: boolean;
 }
@@ -35,6 +71,7 @@ export interface HazardEvaluationResult {
   prolongedHorizon: string;
   eta: string;
   solutions: string[];
+  charts?: HazardChartSpec[];
 }
 
 export interface HazardSpec {

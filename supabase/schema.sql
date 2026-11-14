@@ -49,6 +49,20 @@ create table if not exists public.character_hazard_data (
 create index if not exists idx_hazard_data_lookup
   on public.character_hazard_data(scenario_id, character_id, hazard_slug);
 
+create table if not exists public.character_hazard_samples (
+  id text primary key,
+  scenario_id text not null references public.scenarios(id) on delete cascade,
+  character_id text not null references public.characters(id) on delete cascade,
+  hazard_slug text not null check (hazard_slug in ('radiation', 'isolation', 'distance', 'gravity', 'environment')),
+  stream_name text not null,
+  numeric_value double precision,
+  sample_payload jsonb not null default '{}'::jsonb,
+  recorded_at timestamptz not null default now()
+);
+
+create index if not exists idx_hazard_samples_lookup
+  on public.character_hazard_samples(scenario_id, character_id, hazard_slug, stream_name, recorded_at);
+
 create table if not exists public.dtn_messages (
   id text primary key,
   scenario_id text references public.scenarios(id) on delete set null,

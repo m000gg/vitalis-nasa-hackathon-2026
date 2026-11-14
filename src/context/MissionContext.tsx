@@ -2,7 +2,13 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { AuditLogEntry, CrewSlot, DtnMessage, MISSIONS, MissionProfile, UserRole } from "@/lib/domain";
-import { HazardDataRecord, HazardSlug } from "@/lib/hazards";
+import { HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
+
+export interface SaveActorInputOptions {
+  payload?: Record<string, unknown>;
+  numericValue?: number | null;
+  recordSample?: boolean;
+}
 
 export interface PrivateCheckIn {
   id: string;
@@ -53,7 +59,19 @@ interface MissionContextValue {
   setReentryMode: (enabled: boolean) => void;
   actorInputs: Record<string, Record<string, string>>;
   hazardRecords: HazardDataRecord[];
-  saveActorInput: (streamName: string, value: string, hazardSlug?: HazardSlug) => Promise<void>;
+  hazardSamples: HazardSampleRecord[];
+  saveActorInput: (
+    streamName: string,
+    value: string,
+    hazardSlug?: HazardSlug,
+    options?: SaveActorInputOptions
+  ) => Promise<void>;
+  appendHazardSample: (input: {
+    hazardSlug: HazardSlug;
+    streamName: string;
+    numericValue?: number | null;
+    samplePayload?: Record<string, unknown>;
+  }) => Promise<void>;
   dtnQueue: DtnMessage[];
   queueDtnReport: (reportTitle: string, hazardSlug: string, payloadSummary: string) => Promise<void>;
   syncDtnQueue: () => Promise<void>;
@@ -94,6 +112,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   const [reentryMode, setReentryMode] = useState<boolean>(false);
   const [actorInputs, setActorInputs] = useState<Record<string, Record<string, string>>>({});
   const [hazardRecords, setHazardRecords] = useState<HazardDataRecord[]>([]);
+  const [hazardSamples, setHazardSamples] = useState<HazardSampleRecord[]>([]);
   const [dtnQueue, setDtnQueue] = useState<DtnMessage[]>(() => buildInitialDtnForMission(MISSIONS[0]));
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [shelterConfirmations, setShelterConfirmations] = useState<Record<string, boolean>>({});
@@ -177,34 +196,47 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     async function loadHazardData() {
+      const qs = `scenarioId=${encodeURIComponent(mission.id)}&characterId=${encodeURIComponent(
+        activeCharacter.id
+      )}`;
       try {
-        const res = await fetch(
-          `/api/hazard-data?scenarioId=${encodeURIComponent(mission.id)}&characterId=${encodeURIComponent(
-            activeCharacter.id
-          )}`
-        );
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          source?: "supabase" | "local";
-          records?: HazardDataRecord[];
-        };
+        const [dataRes, sampleRes] = await Promise.all([
+          fetch(`/api/hazard-data?${qs}`),
+          fetch(`/api/hazard-samples?${qs}`),
+        ]);
         if (!active) return;
-        if (data.source) {
-          setDbSource(data.source);
-        }
-        const recs = Array.isArray(data.records) ? data.records : [];
-        setHazardRecords(recs);
-        if (recs.length > 0) {
-          setActorInputs((prev) => {
-            const existing = prev[activeCharacter.id] ?? {};
-            const hydrated: Record<string, string> = { ...existing };
-            recs.forEach((rec) => {
-              if (!hydrated[rec.streamName] && rec.rawValue) {
-                hydrated[rec.streamName] = rec.rawValue;
-              }
+
+        if (dataRes.ok) {
+          const data = (await dataRes.json()) as {
+            source?: "supabase" | "local";
+            records?: HazardDataRecord[];
+          };
+          if (!active) return;
+          if (data.source) {
+            setDbSource(data.source);
+          }
+          const recs = Array.isArray(data.records) ? data.records : [];
+          setHazardRecords(recs);
+          if (recs.length > 0) {
+            setActorInputs((prev) => {
+              const existing = prev[activeCharacter.id] ?? {};
+              const hydrated: Record<string, string> = { ...existing };
+              recs.forEach((rec) => {
+                if (!hydrated[rec.streamName] && rec.rawValue) {
+                  hydrated[rec.streamName] = rec.rawValue;
+                }
+              });
+              return { ...prev, [activeCharacter.id]: hydrated };
             });
-            return { ...prev, [activeCharacter.id]: hydrated };
-          });
+          }
+        }
+
+        if (sampleRes.ok) {
+          const sampleData = (await sampleRes.json()) as {
+            samples?: HazardSampleRecord[];
+          };
+          if (!active) return;
+          setHazardSamples(Array.isArray(sampleData.samples) ? sampleData.samples : []);
         }
       } catch {
         // Fallback to local state when offline
@@ -383,8 +415,61 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const appendHazardSample = useCallback(
+    async (input: {
+      hazardSlug: HazardSlug;
+      streamName: string;
+      numericValue?: number | null;
+      samplePayload?: Record<string, unknown>;
+    }) => {
+      const localFallback: HazardSampleRecord = {
+        id: `local-sample-${Date.now()}`,
+        scenarioId: mission.id,
+        characterId: activeCharacter.id,
+        hazardSlug: input.hazardSlug,
+        streamName: input.streamName,
+        numericValue:
+          typeof input.numericValue === "number" && Number.isFinite(input.numericValue)
+            ? input.numericValue
+            : null,
+        samplePayload: input.samplePayload ?? {},
+        recordedAt: new Date().toISOString(),
+      };
+
+      try {
+        const res = await fetch("/api/hazard-samples", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scenarioId: mission.id,
+            characterId: activeCharacter.id,
+            ...input,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            source?: "supabase" | "local";
+            sample?: HazardSampleRecord;
+          };
+          if (data.source) setDbSource(data.source);
+          setHazardSamples((prev) => [...prev, data.sample ?? localFallback]);
+          return;
+        }
+      } catch {
+        // Fall through to local sample push
+      }
+      setHazardSamples((prev) => [...prev, localFallback]);
+    },
+    [activeCharacter.id, mission.id]
+  );
+
   const saveActorInput = useCallback(
-    async (streamName: string, value: string, hazardSlug?: HazardSlug) => {
+    async (
+      streamName: string,
+      value: string,
+      hazardSlug?: HazardSlug,
+      options?: SaveActorInputOptions
+    ) => {
       setActorInputs((prev) => ({
         ...prev,
         [activeCharacter.id]: {
@@ -394,6 +479,13 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       }));
 
       if (!hazardSlug) return;
+
+      const parsedNumeric =
+        typeof options?.numericValue === "number" && Number.isFinite(options.numericValue)
+          ? options.numericValue
+          : Number.isFinite(Number(value)) && value.trim() !== ""
+          ? Number(value)
+          : null;
 
       try {
         const res = await fetch("/api/hazard-data", {
@@ -405,12 +497,16 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
             hazardSlug,
             streamName,
             rawValue: value,
+            payload: options?.payload,
+            recordSample: Boolean(options?.recordSample),
+            numericValue: parsedNumeric,
           }),
         });
         if (res.ok) {
           const data = (await res.json()) as {
             source?: "supabase" | "local";
             record?: HazardDataRecord;
+            sample?: HazardSampleRecord;
           };
           if (data.source) setDbSource(data.source);
           if (data.record) {
@@ -422,9 +518,30 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
               return [...filtered, savedRecord];
             });
           }
+          if (data.sample) {
+            const savedSample = data.sample;
+            setHazardSamples((prev) => [...prev, savedSample]);
+          }
+          return;
         }
       } catch {
-        // Local actorInputs already updated above
+        // Fallback below if offline
+      }
+
+      if (options?.recordSample) {
+        setHazardSamples((prev) => [
+          ...prev,
+          {
+            id: `local-sample-${Date.now()}`,
+            scenarioId: mission.id,
+            characterId: activeCharacter.id,
+            hazardSlug,
+            streamName,
+            numericValue: parsedNumeric,
+            samplePayload: options.payload ?? { rawValue: value },
+            recordedAt: new Date().toISOString(),
+          },
+        ]);
       }
     },
     [activeCharacter.id, mission.id]
@@ -548,7 +665,9 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         setReentryMode,
         actorInputs,
         hazardRecords,
+        hazardSamples,
         saveActorInput,
+        appendHazardSample,
         dtnQueue,
         queueDtnReport,
         syncDtnQueue,

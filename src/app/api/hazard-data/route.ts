@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { HazardSlug } from "@/lib/hazards";
 import {
   fetchHazardDataFromDb,
+  insertHazardSampleInDb,
   upsertHazardDataInDb,
 } from "@/lib/supabase/server";
 
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
       streamName: string;
       rawValue: string;
       payload: Record<string, unknown>;
+      recordSample: boolean;
+      numericValue: number | null;
     }>;
 
     const scenarioId = body.scenarioId?.trim() ?? "";
@@ -106,10 +109,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let sample = undefined;
+    if (body.recordSample) {
+      const parsedNum =
+        typeof body.numericValue === "number" && Number.isFinite(body.numericValue)
+          ? body.numericValue
+          : Number.isFinite(Number(rawValue)) && rawValue !== ""
+          ? Number(rawValue)
+          : null;
+
+      const sampleRes = await insertHazardSampleInDb({
+        scenarioId,
+        characterId,
+        hazardSlug,
+        streamName,
+        numericValue: parsedNum,
+        samplePayload: body.payload ?? { rawValue },
+      });
+      sample = sampleRes.sample;
+    }
+
     return NextResponse.json(
       {
         source: result.source,
         record: result.record,
+        sample,
       },
       { status: 201 }
     );

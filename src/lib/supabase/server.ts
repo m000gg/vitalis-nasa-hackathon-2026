@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { CrewSlot, MISSIONS, MissionProfile } from "@/lib/domain";
-import { HazardDataRecord, HazardSlug } from "@/lib/hazards/types";
+import { HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards/types";
 
 let cachedClient: SupabaseClient | null | undefined;
 
@@ -67,6 +67,17 @@ interface HazardDataRow {
   raw_value: string;
   payload: Record<string, unknown>;
   updated_at: string;
+}
+
+interface HazardSampleRow {
+  id: string;
+  scenario_id: string;
+  character_id: string;
+  hazard_slug: HazardSlug;
+  stream_name: string;
+  numeric_value: number | null;
+  sample_payload: Record<string, unknown>;
+  recorded_at: string;
 }
 
 function mapCharacterRow(row: CharacterRow): CrewSlot {
@@ -355,4 +366,92 @@ export async function upsertHazardDataInDb(input: {
   }
 
   return { source: "supabase", record };
+}
+
+export async function fetchHazardSamplesFromDb(params: {
+  scenarioId: string;
+  characterId: string;
+  hazardSlug?: HazardSlug;
+  streamName?: string;
+}): Promise<{ source: "supabase" | "local"; samples: HazardSampleRecord[] }> {
+  const client = getSupabaseServerClient();
+  if (!client) {
+    return { source: "local", samples: [] };
+  }
+
+  let query = client
+    .from("character_hazard_samples")
+    .select("*")
+    .eq("scenario_id", params.scenarioId)
+    .eq("character_id", params.characterId);
+
+  if (params.hazardSlug) {
+    query = query.eq("hazard_slug", params.hazardSlug);
+  }
+  if (params.streamName) {
+    query = query.eq("stream_name", params.streamName);
+  }
+
+  const { data, error } = await query.order("recorded_at", { ascending: true });
+  if (error || !data) {
+    return { source: "local", samples: [] };
+  }
+
+  const samples: HazardSampleRecord[] = (data as HazardSampleRow[]).map((r) => ({
+    id: r.id,
+    scenarioId: r.scenario_id,
+    characterId: r.character_id,
+    hazardSlug: r.hazard_slug,
+    streamName: r.stream_name,
+    numericValue: typeof r.numeric_value === "number" ? r.numeric_value : null,
+    samplePayload: r.sample_payload ?? {},
+    recordedAt: r.recorded_at,
+  }));
+
+  return { source: "supabase", samples };
+}
+
+export async function insertHazardSampleInDb(input: {
+  scenarioId: string;
+  characterId: string;
+  hazardSlug: HazardSlug;
+  streamName: string;
+  numericValue?: number | null;
+  samplePayload?: Record<string, unknown>;
+}): Promise<{ source: "supabase" | "local"; sample: HazardSampleRecord; error?: string }> {
+  const now = new Date().toISOString();
+  const sample: HazardSampleRecord = {
+    id: `${input.scenarioId}__${input.characterId}__${input.hazardSlug}__${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 7)}`,
+    scenarioId: input.scenarioId,
+    characterId: input.characterId,
+    hazardSlug: input.hazardSlug,
+    streamName: input.streamName,
+    numericValue: typeof input.numericValue === "number" && Number.isFinite(input.numericValue) ? input.numericValue : null,
+    samplePayload: input.samplePayload ?? {},
+    recordedAt: now,
+  };
+
+  const client = getSupabaseServerClient();
+  if (!client) {
+    return { source: "local", sample };
+  }
+
+  const { error } = await client.from("character_hazard_samples").insert({
+    id: sample.id,
+    scenario_id: sample.scenarioId,
+    character_id: sample.characterId,
+    hazard_slug: sample.hazardSlug,
+    stream_name: sample.streamName,
+    numeric_value: sample.numericValue,
+    sample_payload: sample.samplePayload,
+    recorded_at: sample.recordedAt,
+  });
+
+  if (error) {
+    return { source: "local", sample, error: error.message };
+  }
+
+  return { source: "supabase", sample };
 }
