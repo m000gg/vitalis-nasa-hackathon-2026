@@ -147,8 +147,8 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
         title: role === "lead" ? "Lead Acknowledgement Logged" : "Member Acknowledgement Logged",
         message:
           role === "lead"
-            ? "Here is: Commander acknowledgement recorded for active alarm."
-            : "Here is: Crew member acknowledgement recorded for active alarm.",
+            ? "Commander acknowledgement recorded for active alarm."
+            : "Crew member acknowledgement recorded for active alarm.",
         variant: "success",
       });
     },
@@ -159,7 +159,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     setActiveAlarm((prev) => (prev ? { ...prev, captainOverrideActive: true, acknowledgedByLead: true } : null));
     pushToast({
       title: "Captain Emergency Override Broadcast",
-      message: "Here is: Local alert routing & crew override notification dispatched.",
+      message: "Local alert routing & crew override notification dispatched.",
       variant: "hazard",
     });
   }, [pushToast]);
@@ -168,7 +168,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     setActiveAlarm(null);
     pushToast({
       title: "Full-Screen Alarm Cleared",
-      message: "Here is: Active screen alarm acknowledged and cleared.",
+      message: "Active screen alarm acknowledged and cleared.",
       variant: "info",
     });
   }, [pushToast]);

@@ -1,3 +1,4 @@
+import type { ResearchInfoEntry } from "@/components/ResearchInfoModal";
 import type {
   HazardChartSpec,
   HazardDataRecord,
@@ -6,6 +7,115 @@ import type {
   HazardSampleRecord,
   HazardSpec,
 } from "./types";
+
+export const RADIATION_RESEARCH_METADATA: Record<string, ResearchInfoEntry> = {
+  decision_summary: {
+    id: "decision_summary",
+    title: "Space Radiation Exposure & Flight Policy",
+    explanation:
+      "Tracks crew dose rate and mission-end exposure under configured mission policies while strictly separating Sv-family (equivalent/effective) and Gy-family (absorbed) units.",
+    benchmark:
+      "NASA HRP & NASA-STD-3001 require mission-specific operational limits and provenance records; no single reading predicts individual clinical disease or lifetime cancer odds.",
+    links: [
+      {
+        label: "NASA HRP — Space Radiation Hazard",
+        url: "https://www.nasa.gov/hrp/hazard-space-radiation/",
+      },
+      {
+        label: "NASA Human Research Roadmap",
+        url: "https://humanresearchroadmap.nasa.gov/",
+      },
+      {
+        label: "NASA-STD-3001 / NASA Standards",
+        url: "https://standards.nasa.gov/",
+      },
+    ],
+  },
+  dosimetry_forecast: {
+    id: "dosimetry_forecast",
+    title: "Dosimetry Integration & Prolonged Forecast",
+    explanation:
+      "Integrates compatible time-series dose-rate samples (trapezoidal integration) and projects mission-end cumulative dose with explicit uncertainty bounds assuming constant current rate.",
+    benchmark:
+      "NASA PDS Mars Science Laboratory RAD (MSL-M-RAD-3-RDR-V1.0) provides calibrated historical radiation series; Mars surface measurements differ from doses inside a spacecraft.",
+    links: [
+      {
+        label: "NASA PDS: MSL RAD Calibrated RDR Dataset",
+        url: "https://pds.nasa.gov/ds-view/pds/viewProfile.jsp?dsid=MSL-M-RAD-3-RDR-V1.0",
+      },
+      {
+        label: "NASA OSDR Visualization / RadLab",
+        url: "https://visualization.osdr.nasa.gov/",
+      },
+    ],
+  },
+  compartments_whatif: {
+    id: "compartments_whatif",
+    title: "Compartment Sensors & Shielding What-If",
+    explanation:
+      "Compares compartment detectors for sensor disagreement and evaluates rate-multiplier What-If trajectories for storm sheltering or attitude changes.",
+    benchmark:
+      "Artemis I / Orion measurements observed up to ~4× spatial variation during a proton-belt passage and ~50% dose-rate reduction under an orientation change (geometry-specific, not universal).",
+    links: [
+      {
+        label: "NASA — Artemis I Radiation Measurements",
+        url: "https://www.nasa.gov/missions/artemis/artemis-1/artemis-i-radiation-measurements-validate-orion-safety-for-astronauts/",
+      },
+      {
+        label: "Artemis I Orion Study — Nature (2024)",
+        url: "https://www.nature.com/articles/s41586-024-07927-7",
+      },
+      {
+        label: "NASA OLTARIS Transport & Shielding",
+        url: "https://oltaris.nasa.gov/",
+      },
+    ],
+  },
+  donki_weather: {
+    id: "donki_weather",
+    title: "NASA DONKI Space Weather Context",
+    explanation:
+      "Queries live Solar Energetic Particles (SEP), Solar Flares (FLR), and Radiation Belt Enhancements (RBE) as external heliophysics context requiring onboard dosimeter verification.",
+    benchmark:
+      "DONKI solar-event timelines and NOAA SWPC alerts are never converted directly into crew absorbed or effective dose inside a spacecraft.",
+    links: [
+      {
+        label: "NASA DONKI / Open API Portal",
+        url: "https://api.nasa.gov/",
+      },
+      {
+        label: "NOAA Space Weather Prediction Center",
+        url: "https://www.swpc.noaa.gov/",
+      },
+    ],
+  },
+  bioshield_research: {
+    id: "bioshield_research",
+    title: "Experimental BioShield & Biological Sentinels",
+    explanation:
+      "Displays experimental attenuation and biological response studies separately from certified crew protection so exploratory findings are never mistaken for operational shielding.",
+    benchmark:
+      "ISS Cladosporium sphaerospermum growth/attenuation observations, NASA NIAC concepts, and BioSentinel/OSDR assays remain exploratory research.",
+    links: [
+      {
+        label: "ISS Cladosporium sphaerospermum Study (2022)",
+        url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC9294542/",
+      },
+      {
+        label: "NASA BioSentinel Mission",
+        url: "https://www.nasa.gov/mission/biosentinel/",
+      },
+      {
+        label: "NASA Open Science Data Repository (OSDR)",
+        url: "https://osdr.nasa.gov/",
+      },
+      {
+        label: "NASA NIAC Exploratory Concepts",
+        url: "https://www.nasa.gov/niac/",
+      },
+    ],
+  },
+};
 
 /**
  * ============================================================================
@@ -733,6 +843,7 @@ function buildCrewComparisonChart(
     id: `radiation-crew-comparison-${selectedFamily}`,
     title: `Crew cumulative ${selectedFamily} dose comparison`,
     unit: selectedFamily === "equivalent" ? "mSv" : "mGy",
+    chartType: "bar",
     series,
   };
 }
@@ -768,6 +879,7 @@ function buildCompartmentChart(input: HazardEvaluationInput): HazardChartSpec[] 
             id: `radiation-compartments-${family}`,
             title: `Latest compartment ${family} dose rates`,
             unit: family === "equivalent" ? "mSv/h" : "mGy/h",
+            chartType: "bar",
             series,
           },
         ];
@@ -865,21 +977,25 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
 
   if (!latest) {
     status = "ELEVATED";
-    reasons.push("No valid personal dosimeter dose-rate telemetry is available.");
+    reasons.push("No valid dosimeter rate.");
   } else {
     const quality = latest.qualityFlag.toLowerCase();
     if (["fault", "invalid", "suspect", "offline"].includes(quality)) {
       status = "ELEVATED";
-      reasons.push(`Dosimeter quality flag is ${latest.qualityFlag}.`);
+      reasons.push(`Dosimeter flagged ${latest.qualityFlag}.`);
     }
 
     if (policy?.family === latest.family) {
       if (policy.criticalRate && latest.value >= policy.criticalRate.value) {
         status = "CRITICAL";
-        reasons.push(`Dose rate reached the ${policy.mode} mission-policy critical threshold.`);
+        reasons.push(
+          `Rate ≥ critical limit (${formatNumber(policy.criticalRate.value)} ${policy.criticalRate.unit}).`
+        );
       } else if (policy.elevatedRate && latest.value >= policy.elevatedRate.value) {
         status = "ELEVATED";
-        reasons.push(`Dose rate reached the ${policy.mode} mission-policy elevated threshold.`);
+        reasons.push(
+          `Rate ≥ elevated limit (${formatNumber(policy.elevatedRate.value)} ${policy.elevatedRate.unit}).`
+        );
       }
 
       if (
@@ -889,42 +1005,39 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
         forecast.projectedValue >= policy.cumulativeBudget.value
       ) {
         status = status === "CRITICAL" ? status : "ELEVATED";
-        reasons.push(`Modeled mission-end dose reaches the ${policy.mode} radiation budget.`);
+        reasons.push("Projected dose reaches mission budget.");
       }
     } else if (!policy) {
-      reasons.push("No mission radiation policy is configured; no dose threshold was inferred.");
+      reasons.push("No mission policy configured.");
     }
   }
 
   if (disagreement.supported && disagreement.disagreement && status !== "CRITICAL") {
     status = "ELEVATED";
-    reasons.push("Compartment sensors exceed the mission-policy disagreement threshold.");
+    reasons.push("Compartment sensors disagree.");
   }
   if (activeSpaceWeatherEvent && status !== "CRITICAL") {
     status = "ELEVATED";
-    reasons.push("An active DONKI/replayed space-weather event requires onboard verification; it is not a dose reading.");
+    reasons.push("Active space-weather event — verify dosimeters.");
   }
 
-  const rateSummary = latest
-    ? `${formatNumber(latest.value)} ${latest.unit} (${latest.provenanceKind}, quality: ${latest.qualityFlag})`
-    : "no compatible reading";
-  const policySummary = policy
-    ? `${policy.label} [${policy.mode.toUpperCase()}${policy.mode === "simulation" ? " — NOT A UNIVERSAL NASA LIMIT" : ""}]`
-    : "no configured mission policy";
-  const immediateHorizon = `${status} — ${reasons.join(" ") || "Compatible radiation telemetry is below configured mission-policy triggers."} Latest rate: ${rateSummary}. Policy: ${policySummary}.`;
+  const summary = reasons.join(" ") || "Telemetry within policy limits.";
+  const immediateHorizon = latest
+    ? `${formatNumber(latest.value)} ${latest.unit} — ${summary}`
+    : summary;
 
-  let prolongedHorizon = "Mission-end exposure forecast is unavailable until compatible cumulative dose, rate, and remaining mission duration are supplied.";
+  let prolongedHorizon = "Forecast needs cumulative dose, rate, and remaining hours.";
   if (forecast?.supported && forecast.projectedValue !== null && forecast.unit) {
     const interval =
       forecast.lowerValue !== null && forecast.upperValue !== null
-        ? `; uncertainty interval ${formatNumber(forecast.lowerValue)}–${formatNumber(forecast.upperValue)} ${forecast.unit}`
-        : "; uncertainty interval unavailable";
-    prolongedHorizon = `Modeled mission-end dose: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval} (assumes latest compatible rate remains constant).`;
+        ? ` (${formatNumber(forecast.lowerValue)}–${formatNumber(forecast.upperValue)} ${forecast.unit})`
+        : "";
+    prolongedHorizon = `Projected mission-end dose: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval} at constant current rate.`;
   } else if (currentDose) {
-    prolongedHorizon = `Current compatible cumulative dose: ${formatNumber(currentDose.value)} ${currentDose.unit}; forecast unavailable without remaining duration and compatible rate.`;
+    prolongedHorizon = `Cumulative dose: ${formatNumber(currentDose.value)} ${currentDose.unit}.`;
   }
 
-  let eta = "Estimated Time of Action unavailable without a compatible mission policy and dose budget.";
+  let eta = "Budget ETA unavailable";
   if (
     currentDose &&
     latest &&
@@ -935,33 +1048,36 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
   ) {
     const remainingDose = policy.cumulativeBudget.value - currentDose.value;
     const hours = Math.max(0, remainingDose / latest.value);
-    eta = `Modeled time to ${policy.mode} radiation budget at constant latest rate: ${formatNumber(hours, 2)} h.`;
+    eta = `${formatNumber(hours, 2)} h to radiation budget at current rate`;
   } else if (status === "CRITICAL") {
-    eta = `Immediate action required under ${policy?.label ?? "the active mission procedure"}.`;
+    eta = "Immediate action required";
   }
 
   const solutions: string[] = [];
   if (status === "CRITICAL" || activeSpaceWeatherEvent) {
-    solutions.push("Follow the approved radiation-protection flight rule and verify onboard dosimeters; DONKI events alone are not crew dose.");
+    solutions.push("Verify onboard dosimeters and follow radiation flight rule (DONKI is not crew dose).");
   } else if (status === "ELEVATED") {
-    solutions.push("Verify sensor health, provenance, units, timestamps, and a second compatible detector before escalation.");
+    solutions.push("Check dosimeter health, units, and a backup detector.");
   } else {
-    solutions.push("Continue mission-policy monitoring and preserve dose-rate samples with provenance and uncertainty.");
+    solutions.push("Continue routine dose-rate monitoring.");
   }
   if (disagreement.supported && disagreement.disagreement) {
-    solutions.push("Isolate the suspect detector and compare compartment readings without silently discarding the highest value.");
+    solutions.push("Isolate suspect detector and compare compartment sensors.");
   } else {
-    solutions.push("Reassess planned higher-exposure tasks against the configured crew radiation budget.");
+    solutions.push("Review high-exposure tasks against dose budget.");
   }
 
   const charts = buildRateAndCumulativeCharts(ratePoints, policy);
-  const crewChart = buildCrewComparisonChart(input, latest?.family ?? currentDose?.family ?? null);
-  if (crewChart) charts.push(crewChart);
+  const viewerRole = input.role ?? (input.actor.isLeadSlot ? "lead" : "member");
+  if (viewerRole === "lead") {
+    const crewChart = buildCrewComparisonChart(input, latest?.family ?? currentDose?.family ?? null);
+    if (crewChart) charts.push(crewChart);
+  }
   charts.push(...buildCompartmentChart(input));
 
   return {
     status,
-    scenarioStatusSlot: `${input.mission.environment.radiationStatusSlot} | ${policySummary}`,
+    scenarioStatusSlot: policy?.label ?? input.mission.environment.radiationStatusSlot,
     immediateHorizon,
     prolongedHorizon,
     eta,
@@ -986,7 +1102,7 @@ export const radiationHazard: HazardSpec = {
     "NASA OLTARIS & OSDR / BioSentinel",
   ],
   overviewSlot:
-    "DB-driven personal and crew radiation monitoring with unit-safe Gy/Sv separation, exposure forecasting, NASA DONKI context, shelter workflow, and explicit provenance.",
+    "Personal and crew radiation monitoring with unit-safe Gy/Sv separation, exposure forecasting, NASA DONKI context, and shelter workflow.",
   inputSlots: [
     {
       streamName: RADIATION_PIPELINE_VALUES.streams.personalDosimeter,

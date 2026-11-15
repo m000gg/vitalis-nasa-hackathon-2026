@@ -17,7 +17,7 @@ import {
 
 // [SECTION 1: HAZARD 2 VALUES & THRESHOLD SLOTS]
 // Strictly limited to published NASA standards and NASA-supported peer-reviewed studies:
-// - NASA-STD-3001 Vol. 1 & Vol. 2 ([V2 6079], [V2 8055])
+// - NASA-STD-3001 Vol. 1 & Vol. 2 (Acoustics / Circadian Lighting)
 // - NASA OCHMO-TB-004 (Carbon Dioxide) & OCHMO Acoustics Technical Brief
 // - Barger et al. (2014), The Lancet Neurology (ISS & Shuttle sleep study)
 // - Basner, Mollicone & Dinges (2011) & Basner et al. (2015) (NASA Cognition PVT-B)
@@ -44,7 +44,7 @@ export const ISOLATION_PIPELINE_VALUES = {
   martianSolDriftMinPerDay: 39, // 24h 39m 35s Martian sol vs. 24h Earth day
   chapeaMaxCommsRttMin: 44, // Up to 44-min round-trip comms delay in CHAPEA
 
-  // Habitability & Acoustics (NASA-STD-3001 Vol. 2 [V2 6079])
+  // Habitability & Acoustics (NASA-STD-3001 Vol. 2)
   sleepQuarterNoiseLimitNc40Dba: 49, // NC-40 continuous sleep-quarter limit (>30 day missions)
   workAreaNoiseLimitNc50Dba: 58, // NC-50 continuous work-area limit
 
@@ -120,7 +120,7 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     explanation:
       "Measures continuous and impulse noise in crew sleep bays alongside compliance with NASA's tunable circadian lighting schedule (blue-enriched wake light, dim red-shifted pre-sleep light).",
     benchmark:
-      "NASA-STD-3001 Vol. 2 [V2 6079]: <= NC-40 (~49 dBA) in sleep quarters and <= NC-50 (~58 dBA) in work areas for >30-day missions. [V2 8055]: Dynamic circadian lighting.",
+      "NASA-STD-3001 Vol. 2: <= NC-40 (~49 dBA) in sleep quarters and <= NC-50 (~58 dBA) in work areas for >30-day missions; dynamic circadian lighting.",
     links: [
       {
         label: "NASA-STD-3001 Standards Portal",
@@ -280,14 +280,14 @@ export const ISOLATION_RESEARCH_METADATA: Record<string, IsolationInfoEntry> = {
     explanation:
       "Monitors continuous dBA readings in crew sleep quarters relative to NASA-STD-3001 Vol. 2 acoustic curves. Hearing protection cannot be used to claim NC-40 design compliance.",
     benchmark:
-      "NC-40 Sleep Limit = 49 dBA (>30-day missions); NC-50 Work Area Limit = 58 dBA (NASA-STD-3001 Vol. 2 [V2 6079]).",
+      "NC-40 Sleep Limit = 49 dBA (>30-day missions); NC-50 Work Area Limit = 58 dBA (NASA-STD-3001 Vol. 2).",
     links: [
       {
         label: "NASA OCHMO Acoustics Technical Brief (PDF)",
         url: "https://www.nasa.gov/sites/default/files/atoms/files/acoustics_technical_brief_ochmo_0.pdf",
       },
       {
-        label: "NASA-STD-3001 Vol. 2 [V2 6079]",
+        label: "NASA-STD-3001 Vol. 2",
         url: "https://standards.nasa.gov/",
       },
     ],
@@ -382,9 +382,18 @@ function extractSampleNumber(sample: HazardSampleRecord, keys: string[], fallbac
     : null;
 }
 
-function formatSampleLabel(iso: string, idx: number): string {
+function formatSampleLabel(iso: string, idx: number, includeDate = false): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return `#${idx + 1}`;
+  if (includeDate) {
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -404,30 +413,34 @@ function buildChartSeries(
   keys: string[],
   fallbackToNumeric = false
 ) {
-  const points: Array<{ label: string; value: number }> = [];
-  samples.forEach((s, idx) => {
-    const val = extractSampleNumber(s, keys, fallbackToNumeric);
-    if (val !== null) {
-      points.push({
-        label: formatSampleLabel(s.recordedAt, idx),
-        value: Number(val.toFixed(2)),
-      });
-    }
-  });
-  return points;
+  const extracted = samples
+    .map((s) => ({ sample: s, val: extractSampleNumber(s, keys, fallbackToNumeric) }))
+    .filter((item): item is { sample: HazardSampleRecord; val: number } => item.val !== null);
+
+  const includeDate =
+    extracted.length >= 2 &&
+    new Date(extracted[0].sample.recordedAt).toDateString() !==
+      new Date(extracted[extracted.length - 1].sample.recordedAt).toDateString();
+
+  return extracted.map((item, idx) => ({
+    label: formatSampleLabel(item.sample.recordedAt, idx, includeDate),
+    value: Number(item.val.toFixed(2)),
+  }));
 }
 
 function detectCrossHazardHabitatStress(
   allRecords: readonly HazardDataRecord[],
+  scenarioRecords: readonly HazardDataRecord[],
   missionDelayLabel: string
 ): { sharedEnvCause: string | null; commsDelayMin: number | null } {
   const envModuleStreams = ["Habitat Air Readings", "Lab Air Readings", "Galley Air Readings", "Airlock Air Readings"];
+  const combined = [...allRecords, ...scenarioRecords];
   const envAtmos =
-    allRecords.find((r) => r.hazardSlug === "environment" && r.streamName === "Cabin Atmosphere & Pressure") ??
-    allRecords.find((r) => r.hazardSlug === "environment" && envModuleStreams.includes(r.streamName));
+    combined.find((r) => r.hazardSlug === "environment" && r.streamName === "Cabin Atmosphere & Pressure") ??
+    combined.find((r) => r.hazardSlug === "environment" && envModuleStreams.includes(r.streamName));
   const envAcoustics =
-    allRecords.find((r) => r.hazardSlug === "environment" && r.streamName === "Module Acoustics & Thermal") ??
-    allRecords.find((r) => r.hazardSlug === "environment" && envModuleStreams.includes(r.streamName));
+    combined.find((r) => r.hazardSlug === "environment" && r.streamName === "Module Acoustics & Thermal") ??
+    combined.find((r) => r.hazardSlug === "environment" && envModuleStreams.includes(r.streamName));
 
   const co2Val =
     toFiniteNumber(envAtmos?.payload?.co2MmHg) ??
@@ -450,11 +463,19 @@ function detectCrossHazardHabitatStress(
     );
   }
 
-  const distRec = allRecords.find((r) => r.hazardSlug === "distance");
-  const commsDelayMin =
+  const distRec = combined.find((r) => r.hazardSlug === "distance");
+  const distKm = toFiniteNumber(distRec?.payload?.distanceKm ?? distRec?.rawValue);
+  const computedRttMin =
+    distKm !== null && distKm > 0 ? (2 * distKm) / 299792.458 / 60 : null;
+  const labelDelayMin = missionDelayLabel.toLowerCase().includes("add your info")
+    ? null
+    : toFiniteNumber(missionDelayLabel);
+  const rawCommsDelay =
     toFiniteNumber(distRec?.payload?.commsDelayMin) ??
     toFiniteNumber(distRec?.payload?.rttMin) ??
-    toFiniteNumber(missionDelayLabel);
+    computedRttMin ??
+    labelDelayMin;
+  const commsDelayMin = rawCommsDelay !== null ? Number(rawCommsDelay.toFixed(2)) : null;
 
   return {
     sharedEnvCause: causes.length > 0 ? causes.join(" & ") : null,
@@ -518,6 +539,10 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   if (sleepDurationH !== null && sleepHistory.length === 0) {
     sleepHistory.push({ label: "Latest", value: sleepDurationH });
   }
+  const recent3Sleep = sleepHistory.slice(-3).map((p) => p.value);
+  const sleepRolling3dMean =
+    recent3Sleep.length >= 3 ? Number(mean(recent3Sleep).toFixed(2)) : null;
+  const sleepRollingLow = sleepRolling3dMean !== null && sleepRolling3dMean < 6.5;
   const sleepBelowIssMean = sleepDurationH !== null && sleepDurationH < V.issHistoricalMeanSleepHours;
   const sleepBelowNasaReq =
     !sleepBelowIssMean && sleepDurationH !== null && sleepDurationH < V.nasaStd3001SleepReqHours;
@@ -541,13 +566,14 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const circadianElevated =
     circadianShiftMin !== null && Math.abs(circadianShiftMin) >= V.martianSolDriftMinPerDay;
 
-  // 5. NASA-STD-3001 Vol. 2 [V2 6079] Acoustics (49 dBA NC-40 sleep quarters, 58 dBA NC-50 work areas) + Cross-Hazard CO2 (<= 3.0 mmHg)
+  // 5. NASA-STD-3001 Vol. 2 Acoustics (49 dBA NC-40 sleep quarters, 58 dBA NC-50 work areas) + Cross-Hazard CO2 (<= 3.0 mmHg)
   const acousticCritical = sleepNoiseDba !== null && sleepNoiseDba >= V.workAreaNoiseLimitNc50Dba;
   const acousticElevated =
     !acousticCritical && sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba;
 
   const { sharedEnvCause, commsDelayMin } = detectCrossHazardHabitatStress(
     allHazardRecords,
+    scenarioHazardRecords,
     mission.commsDelayLabel
   );
 
@@ -608,16 +634,19 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     restingHrv !== null;
 
   const crossHazardFlag = Boolean(sharedEnvCause);
+  const autonomyDelayFlag = commsDelayMin !== null && commsDelayMin >= 20;
   const leadSharedAcousticFlag = role === "lead" && crewNoiseBreachCount > 0;
 
   // 8. Overall Status (driven strictly by NASA-STD-3001, Cognition PVT-B, Barger 2014, CHAPEA, Mars500)
   const hasCriticalTelemetry = sleepBelowIssMean || pvtCritical || acousticCritical;
   const hasElevatedTelemetry =
     sleepBelowNasaReq ||
+    sleepRollingLow ||
     pvtElevated ||
     circadianElevated ||
     acousticElevated ||
     inThirdQuarter ||
+    autonomyDelayFlag ||
     leadSharedAcousticFlag ||
     crossHazardFlag;
 
@@ -648,6 +677,9 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     immediateFindings.push(
       `Sleep ${sleepDurationH} h (below ${V.nasaStd3001SleepReqHours} h NASA-STD-3001 Vol. 1 requirement; ${V.scheduledSleepHours} h scheduled)`
     );
+  }
+  if (sleepRollingLow && sleepRolling3dMean !== null) {
+    immediateFindings.push(`Rolling 3-sample sleep mean ${sleepRolling3dMean} h (< 6.5 h chronic deficit trigger)`);
   }
   if (pvtCritical || pvtElevated) {
     const zLabel = pvtZScore !== null ? ` (${pvtZScore >= 0 ? "+" : ""}${pvtZScore.toFixed(1)} SD)` : "";
@@ -700,9 +732,11 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
     );
   }
   if (role === "lead" && crewSleepValues.length > 0) {
+    const teamAcousticDebuff =
+      crewNoiseBreachCount >= 2 ? ` · Team-Wide Acoustic Debuff (${crewNoiseBreachCount} quarters > 49 dBA NC-40)` : crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} quarter(s) > 49 dBA NC-40` : "";
     prolongedFindings.push(
       `Crew Aggregate (Anonymized): ${crewBelowIssMeanCount}/${crewSleepValues.length} below ${V.issHistoricalMeanSleepHours} h ISS mean` +
-        (crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} quarter(s) > 49 dBA NC-40` : "") +
+        teamAcousticDebuff +
         (crewVeggieCount > 0 ? ` · ISS Veggie (${crewVeggieCount} logged)` : "")
     );
   }
@@ -716,7 +750,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const rankedSolutions: string[] = [];
   if (acousticCritical || acousticElevated || sharedEnvCause || leadSharedAcousticFlag) {
     rankedSolutions.push(
-      `Acoustic / Habitat Mitigation [NASA-STD-3001 V2 6079]: ${
+      `Acoustic / Habitat Mitigation [NASA-STD-3001 Vol. 2]: ${
         sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba
           ? `Quarter noise is ${sleepNoiseDba} dBA (> ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
           : sharedEnvCause ?? `${crewNoiseBreachCount} crew quarter(s) > ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40`
@@ -742,7 +776,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   }
   if (circadianElevated) {
     rankedSolutions.push(
-      `Circadian Lighting Entrainment [NASA-STD-3001 V2 8055]: Phase shift ${circadianShiftMin ?? 0} min — align with blue-enriched wake light and dim red-shifted pre-sleep lighting.`
+      `Circadian Lighting Entrainment [NASA-STD-3001 Vol. 2]: Phase shift ${circadianShiftMin ?? 0} min — align with blue-enriched wake light and dim red-shifted pre-sleep lighting.`
     );
   }
   if (inThirdQuarter) {
@@ -754,7 +788,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   if (rankedSolutions.length === 0) {
     if (!hasAnyIsolationTelemetry) {
       rankedSolutions.push(
-        "Awaiting DB Telemetry: Ingest Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to evaluate against NASA benchmarks."
+        "Awaiting Telemetry: Connect Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to evaluate against NASA benchmarks."
       );
     } else {
       const verifiedChecks = [
@@ -773,17 +807,17 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
         rankedSolutions.push(
           `ISS Veggie Countermeasure: Plant-module care is ${
             veggieCareDone === false ? "pending" : "unlogged"
-          } in DB — complete scheduled Veggie sensory care.`
+          } — complete scheduled Veggie sensory care.`
         );
       } else if (socialCheckinDone !== true) {
         rankedSolutions.push(
           `NASA CONNECT Check-In: Crew/async check-in is ${
             socialCheckinDone === false ? "pending" : "unlogged"
-          } in DB — log shared crew briefing or async Earth message.`
+          } — log shared crew briefing or async Earth message.`
         );
       } else {
         rankedSolutions.push(
-          "NASA Countermeasures Logged in DB: ISS Veggie care and CONNECT check-in are both complete."
+          "NASA Countermeasures Complete: ISS Veggie care and CONNECT check-in are both complete."
         );
       }
     }
@@ -883,11 +917,11 @@ export const isolationHazard: HazardSpec = {
     "ISS Veggie Space Gardening & OSDR Standard Measures",
   ],
   overviewSlot:
-    "Here is: Sleep benchmarking (NASA-STD-3001 & Barger et al. 2014), Martian sol circadian monitoring, NC-40 acoustic limits, Cognition PVT-B vigilance, private behavioral logs, and CONNECT/Veggie countermeasures.",
+    "Sleep benchmarking (NASA-STD-3001 & Barger et al. 2014), Martian sol circadian monitoring, NC-40 acoustic limits, Cognition PVT-B vigilance, private behavioral logs, and CONNECT/Veggie countermeasures.",
   inputSlots: [
     {
       streamName: STREAM_WEARABLE,
-      inputPrompt: "Add your info: Actigraphy sleep duration, efficiency, circadian drift, activity & HRV here",
+      inputPrompt: "Actigraphy sleep duration, efficiency, circadian drift, activity & HRV",
       sourceRef: "ARCHeR / Mars500 / OSDR Standard Measures",
       fieldType: "number",
       unit: "h",
@@ -898,42 +932,42 @@ export const isolationHazard: HazardSpec = {
           label: "Sleep Duration",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours slept (NASA scheduled 8.5h, req 8.0h, ISS mean 6.09h)",
+          prompt: "Hours slept (NASA scheduled 8.5h, req 8.0h, ISS mean 6.09h)",
         },
         {
           key: "sleep_efficiency_pct",
           label: "Sleep Efficiency",
           fieldType: "number",
           unit: "%",
-          prompt: "Add your info: Sleep efficiency %",
+          prompt: "Sleep efficiency %",
         },
         {
           key: "circadian_phase_shift_min",
           label: "Circadian Phase Shift",
           fieldType: "number",
           unit: "min",
-          prompt: "Add your info: Phase drift min (Mars sol +39 min/day)",
+          prompt: "Phase drift min (Mars sol +39 min/day)",
         },
         {
           key: "daytime_activity_counts",
           label: "Daytime Activity",
           fieldType: "number",
           unit: "counts/day",
-          prompt: "Add your info: Actigraphy daytime counts (Mars500 hypokinesis)",
+          prompt: "Actigraphy daytime counts (Mars500 hypokinesis)",
         },
         {
           key: "resting_hrv_rmssd",
           label: "Resting HRV (RMSSD)",
           fieldType: "number",
           unit: "ms",
-          prompt: "Add your info: Resting HRV RMSSD (ms)",
+          prompt: "Resting HRV RMSSD (ms)",
         },
       ],
     },
     {
       streamName: STREAM_HABITAT,
-      inputPrompt: "Add your info: Sleep-quarter dBA vs NC-40, impulse spikes, circadian lighting & mission % here",
-      sourceRef: "NASA-STD-3001 Vol. 2 [V2 6079 / V2 8055]",
+      inputPrompt: "Sleep-quarter dBA vs NC-40, impulse spikes, circadian lighting & mission %",
+      sourceRef: "NASA-STD-3001 Vol. 2 (Acoustics & Circadian Lighting)",
       fieldType: "number",
       unit: "dBA",
       recordSample: true,
@@ -943,34 +977,34 @@ export const isolationHazard: HazardSpec = {
           label: "Sleep-Quarter Noise",
           fieldType: "number",
           unit: "dBA",
-          prompt: "Add your info: Continuous dBA (NC-40 limit = 49 dBA)",
+          prompt: "Continuous dBA (NC-40 limit = 49 dBA)",
         },
         {
           key: "impulse_noise_events_sleep",
           label: "Sleep Impulse Spikes",
           fieldType: "number",
           unit: "events",
-          prompt: "Add your info: Impulse noise events during sleep",
+          prompt: "Impulse noise events during sleep",
         },
         {
           key: "ambient_lux_schedule_match",
           label: "Circadian Lighting Match",
           fieldType: "number",
           unit: "%",
-          prompt: "Add your info: Wake/pre-sleep light schedule match %",
+          prompt: "Wake/pre-sleep light schedule match %",
         },
         {
           key: "mission_day_pct",
           label: "Mission Elapsed",
           fieldType: "number",
           unit: "%",
-          prompt: "Add your info: Mission progress % (50–75% = Mars500 Third Quarter)",
+          prompt: "Mission progress % (50–75% = Mars500 Third Quarter)",
         },
       ],
     },
     {
       streamName: STREAM_SELF_CHECK,
-      inputPrompt: "Add your info: PVT-B median RT, lapses >355 ms, subjective fatigue & private journal here",
+      inputPrompt: "PVT-B median RT, lapses >355 ms, subjective fatigue & private journal",
       sourceRef: "NASA Cognition PVT-B / Journaling",
       fieldType: "number",
       unit: "ms",
@@ -981,49 +1015,49 @@ export const isolationHazard: HazardSpec = {
           label: "PVT-B Median RT",
           fieldType: "number",
           unit: "ms",
-          prompt: "Add your info: Median reaction time ms (lapse >= 355 ms)",
+          prompt: "Median reaction time ms (lapse >= 355 ms)",
         },
         {
           key: "pvt_lapses_count",
           label: "PVT-B Lapses (>= 355 ms)",
           fieldType: "number",
           unit: "lapses",
-          prompt: "Add your info: Count of trials >= 355 ms",
+          prompt: "Count of trials >= 355 ms",
         },
         {
           key: "subjective_fatigue_1_5",
           label: "Subjective Fatigue (1–5)",
           fieldType: "number",
           unit: "1–5",
-          prompt: "Add your info: 1 (Rested) to 5 (Exhausted)",
+          prompt: "1 (Rested) to 5 (Exhausted)",
         },
         {
           key: "team_workload_strain_1_5",
           label: "Workload Strain (1–5)",
           fieldType: "number",
           unit: "1–5",
-          prompt: "Add your info: 1 (Manageable) to 5 (Overloaded)",
+          prompt: "1 (Manageable) to 5 (Overloaded)",
         },
         {
           key: "mood_valence_private",
           label: "Private Mood Score (1–5)",
           fieldType: "number",
           unit: "1–5",
-          prompt: "Add your info: Private mood score (masked from Lead)",
+          prompt: "Private mood score (masked from Lead)",
           isPrivate: true,
         },
         {
           key: "private_journal_note",
           label: "Private Reflection Journal",
           fieldType: "textarea",
-          prompt: "Add your info: Personal reflection note (strictly private, never shown to Lead)",
+          prompt: "Personal reflection note (private, never shown to Lead)",
           isPrivate: true,
         },
       ],
     },
     {
       streamName: STREAM_CONNECT,
-      inputPrompt: "Add your info: Veggie plant care, CONNECT social check-in, and private sleep-aid log here",
+      inputPrompt: "Veggie plant care, CONNECT social check-in, and private sleep-aid log",
       sourceRef: "ISS Veggie / CONNECT Framework",
       recordSample: false,
       subfields: [
@@ -1050,10 +1084,10 @@ export const isolationHazard: HazardSpec = {
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Sleep vs. NASA-STD-3001/ISS benchmarks, PVT-B (>=355 ms), or NC-40 acoustic alert.",
-    prolongedHorizon: "Here is: Martian sol (24h 39m) circadian drift, NC-40 acoustic exposure, or Mars500 Third-Quarter window.",
-    etaSlot: "Here is: Operational gate status against NASA-STD-3001 and Cognition thresholds.",
-    solutionsSlot: "Here is: 1–2 NASA CONNECT / Veggie / acoustic-mitigation actions.",
+    immediateHorizon: "Sleep vs. NASA-STD-3001/ISS benchmarks, PVT-B (>=355 ms), or NC-40 acoustic alert.",
+    prolongedHorizon: "Martian sol (24h 39m) circadian drift, NC-40 acoustic exposure, or Mars500 Third-Quarter window.",
+    etaSlot: "Operational gate status against NASA-STD-3001 and Cognition thresholds.",
+    solutionsSlot: "1–2 NASA CONNECT / Veggie / acoustic-mitigation actions.",
   },
   leadView: {
     summary:
@@ -1064,14 +1098,14 @@ export const isolationHazard: HazardSpec = {
       {
         title: "Crew Matrix (Anonymized)",
         detail:
-          "Here is: Crew sleep vs. 6.09h ISS historical mean, PVT-B vs. 355 ms ceiling, and NC-40 compliance.",
-        actionSlot: "Ready-to-act: Protect an 8.0–8.5h sleep window when crew averages fall below NASA benchmarks.",
+          "Crew sleep vs. 6.09h ISS historical mean, PVT-B vs. 355 ms ceiling, and NC-40 compliance.",
+        actionSlot: "Protect an 8.0–8.5h sleep window when crew averages fall below NASA benchmarks.",
       },
       {
         title: "Shared Habitat Debuff Attribution",
         detail:
-          "Here is: Distinguishes shared habitat noise (>49 dBA NC-40) or Hazard 05 CO₂ (>3.0 mmHg) from individual sleep loss.",
-        actionSlot: "Ready-to-act: Inspect acoustic source in flagged crew quarters.",
+          "Distinguishes shared habitat noise (>49 dBA NC-40) or Hazard 05 CO₂ (>3.0 mmHg) from individual sleep loss.",
+        actionSlot: "Inspect acoustic source in flagged crew quarters.",
       },
     ],
   },
@@ -1084,14 +1118,14 @@ export const isolationHazard: HazardSpec = {
       {
         title: "Actigraphy & PVT-B Vigilance",
         detail:
-          "Here is: Sleep duration, circadian drift, and >=355 ms PVT-B lapse monitoring calibrated to NASA benchmarks.",
-        actionSlot: "Ready-to-act: Follow pre-task hold or protected sleep recovery guidance when flagged.",
+          "Sleep duration, circadian drift, and >=355 ms PVT-B lapse monitoring calibrated to NASA benchmarks.",
+        actionSlot: "Follow pre-task hold or protected sleep recovery guidance when flagged.",
       },
       {
         title: "CONNECT & ISS Veggie Countermeasures",
         detail:
-          "Here is: 1–2 actions grounded in ISS Veggie plant care, NASA CONNECT, and acoustic/lighting compliance.",
-        actionSlot: "Ready-to-act: Execute top-ranked countermeasure from live telemetry.",
+          "1–2 actions grounded in ISS Veggie plant care, NASA CONNECT, and acoustic/lighting compliance.",
+        actionSlot: "Execute top-ranked countermeasure from live telemetry.",
       },
     ],
   },
@@ -1110,9 +1144,9 @@ export const isolationHazard: HazardSpec = {
   alarmPreset: {
     title: "CIRCADIAN & VIGILANCE DEBUFF — PRE-TASK HOLD",
     severity: "WARNING",
-    etaLabel: "Here is: Operational gate status prior to scheduled precision tasks",
+    etaLabel: "Operational gate status prior to scheduled precision tasks",
     descriptionSlot:
-      "Here is: Sleep below 6.09 h ISS mean, PVT-B lapse (>=355 ms), or sleep-quarter acoustic breach (>49 dBA NC-40) detected in device streams.",
+      "Sleep below 6.09 h ISS mean, PVT-B lapse (>=355 ms), or sleep-quarter acoustic breach (>49 dBA NC-40) detected in device streams.",
     leadActions: [
       "1. Inspect habitat acoustic source and provide hearing protection for NC-40 (>49 dBA) compliance.",
       "2. Shift non-critical maintenance to restore protected 8.0–8.5h sleep window.",

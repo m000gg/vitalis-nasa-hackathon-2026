@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from config import ScenarioInfo
@@ -17,6 +18,8 @@ from generators import (
 def _member_severity(idx: int, mode: str) -> str:
     if mode == "positive":
         return "nominal"
+    if mode == "chaos":
+        return "chaos"
     if mode == "negative":
         return "critical" if idx in (0, 2) else "elevated"
     if idx == 2:
@@ -104,6 +107,14 @@ def generate(
             elif sev == "elevated":
                 calf_val = round(base_calf - 190.0 * progress + jitter, 1)
                 mass_val = round(base_mass - 2.4 * progress, 1)
+            elif sev == "chaos":
+                calf_val = round(
+                    random.uniform(1640.0, 1980.0)
+                    if (step_idx + idx) % 2 == 0
+                    else random.uniform(2680.0, 3050.0),
+                    1,
+                )
+                mass_val = round(base_mass - 5.5 * progress + random.uniform(-2.0, 2.0), 1)
             else:
                 calf_val = round(base_calf - 360.0 * progress + jitter, 1)
                 mass_val = round(base_mass - 4.8 * progress, 1)
@@ -151,6 +162,15 @@ def generate(
                 grip_val = round(base_grip - 6.8 * progress + jitter, 1)
                 static_sec = round(54.0 - 11.0 * progress, 1)
                 reps = int(round(27 - 5 * progress))
+            elif sev == "chaos":
+                grip_val = round(
+                    random.uniform(12.5, 22.0)
+                    if (step_idx + idx) % 2 == 0
+                    else random.uniform(44.0, 56.0),
+                    1,
+                )
+                static_sec = round(random.uniform(14.0, 68.0), 1)
+                reps = int(random.uniform(6, 34))
             else:
                 grip_val = round(base_grip - 13.5 * progress + jitter, 1)
                 static_sec = round(48.0 - 16.0 * progress, 1)
@@ -220,6 +240,12 @@ def generate(
                 actual_load = round(prescribed_load * 0.80, 1)
                 after_meal = 1.6
                 before_sleep = 2.1
+            elif sev == "chaos":
+                aero = int(random.uniform(0, 15) if (d_off + idx) % 2 == 0 else random.uniform(85, 130))
+                resist = int(random.uniform(0, 20) if (d_off + idx) % 2 == 0 else random.uniform(95, 145))
+                actual_load = round(prescribed_load * random.uniform(0.35, 1.35), 1)
+                after_meal = 0.4
+                before_sleep = 0.5
             else:
                 aero = 22 if d_off % 2 == 0 else 0
                 resist = 35 if d_off % 2 == 0 else 25
@@ -294,6 +320,11 @@ def stream_tick(
             resist = 70 + (tick_index % 5)
             actual = round(prescribed * 0.80, 1)
             after_meal, before_sleep = 1.8, 2.2
+        elif sev == "chaos":
+            aero = int(random.uniform(0, 15) if (tick_index + idx) % 2 == 0 else random.uniform(85, 135))
+            resist = int(random.uniform(0, 20) if (tick_index + idx) % 2 == 0 else random.uniform(95, 150))
+            actual = round(prescribed * random.uniform(0.35, 1.35), 1)
+            after_meal, before_sleep = 0.4, 0.5
         else:
             aero = 25 + (tick_index % 4)
             resist = 35 + (tick_index % 5)

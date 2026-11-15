@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  Beaker,
   CloudSun,
   Download,
   RefreshCw,
@@ -12,12 +11,18 @@ import {
   Users,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import {
+  InfoCircle,
+  ResearchModal,
+  type ActiveResearchInfoState,
+} from "@/components/ResearchInfoModal";
 import { useMission } from "@/context/MissionContext";
 import { evaluateHazardForActor } from "@/lib/evaluator";
 import {
   normalizeDose,
   normalizeDoseRate,
   RADIATION_PIPELINE_VALUES,
+  RADIATION_RESEARCH_METADATA,
 } from "@/lib/hazards/01-radiation";
 import type { HazardScreenProps } from "./types";
 
@@ -120,6 +125,7 @@ export function RadiationHazardScreen({
   const [customHours, setCustomHours] = useState<string>("24");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+  const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
 
   const refreshEmergencies = useCallback(async () => {
     const response = await fetch(
@@ -127,7 +133,7 @@ export function RadiationHazardScreen({
     );
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(responseError(data, "Unable to sync radiation emergencies."));
+      throw new Error(responseError(data, "Unable to load radiation emergencies."));
     }
     setEmergencies(Array.isArray(data.emergencies) ? data.emergencies : []);
   }, [mission.id]);
@@ -143,7 +149,7 @@ export function RadiationHazardScreen({
       }),
       refreshEmergencies(),
     ]).catch((error) => {
-      setNotice(error instanceof Error ? error.message : "Radiation sync failed.");
+      setNotice(error instanceof Error ? error.message : "Unable to refresh radiation status.");
     });
   }, [refreshEmergencies]);
 
@@ -160,10 +166,6 @@ export function RadiationHazardScreen({
   const compartmentRecords = useMemo(
     () => radiationRecords.filter((record) => record.streamName === S.compartmentSensors),
     [radiationRecords, S.compartmentSensors]
-  );
-  const researchRecords = useMemo(
-    () => radiationRecords.filter((record) => record.streamName === S.researchLab),
-    [radiationRecords, S.researchLab]
   );
   const currentPolicy = useMemo(
     () => radiationRecords.find((record) => record.streamName === S.missionPolicy),
@@ -228,7 +230,23 @@ export function RadiationHazardScreen({
   );
 
   const compartmentRows = useMemo(() => {
-    const parsed = compartmentRecords.map((record) => {
+    const latestByCompartment = new Map<
+      string,
+      { record: (typeof compartmentRecords)[number]; updatedMs: number }
+    >();
+    for (const record of compartmentRecords) {
+      const payload = record.payload ?? {};
+      const key = String(payload.compartmentId ?? payload.compartment ?? record.id)
+        .trim()
+        .toLowerCase();
+      const updatedMs = Date.parse(record.updatedAt ?? "") || 0;
+      const existing = latestByCompartment.get(key);
+      if (!existing || updatedMs >= existing.updatedMs) {
+        latestByCompartment.set(key, { record, updatedMs });
+      }
+    }
+
+    const parsed = Array.from(latestByCompartment.values()).map(({ record }) => {
       const payload = record.payload ?? {};
       const rate = normalizeDoseRate(
         payload.doseRateValue,
@@ -290,9 +308,7 @@ export function RadiationHazardScreen({
       const data = await response.json();
       if (!response.ok) throw new Error(responseError(data, "Scenario runner failed."));
       await syncAll();
-      setNotice(
-        `${data.scenario?.title ?? "Scenario"} written to Supabase as reproducible simulated telemetry.`
-      );
+      setNotice(`${data.scenario?.title ?? "Scenario"} simulation started.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Scenario runner failed.");
     } finally {
@@ -316,7 +332,7 @@ export function RadiationHazardScreen({
       const data = await response.json();
       if (!response.ok) throw new Error(responseError(data, "Acknowledgement failed."));
       await syncAll();
-      setNotice("Emergency acknowledgement saved to Supabase audit log.");
+      setNotice("Emergency acknowledgement recorded.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Acknowledgement failed.");
     } finally {
@@ -340,7 +356,7 @@ export function RadiationHazardScreen({
       const data = await response.json();
       if (!response.ok) throw new Error(responseError(data, "Shelter check-in failed."));
       await syncAll();
-      setNotice("Shelter check-in confirmed in Supabase.");
+      setNotice("Shelter check-in confirmed.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Shelter check-in failed.");
     } finally {
@@ -435,8 +451,8 @@ export function RadiationHazardScreen({
       setNotice("Compatible dosimeter rate and cumulative dose are required for What-If modeling.");
       return;
     }
-    const multiplier = Number(customMultiplier);
-    const hours = Number(customHours);
+    const multiplier = Number(customMultiplier.replace(",", ".").trim());
+    const hours = Number(customHours.replace(",", ".").trim());
     if (!Number.isFinite(multiplier) || multiplier < 0 || !Number.isFinite(hours) || hours < 0) {
       setNotice("Enter valid non-negative multiplier and remaining hours.");
       return;
@@ -492,7 +508,14 @@ export function RadiationHazardScreen({
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Radiation Decision Summary</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900">Radiation Decision Summary</h2>
+              <InfoCircle
+                entry={RADIATION_RESEARCH_METADATA.decision_summary}
+                activeInfo={activeInfo}
+                onSelectInfo={setActiveInfo}
+              />
+            </div>
             <p className="mt-1 text-xs text-slate-500">
               {hazardRecords.length} personal snapshot(s) · {hazardSamples.length} sample(s) ·{" "}
               {currentPolicy
@@ -527,14 +550,17 @@ export function RadiationHazardScreen({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Prolonged Forecast
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Prolonged Forecast
+              </p>
+              <InfoCircle
+                entry={RADIATION_RESEARCH_METADATA.dosimetry_forecast}
+                activeInfo={activeInfo}
+                onSelectInfo={setActiveInfo}
+              />
+            </div>
             <p className="mt-1.5 text-sm text-slate-800">{snapshot.prolongedHorizon}</p>
-            <p className="mt-3 text-xs text-slate-500">
-              Gy and Sv families remain strictly separated. Forecasts reflect configured model inputs,
-              not medical diagnoses or lifetime cancer probabilities.
-            </p>
           </div>
         </div>
       </div>
@@ -562,7 +588,7 @@ export function RadiationHazardScreen({
 
           {!activeEmergency ? (
             <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500">
-              No active durable radiation emergency in Supabase.
+              No active radiation emergency.
             </p>
           ) : (
             <div className="mt-3 space-y-3">
@@ -571,7 +597,7 @@ export function RadiationHazardScreen({
                 <p className="mt-1 text-xs text-slate-600">{activeEmergency.reason}</p>
                 <p className="mt-1.5 text-[11px] text-slate-500">
                   Event {activeEmergency.eventId} ·{" "}
-                  {activeEmergency.simulation ? "Simulated fixture" : "Operational record"} · State:{" "}
+                  {activeEmergency.simulation ? "Simulation" : "Active"} · State:{" "}
                   {activeEmergency.state}
                 </p>
               </div>
@@ -724,8 +750,7 @@ export function RadiationHazardScreen({
           displayedCharts.map((chart) => <HazardTelemetryChart key={chart.id} chart={chart} />)
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-xs text-slate-500">
-            No numeric radiation samples synced yet. Telemetry charts render once dosimeter or
-            compartment samples are stored.
+            No radiation telemetry samples recorded yet.
           </div>
         )}
       </section>
@@ -733,10 +758,17 @@ export function RadiationHazardScreen({
       {/* Compartment Sensors */}
       <article className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Activity className="h-4 w-4 text-slate-600" />
-            Compartment Sensors &amp; Shelter Route Context
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Activity className="h-4 w-4 text-slate-600" />
+              Compartment Sensors &amp; Shelter Route Context
+            </h3>
+            <InfoCircle
+              entry={RADIATION_RESEARCH_METADATA.compartments_whatif}
+              activeInfo={activeInfo}
+              onSelectInfo={setActiveInfo}
+            />
+          </div>
           <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
             {compartmentRows.length} reading(s)
           </span>
@@ -777,10 +809,17 @@ export function RadiationHazardScreen({
         {/* What-If Simulator */}
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <SlidersHorizontal className="h-4 w-4 text-slate-600" />
-              What-If Decision Comparison
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+                What-If Decision Comparison
+              </h3>
+              <InfoCircle
+                entry={RADIATION_RESEARCH_METADATA.compartments_whatif}
+                activeInfo={activeInfo}
+                onSelectInfo={setActiveInfo}
+              />
+            </div>
             <button
               type="button"
               onClick={runWhatIf}
@@ -794,9 +833,8 @@ export function RadiationHazardScreen({
             <label className="flex items-center gap-1.5 text-slate-600">
               Custom multiplier:
               <input
-                type="number"
-                min="0"
-                step="0.1"
+                type="text"
+                inputMode="decimal"
                 value={customMultiplier}
                 onChange={(event) => setCustomMultiplier(event.target.value)}
                 className="w-20 rounded-md border border-slate-300 px-2 py-1 text-slate-900"
@@ -805,9 +843,8 @@ export function RadiationHazardScreen({
             <label className="flex items-center gap-1.5 text-slate-600">
               Horizon (h):
               <input
-                type="number"
-                min="0"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 value={customHours}
                 onChange={(event) => setCustomHours(event.target.value)}
                 className="w-20 rounded-md border border-slate-300 px-2 py-1 text-slate-900"
@@ -848,10 +885,17 @@ export function RadiationHazardScreen({
         {/* NASA DONKI Context */}
         <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <CloudSun className="h-4 w-4 text-slate-600" />
-              NASA DONKI Space Weather Context
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <CloudSun className="h-4 w-4 text-slate-600" />
+                NASA DONKI Space Weather Context
+              </h3>
+              <InfoCircle
+                entry={RADIATION_RESEARCH_METADATA.donki_weather}
+                activeInfo={activeInfo}
+                onSelectInfo={setActiveInfo}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <select
                 value={donkiType}
@@ -886,7 +930,7 @@ export function RadiationHazardScreen({
 
           {syncedSpaceWeather && (
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-              <span className="font-medium text-slate-900">Mission DB stream: </span>
+              <span className="font-medium text-slate-900">Mission stream: </span>
               <span className="text-slate-700">{syncedSpaceWeather.rawValue}</span>
             </div>
           )}
@@ -941,46 +985,16 @@ export function RadiationHazardScreen({
         </article>
       </div>
 
-      {researchRecords.length > 0 && (
-        <article className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Beaker className="h-4 w-4 text-slate-600" />
-            Experimental Research / BioShield Lab
-          </h3>
-          <p className="mt-1 text-xs text-slate-500">
-            Experimental records only — not certified operational shielding.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {researchRecords.map((record) => (
-              <div
-                key={record.id}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
-              >
-                <p className="font-semibold text-slate-900">
-                  {String(record.payload.materialOrSpecimen ?? record.rawValue)}
-                </p>
-                <p className="mt-1 text-slate-600">
-                  Experiment {String(record.payload.experimentId ?? record.id)} ·{" "}
-                  {String(record.payload.resultValue ?? "—")}{" "}
-                  {String(record.payload.resultUnit ?? "")}
-                </p>
-              </div>
-            ))}
-          </div>
-        </article>
-      )}
-
       {role === "lead" && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4 text-slate-600" />
             <h3 className="text-sm font-semibold text-slate-900">
-              Reproducible Simulation Fixtures (Lead Only)
+              Simulation Scenarios (Lead Only)
             </h3>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Writes clearly labeled simulated records and audit events to Supabase for end-to-end
-            verification.
+            Run simulated radiation scenarios for crew drill and response verification.
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {scenarios.map((scenario) => (
@@ -1008,20 +1022,7 @@ export function RadiationHazardScreen({
         </section>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-600">
-        <p className="font-semibold text-slate-900">Scientific Boundaries &amp; Reference Anchors</p>
-        <p className="mt-1">
-          Sv-family (equivalent/effective) and Gy-family (absorbed) quantities are never combined.
-          DONKI space-weather events remain separate from onboard crew dosimetry.
-        </p>
-        <ul className="mt-2 flex flex-wrap gap-2">
-          {hazard.nasaReferences.map((ref) => (
-            <li key={ref} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
-              {ref}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />
     </section>
   );
 }

@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  Database,
   Pencil,
   Plus,
   RefreshCw,
@@ -66,7 +65,7 @@ function CharacterPickerContent() {
     setActiveCharacterId(character.id);
     pushToast({
       title: `Entered as ${character.isLeadSlot ? "Leader" : "Member"}`,
-      message: `Here is: ${character.callsign} active in ${activeScenario.name}.`,
+      message: `${character.callsign} active in ${activeScenario.name}.`,
       variant: "success",
     });
     router.push("/dashboard");
@@ -80,12 +79,12 @@ function CharacterPickerContent() {
       const created = await createCharacter({
         scenarioId: activeScenario.id,
         callsign: callsign.trim(),
-        assignedRoleTitle: assignedRoleTitle.trim() || "Add your info: Assigned role title here",
+        assignedRoleTitle: assignedRoleTitle.trim() || "Crew Specialist",
         isLeadSlot,
       });
       pushToast({
-        title: "Character Added in Supabase",
-        message: `Here is: ${created.callsign} linked to ${activeScenario.name}.`,
+        title: "Character Added",
+        message: `${created.callsign} linked to ${activeScenario.name}.`,
         variant: "success",
       });
       setCallsign("");
@@ -93,9 +92,9 @@ function CharacterPickerContent() {
       setIsLeadSlot(false);
       setShowAddChar(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save character to Supabase";
+      const msg = err instanceof Error ? err.message : "Failed to save character";
       pushToast({
-        title: "Supabase Error",
+        title: "Error",
         message: msg,
         variant: "hazard",
       });
@@ -121,20 +120,20 @@ function CharacterPickerContent() {
         scenarioId: activeScenario.id,
         id: editingId,
         callsign: editCallsign.trim(),
-        assignedRoleTitle: editRoleTitle.trim() || "Add your info: Assigned role title here",
+        assignedRoleTitle: editRoleTitle.trim() || "Crew Specialist",
         isLeadSlot: editIsLead,
-        publicStatusSummary: editSummary.trim() || "Here is: Updated character status",
+        publicStatusSummary: editSummary.trim() || "Updated character status",
       });
       pushToast({
-        title: "Character Updated in Supabase",
-        message: `Here is: ${updated.callsign} saved to public.characters.`,
+        title: "Character Updated",
+        message: `${updated.callsign} updated.`,
         variant: "success",
       });
       setEditingId(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to update character in Supabase";
+      const msg = err instanceof Error ? err.message : "Failed to update character";
       pushToast({
-        title: "Supabase Update Error",
+        title: "Update Error",
         message: msg,
         variant: "hazard",
       });
@@ -149,7 +148,7 @@ function CharacterPickerContent() {
       className="space-y-3 rounded-2xl border border-sky-300 bg-sky-50/40 p-5 text-xs"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-slate-900">Edit Character in Supabase (public.characters)</span>
+        <span className="font-bold text-slate-900">Edit Character</span>
         <button
           type="button"
           onClick={() => setEditingId(null)}
@@ -165,14 +164,14 @@ function CharacterPickerContent() {
           required
           value={editCallsign}
           onChange={(e) => setEditCallsign(e.target.value)}
-          placeholder="Add your info: Callsign here"
+          placeholder="Callsign"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
         />
         <input
           type="text"
           value={editRoleTitle}
           onChange={(e) => setEditRoleTitle(e.target.value)}
-          placeholder="Add your info: Assigned role title here"
+          placeholder="Assigned role title"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
         />
       </div>
@@ -180,7 +179,7 @@ function CharacterPickerContent() {
         type="text"
         value={editSummary}
         onChange={(e) => setEditSummary(e.target.value)}
-        placeholder="Add your info: Public status summary here"
+        placeholder="Public status summary"
         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -215,22 +214,6 @@ function CharacterPickerContent() {
             Change Scenario
           </Link>
           <div className="flex items-center gap-3">
-            <span
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                dbStatus === "connected"
-                  ? "bg-emerald-50 text-emerald-700"
-                  : dbStatus === "error"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              <Database className="h-3 w-3" />
-              {dbStatus === "connected"
-                ? "Supabase Connected"
-                : dbStatus === "error"
-                ? "Supabase Error"
-                : "Connecting..."}
-            </span>
             <span className="text-xs font-medium text-slate-500">Step 2 · Choose or Edit Character</span>
           </div>
         </div>
@@ -243,7 +226,7 @@ function CharacterPickerContent() {
               <div className="space-y-1">
                 <p className="inline-flex items-center gap-2 text-sm font-bold text-red-900">
                   <AlertTriangle className="h-4 w-4" />
-                  Supabase Database Error
+                  Connection Error
                 </p>
                 <p className="font-mono text-xs text-red-800">{dbError}</p>
               </div>
@@ -261,13 +244,13 @@ function CharacterPickerContent() {
 
         {dbStatus === "loading" && (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-            Loading characters from Supabase...
+            Loading characters...
           </div>
         )}
 
         {!activeScenario && dbStatus !== "loading" && !dbError && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
-            Scenario not found in Supabase.{" "}
+            Scenario not found.{" "}
             <Link href="/" className="font-semibold underline">
               Return to Scenarios
             </Link>
@@ -282,8 +265,7 @@ function CharacterPickerContent() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">{activeScenario.name}</p>
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900">Choose Your Character</h1>
                 <p className="text-sm text-slate-600">
-                  Here is: Pick any character (Leader or Member) to enter the dashboard, or click Edit to customize
-                  callsign or role in Supabase.
+                  Pick a character (Leader or Member) to enter the dashboard, or edit their callsign and role.
                 </p>
               </div>
               <button
@@ -302,7 +284,7 @@ function CharacterPickerContent() {
                 className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs"
               >
                 <h2 className="text-sm font-bold text-slate-900">
-                  Add Character Linked to {activeScenario.name} (public.characters)
+                  Add Character to {activeScenario.name}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input
@@ -310,14 +292,14 @@ function CharacterPickerContent() {
                     required
                     value={callsign}
                     onChange={(e) => setCallsign(e.target.value)}
-                    placeholder="Add your info: Callsign here"
+                    placeholder="Callsign"
                     className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
                   />
                   <input
                     type="text"
                     value={assignedRoleTitle}
                     onChange={(e) => setAssignedRoleTitle(e.target.value)}
-                    placeholder="Add your info: Assigned role title here"
+                    placeholder="Assigned role title"
                     className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
                   />
                 </div>
@@ -336,7 +318,7 @@ function CharacterPickerContent() {
                     disabled={creating}
                     className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                   >
-                    {creating ? "Saving to Supabase..." : "Save Character"}
+                    {creating ? "Saving..." : "Save Character"}
                   </button>
                 </div>
               </form>
@@ -398,7 +380,7 @@ function CharacterPickerContent() {
               </h2>
               {members.length === 0 && (
                 <p className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500">
-                  No member characters found in public.characters for this scenario yet.
+                  No member characters found for this scenario yet.
                 </p>
               )}
               <div className="grid gap-4 md:grid-cols-2">

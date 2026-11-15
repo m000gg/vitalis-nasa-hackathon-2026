@@ -34,12 +34,11 @@ export async function POST(request: NextRequest) {
   }
 
   const name = body.name?.trim() ?? "";
-  const durationContext = body.durationContext?.trim() ?? "Add your info: Mission duration context here";
+  const durationContext = body.durationContext?.trim() || "Standard transit";
   const scenarioDescriptionSlot =
-    body.scenarioDescriptionSlot?.trim() ??
-    "Add your info: Scenario description here";
+    body.scenarioDescriptionSlot?.trim() || "Custom mission scenario";
   const commsDelayLabel =
-    body.commsDelayLabel?.trim() ?? "Add your info: Light-time comms delay here";
+    body.commsDelayLabel?.trim() || "Nominal light-time delay";
 
   if (!name) {
     return NextResponse.json(

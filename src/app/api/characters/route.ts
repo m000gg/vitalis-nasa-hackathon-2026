@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const scenarioId = body.scenarioId?.trim() ?? "";
   const callsign = body.callsign?.trim() ?? "";
   const assignedRoleTitle =
-    body.assignedRoleTitle?.trim() || "Add your info: Assigned role title here";
+    body.assignedRoleTitle?.trim() || "Crew Specialist";
 
   if (!scenarioId || !callsign) {
     return NextResponse.json(

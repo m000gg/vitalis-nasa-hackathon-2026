@@ -372,7 +372,7 @@ export default function DashboardOverviewPage() {
                 });
                 pushToast({
                   title: "Hazard Alarm Test Triggered",
-                  message: `Here is: Opened active alarm overlay for Hazard ${topCritical.number}.`,
+                  message: `Opened active alarm overlay for Hazard ${topCritical.number}.`,
                   variant: "hazard",
                 });
               }}

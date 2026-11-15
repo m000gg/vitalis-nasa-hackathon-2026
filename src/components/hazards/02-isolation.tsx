@@ -1,25 +1,27 @@
 "use client";
 
-import React, { useEffect, useId, useState } from "react";
+import React, { useState } from "react";
 import {
   AlertTriangle,
   BedDouble,
   Brain,
   CheckCircle2,
-  ExternalLink,
-  Info,
   Lock,
   ShieldAlert,
   Users,
   Volume2,
-  X,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import {
+  InfoCircle,
+  ResearchModal,
+  type ActiveResearchInfoState,
+  type ResearchInfoEntry,
+} from "@/components/ResearchInfoModal";
 import { evaluateHazardForActor } from "@/lib/evaluator";
 import {
   ISOLATION_PIPELINE_VALUES,
   ISOLATION_RESEARCH_METADATA,
-  type IsolationInfoEntry,
 } from "@/lib/hazards/02-isolation";
 import type { HazardChartSpec, HazardDataRecord } from "@/lib/hazards/types";
 import type { HazardScreenProps } from "./types";
@@ -119,134 +121,6 @@ function formatNum(value: number | null, unit = "", digits?: number): string {
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
-type ActiveInfoState = { triggerId: string; entry: IsolationInfoEntry } | null;
-
-/**
- * Accessible (i) button with comfortable astronaut-friendly hit target (24x24px).
- * Opens the unified viewport-safe ResearchModal so popovers never clip inside tables or mobile screens.
- */
-function InfoCircle({
-  entry,
-  activeInfo,
-  onSelectInfo,
-}: {
-  entry: IsolationInfoEntry;
-  activeInfo: ActiveInfoState;
-  onSelectInfo: (next: ActiveInfoState) => void;
-}) {
-  const triggerId = useId();
-  const isSelected = activeInfo?.triggerId === triggerId;
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelectInfo(isSelected ? null : { triggerId, entry });
-      }}
-      aria-label={`Explain ${entry.title} and view NASA sources`}
-      aria-expanded={isSelected}
-      title={`NASA source & explanation: ${entry.title}`}
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none ${
-        isSelected
-          ? "border-sky-600 bg-sky-600 text-white"
-          : "border-slate-300 bg-white text-slate-600 hover:border-sky-400 hover:bg-sky-50 hover:text-sky-700"
-      }`}
-    >
-      <Info className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
-    </button>
-  );
-}
-
-/**
- * Accessible, non-clipping modal dialog displaying plain-language explanation,
- * verified NASA benchmark/thresholds, and clickable research paper & dataset links.
- */
-function ResearchModal({
-  entry,
-  onClose,
-}: {
-  entry: IsolationInfoEntry | null;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    if (!entry) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [entry, onClose]);
-
-  if (!entry) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[1px]"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="isolation-research-title"
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
-              <Info className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <h3 id="isolation-research-title" className="text-sm font-bold text-slate-900">
-              {entry.title}
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close research details"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="mt-3 space-y-3">
-          <p className="text-xs leading-relaxed text-slate-700 sm:text-sm">{entry.explanation}</p>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800">
-            <p className="text-[11px] font-bold tracking-wide text-slate-500 uppercase">
-              NASA Thresholds &amp; Dataset Benchmark
-            </p>
-            <p className="mt-1">{entry.benchmark}</p>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-bold tracking-wide text-slate-500 uppercase">
-              Verified Research Papers &amp; Datasets
-            </p>
-            <ul className="mt-1.5 space-y-1.5">
-              {entry.links.map((link) => (
-                <li key={link.url + link.label}>
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex w-full items-center justify-between gap-2 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs font-medium text-sky-800 transition-colors hover:border-sky-300 hover:bg-sky-50 focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none"
-                  >
-                    <span>{link.label}</span>
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function KpiCard({
   label,
   value,
@@ -262,9 +136,9 @@ function KpiCard({
   subline: string;
   tone?: Tone;
   icon: React.ReactNode;
-  infoEntry: IsolationInfoEntry;
-  activeInfo: ActiveInfoState;
-  onSelectInfo: (next: ActiveInfoState) => void;
+  infoEntry: ResearchInfoEntry;
+  activeInfo: ActiveResearchInfoState;
+  onSelectInfo: (next: ActiveResearchInfoState) => void;
 }) {
   const toneLabel = tone === "critical" ? "Critical" : tone === "elevated" ? "Elevated" : "Nominal";
   return (
@@ -312,7 +186,7 @@ export function IsolationHazardScreen({
   scenarioHazardRecords,
   scenarioHazardSamples,
 }: HazardScreenProps) {
-  const [activeInfo, setActiveInfo] = useState<ActiveInfoState>(null);
+  const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
 
   const wearable = findRecord(hazardRecords, STREAM_WEARABLE);
   const habitat = findRecord(hazardRecords, STREAM_HABITAT);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from config import ScenarioInfo
@@ -35,7 +36,14 @@ def _pick_nasa_co2_mmhg(
         src = "Vitalis-Fallback-ECLSS"
 
     # Keep positive Habitat <= 2.9 mmHg so 02-isolation.ts does not raise false cross-hazard alert.
-    if mode == "positive":
+    if mode == "chaos":
+        co2 = round(
+            random.uniform(1.4, 2.6)
+            if point_index % 2 == 0
+            else random.uniform(6.4, 9.8),
+            2,
+        )
+    elif mode == "positive":
         mod_offset = {"Lab": 0.12, "Habitat": 0.04, "Galley": 0.18, "Airlock": -0.05}[module_name]
         co2 = min(2.85, max(1.6, round(base_mmhg + mod_offset, 2)))
     elif mode == "negative":
@@ -65,6 +73,9 @@ def generate(
     if mode == "positive":
         demo_scenario = "none"
         sim_minutes = 20  # tMin = 20 -> co2Trend 'collecting', all 4 modules green in 05-environment.ts
+    elif mode == "chaos":
+        demo_scenario = "chaos"
+        sim_minutes = 150
     elif mode == "negative":
         demo_scenario = "co2-scrubber-failure"
         sim_minutes = 120
@@ -111,6 +122,10 @@ def generate(
                 o2_mmhg = round(159.5 + math.sin(s_idx * 0.4 + mod_idx) * 1.1, 1)
                 pressure = round(14.7 + math.cos(s_idx * 0.3) * 0.03, 2)
                 noise = round(42.0 + mod_idx * 1.2 + math.sin(s_idx) * 1.0, 1)
+            elif mode == "chaos":
+                o2_mmhg = round(random.uniform(106.0, 174.0), 1)
+                pressure = round(random.uniform(4.2, 15.8), 2)
+                noise = round(random.uniform(43.0, 108.0), 1)
             elif mode == "negative":
                 o2_mmhg = round((143.0 if mod_name == "Lab" else 152.0) - s_idx * 0.25, 1)
                 pressure = round(14.42 - s_idx * 0.008, 2)
@@ -179,12 +194,27 @@ def stream_tick(
     if mode == "positive":
         demo_scenario = "none"
         sim_minutes = 20 + (tick_index % 3) * 5  # stay < 90 in positive mode
+    elif mode == "chaos":
+        demo_scenario = "chaos"
+        sim_minutes = 150 + tick_index * 10
     elif mode == "negative":
         demo_scenario = "co2-scrubber-failure"
         sim_minutes = 120 + tick_index * 10
     else:
         demo_scenario = "noisy-galley"
         sim_minutes = 45 + (tick_index % 5) * 5
+
+    data_rows.append(
+        data_row(
+            scenario.id,
+            owner.id,
+            "environment",
+            "Demo Scenario",
+            demo_scenario,
+            {"scenarioId": demo_scenario, "provenanceKind": "simulated"},
+            hours_ago=0.0,
+        )
+    )
 
     data_rows.append(
         data_row(
@@ -206,6 +236,10 @@ def stream_tick(
             o2_mmhg = round(159.4 + math.sin(tick_index + mod_idx) * 0.8, 1)
             pressure = 14.70
             noise = round(42.5 + mod_idx * 1.1, 1)
+        elif mode == "chaos":
+            o2_mmhg = round(random.uniform(108.0, 172.0), 1)
+            pressure = round(random.uniform(4.2, 15.8), 2)
+            noise = round(random.uniform(44.0, 108.0), 1)
         elif mode == "negative":
             o2_mmhg = round(142.0 if mod_name == "Lab" else 151.0, 1)
             pressure = 14.38

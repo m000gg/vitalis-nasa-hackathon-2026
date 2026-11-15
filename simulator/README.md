@@ -42,6 +42,12 @@ Seed **negative** (radiation SEP storm, sleep deprivation, solar conjunction & i
 python3 simulator/sim.py seed --mode negative
 ```
 
+Seed **chaos** (erratic extreme spikes, violent oscillations, and simultaneous faults across every chart in all 5 hazards):
+
+```bash
+python3 simulator/sim.py seed --mode chaos
+```
+
 Clear telemetry tables (`character_hazard_data`, `character_hazard_samples`) while keeping `scenarios` and `characters` intact:
 
 ```bash

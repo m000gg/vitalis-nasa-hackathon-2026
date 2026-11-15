@@ -155,7 +155,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       };
 
       if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status} loading scenarios from Supabase`);
+        throw new Error(data.error || `HTTP ${res.status} loading scenarios`);
       }
 
       if (!Array.isArray(data.scenarios)) {
@@ -199,7 +199,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       setActiveCharacterIdState(targetChar ? targetChar.id : "");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to connect to Supabase (/api/scenarios)";
+        err instanceof Error ? err.message : "Failed to connect to /api/scenarios";
       setScenarios([]);
       setMissionIdState("");
       setActiveCharacterIdState("");
@@ -246,11 +246,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         if (isCancelled?.()) return;
 
         if (!dataRes.ok) {
-          throw new Error(data.error || `HTTP ${dataRes.status} loading hazard_data from Supabase`);
+          throw new Error(data.error || `HTTP ${dataRes.status} loading hazard telemetry`);
         }
         if (!sampleRes.ok) {
           throw new Error(
-            sampleData.error || `HTTP ${sampleRes.status} loading hazard_samples from Supabase`
+            sampleData.error || `HTTP ${sampleRes.status} loading telemetry samples`
           );
         }
 
@@ -280,7 +280,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         const message =
           err instanceof Error
             ? err.message
-            : "Failed to load scenario hazard telemetry from Supabase";
+            : "Failed to load scenario hazard telemetry";
         setDbStatus("error");
         setDbError(message);
       }
@@ -508,7 +508,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       error?: string;
     };
     if (!res.ok || !data.scenario) {
-      const msg = data.error || `HTTP ${res.status} creating scenario in Supabase`;
+      const msg = data.error || `HTTP ${res.status} creating scenario`;
       setDbStatus("error");
       setDbError(msg);
       throw new Error(msg);
@@ -532,7 +532,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       error?: string;
     };
     if (!res.ok || !data.character) {
-      const msg = data.error || `HTTP ${res.status} creating character in Supabase`;
+      const msg = data.error || `HTTP ${res.status} creating character`;
       setDbStatus("error");
       setDbError(msg);
       throw new Error(msg);
@@ -565,7 +565,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       error?: string;
     };
     if (!res.ok || !data.character) {
-      const msg = data.error || `HTTP ${res.status} updating character in Supabase`;
+      const msg = data.error || `HTTP ${res.status} updating character`;
       setDbStatus("error");
       setDbError(msg);
       throw new Error(msg);
@@ -595,7 +595,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       samplePayload?: Record<string, unknown>;
     }) => {
       if (!mission || !activeCharacter) {
-        throw new Error("Cannot log sample: no active scenario or character loaded from Supabase.");
+        throw new Error("Cannot log sample: no active scenario or character selected.");
       }
 
       const res = await fetch("/api/hazard-samples", {
@@ -612,7 +612,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         error?: string;
       };
       if (!res.ok || !data.sample) {
-        const msg = data.error || `HTTP ${res.status} inserting hazard sample in Supabase`;
+        const msg = data.error || `HTTP ${res.status} saving hazard sample`;
         setDbStatus("error");
         setDbError(msg);
         throw new Error(msg);
@@ -634,11 +634,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       options?: SaveActorInputOptions
     ) => {
       if (!mission || !activeCharacter) {
-        throw new Error("Cannot save input: no active scenario or character loaded from Supabase.");
+        throw new Error("Cannot save input: no active scenario or character selected.");
       }
 
       if (!hazardSlug) {
-        throw new Error("Cannot save input to Supabase without a hazardSlug.");
+        throw new Error("Cannot save input without a hazardSlug.");
       }
 
       const parsedNumeric =
@@ -670,7 +670,7 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
       };
 
       if (!res.ok || !data.record) {
-        const msg = data.error || `HTTP ${res.status} saving hazard data to Supabase`;
+        const msg = data.error || `HTTP ${res.status} saving hazard data`;
         setDbStatus("error");
         setDbError(msg);
         throw new Error(msg);

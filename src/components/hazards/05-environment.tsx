@@ -1,21 +1,25 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Info,
-  Lock,
   Wind,
   XCircle,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
 import {
+  InfoCircle,
+  ResearchModal,
+  type ActiveResearchInfoState,
+} from "@/components/ResearchInfoModal";
+import {
   buildLedger,
   buildModuleSimulation,
   co2Trend,
   ENVIRONMENT_PIPELINE_VALUES,
+  ENVIRONMENT_RESEARCH_METADATA,
   evaluateModuleAir,
   formatBanner,
   headacheOddsText,
@@ -76,8 +80,6 @@ function AirIcon({ status, className = "h-4 w-4" }: { status: AirStatus; classNa
  * Renders the Habitat Module Weather Map, Air Risk Forecast, and CO2 Charts using 05-environment.ts exports.
  */
 export function EnvironmentHazardScreen({
-  hazard,
-  role,
   snapshot,
   hazardRecords,
   scenarioHazardRecords,
@@ -105,30 +107,11 @@ export function EnvironmentHazardScreen({
   });
 
   const bannerText = formatBanner(moduleViews.map((m) => m.air.status));
-  const roleMeta = role === "lead" ? hazard.leadView : hazard.memberView;
   const charts = snapshot.charts ?? [];
+  const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
 
   return (
     <div className="space-y-6">
-      {/* Scope & Simulated Data Notice */}
-      <section className="rounded-2xl border border-amber-300 bg-amber-50/70 px-5 py-3.5 text-xs text-amber-950">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
-              {V.demoDataBadge}
-            </span>
-            <span className="font-semibold">
-              {bannerText} · Simulated Minute: {Math.floor(elapsedMin / 10) * 10} · Scenario: {scenarioId}
-            </span>
-          </div>
-        </div>
-        <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] text-amber-900">
-          {V.limitsTooltipLines.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      </section>
-
       {/* 1. Ready-to-Act Primary Briefing */}
       <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
@@ -142,6 +125,11 @@ export function EnvironmentHazardScreen({
             <h2 className="text-base font-bold text-slate-900">
               Habitat Air &amp; Environmental Briefing
             </h2>
+            <InfoCircle
+              entry={ENVIRONMENT_RESEARCH_METADATA.habitat_air_briefing}
+              activeInfo={activeInfo}
+              onSelectInfo={setActiveInfo}
+            />
           </div>
 
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -201,9 +189,16 @@ export function EnvironmentHazardScreen({
       {/* 2. Habitat Module Weather Map (4 Modules) */}
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-slate-900">
-            Habitat Module Weather Map ({bannerText})
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-900">
+              Habitat Module Weather Map ({bannerText})
+            </h2>
+            <InfoCircle
+              entry={ENVIRONMENT_RESEARCH_METADATA.module_acoustics}
+              activeInfo={activeInfo}
+              onSelectInfo={setActiveInfo}
+            />
+          </div>
           <span className="text-[11px] text-slate-500">
             NASA Limits: CO₂ ≤ {V.limits.co2TargetMmhg} mmHg · O₂ ≥ {V.limits.o2YellowBelowMmhg}/{V.limits.o2RedBelowMmhg} mmHg · {V.limits.pressureMinPsia}–{V.limits.pressureMaxPsia} psia · &lt;{V.limits.noiseHazardDba} dBA
           </span>
@@ -231,7 +226,7 @@ export function EnvironmentHazardScreen({
                     <div key={m.metric} className="rounded-xl border border-slate-200/80 bg-slate-50 p-2.5">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[11px] font-semibold uppercase text-slate-500">
-                          {m.metric} [DEMO]
+                          {m.metric}
                         </span>
                         <AirIcon status={m.status} className="h-3.5 w-3.5" />
                       </div>
@@ -244,7 +239,7 @@ export function EnvironmentHazardScreen({
 
                 <div className="mt-3 space-y-1 text-xs text-slate-700">
                   <p>
-                    <strong>Trend [ARITHMETIC]:</strong>{" "}
+                    <strong>Trend:</strong>{" "}
                     {trend.state === "collecting"
                       ? V.messages.collecting
                       : `${trend.label} (${trend.slopeMmhgPerMin > 0 ? "+" : ""}${trend.slopeMmhgPerMin.toFixed(3)} mmHg/min)`}
@@ -252,11 +247,11 @@ export function EnvironmentHazardScreen({
                   </p>
                   {oddsText && (
                     <p className="font-medium text-red-800">
-                      CO₂ Risk [2]: {oddsText}
+                      CO₂ Risk: {oddsText}
                     </p>
                   )}
                   <p className="text-[11px] text-slate-500">
-                    Ledger [ARITHMETIC]: {ledger.minutesAboveTarget} min above {V.limits.co2TargetMmhg} mmHg · Max CO₂ {Number(ledger.maxCo2Mmhg.toFixed(2))} mmHg
+                    Exposure: {ledger.minutesAboveTarget} min above {V.limits.co2TargetMmhg} mmHg · Max CO₂ {Number(ledger.maxCo2Mmhg.toFixed(2))} mmHg
                   </p>
                 </div>
               </div>
@@ -267,9 +262,16 @@ export function EnvironmentHazardScreen({
 
       {/* 3. CO2 Telemetry Charts (with 4 mmHg NASA target dashed line) */}
       <section className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">
-          Per-Module CO₂ History &amp; NASA Target ({V.limits.co2TargetMmhg} mmHg)
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-900">
+            Per-Module CO₂ History &amp; NASA Target ({V.limits.co2TargetMmhg} mmHg)
+          </h2>
+          <InfoCircle
+            entry={ENVIRONMENT_RESEARCH_METADATA.co2_headache_risk}
+            activeInfo={activeInfo}
+            onSelectInfo={setActiveInfo}
+          />
+        </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {charts.map((chart) => (
             <HazardTelemetryChart key={chart.id} chart={chart} />
@@ -277,29 +279,7 @@ export function EnvironmentHazardScreen({
         </div>
       </section>
 
-      {/* 4. Role Context & NASA References */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-600">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 font-bold text-slate-900">
-            <Info className="h-4 w-4 text-sky-600" aria-hidden="true" />
-            {role === "lead" ? "Commander Module Oversight" : "Crew Member Environment Context"}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
-            <Lock className="h-3 w-3" /> {roleMeta.privacyRule}
-          </span>
-        </div>
-        <p className="mt-1.5">{roleMeta.summary}</p>
-        <p className="mt-2 rounded-xl bg-slate-50 p-3 text-slate-700">
-          <strong>Study Context [2]:</strong> {V.studyFactsText} · Acoustics reference: {V.limits.noiseReferenceText}.
-        </p>
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {hazard.nasaReferences.map((ref) => (
-            <li key={ref} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] text-slate-700">
-              {ref}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />
     </div>
   );
 }

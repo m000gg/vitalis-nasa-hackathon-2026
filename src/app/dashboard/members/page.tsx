@@ -187,7 +187,7 @@ export default function MembersOverviewPage() {
                       setActiveCharacterId(member.id);
                       pushToast({
                         title: `Viewing as ${member.callsign}`,
-                        message: `Here is: Switched active crew profile to ${member.callsign}.`,
+                        message: `Switched active crew profile to ${member.callsign}.`,
                         variant: "info",
                       });
                     }}

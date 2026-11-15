@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from config import CrewMember, ScenarioInfo
@@ -20,8 +21,8 @@ COMPARTMENTS = [
 def _member_severity(idx: int, mode: str) -> str:
     if mode == "positive":
         return "nominal"
-    if mode == "negative":
-        return "critical" if idx in (1, 2) else "elevated"
+    if mode in ("negative", "chaos"):
+        return "critical" if idx in (1, 2) or mode == "chaos" else "elevated"
     # demo mix
     if idx == 2:
         return "critical"
@@ -69,9 +70,9 @@ def generate(
     )
 
     # 2. Space Weather (DONKI)
-    donki_active = mode == "negative"
+    donki_active = mode in ("negative", "chaos")
     donki_payload = {
-        "eventId": "2026-SEP-0412" if donki_active else "2026-QUIET-0108",
+        "eventId": "2026-CHAOS-X9" if mode == "chaos" else ("2026-SEP-0412" if donki_active else "2026-QUIET-0108"),
         "eventType": "SEP" if donki_active else "FLR",
         "startTime": iso_hours_ago(3.5 if donki_active else 36.0),
         "endTime": "" if donki_active else iso_hours_ago(30.0),
@@ -85,7 +86,9 @@ def generate(
             policy_owner.id,
             "radiation",
             "Space Weather (DONKI)",
-            "ACTIVE SEP storm replay (verify onboard dosimeters)"
+            "EXTREME X-CLASS SEP CHAOS REPLAY (verify onboard dosimeters)"
+            if mode == "chaos"
+            else "ACTIVE SEP storm replay (verify onboard dosimeters)"
             if donki_active
             else "Quiet background solar weather (inactive)",
             donki_payload,
@@ -130,21 +133,37 @@ def generate(
             base_rate = 585.0
             cum_dose = 212.0
 
-        # 8 ascending samples every 2h (gap <= maxIntegrationGapHours=24h)
+        # Ascending samples (16 chaotic 1h spikes in chaos mode; 8 normal 2h points otherwise)
         latest_rate = base_rate
         latest_ts = iso_hours_ago(0.2)
-        for step in range(8):
-            hours_back = (7 - step) * 2.0 + 0.2
-            ts = iso_hours_ago(hours_back)
-            wave = math.sin(step * 0.9 + idx) * (0.08 * base_rate)
-            if sev in ("elevated", "critical") and step >= 5:
-                # Ramp up in recent samples to look like an incoming event
-                factor = 0.55 + (step - 4) * 0.16
-                rate = round(max(1.0, base_rate * factor + wave * 0.4), 1)
-            else:
-                rate = round(max(1.0, base_rate + wave), 1)
+        num_steps = 16 if mode == "chaos" else 8
+        step_hours = 1.0 if mode == "chaos" else 2.0
+        if mode == "chaos":
+            cum_dose = round(85.0 + idx * 95.0, 1)
 
-            step_cum = round(cum_dose + step * (rate * 0.002), 2)
+        for step in range(num_steps):
+            hours_back = (num_steps - 1 - step) * step_hours + 0.2
+            ts = iso_hours_ago(hours_back)
+            if mode == "chaos":
+                rate = round(
+                    random.uniform(14.0, 95.0)
+                    if (step + idx) % 2 == 0
+                    else random.uniform(1950.0, 6800.0),
+                    1,
+                )
+                step_cum = round(cum_dose + step * random.uniform(6.0, 22.0), 2)
+                step_quality = "suspect" if step % 3 == 0 else "valid"
+            else:
+                wave = math.sin(step * 0.9 + idx) * (0.08 * base_rate)
+                if sev in ("elevated", "critical") and step >= 5:
+                    # Ramp up in recent samples to look like an incoming event
+                    factor = 0.55 + (step - 4) * 0.16
+                    rate = round(max(1.0, base_rate * factor + wave * 0.4), 1)
+                else:
+                    rate = round(max(1.0, base_rate + wave), 1)
+                step_cum = round(cum_dose + step * (rate * 0.002), 2)
+                step_quality = quality_flag if step == num_steps - 1 else "valid"
+
             sample_rows.append(
                 sample_row(
                     scenario.id,
@@ -160,7 +179,7 @@ def generate(
                         "cumulativeDoseUnit": "mSv",
                         "uncertaintyPercent": 7,
                         "instrument": f"RAD-PD-0{idx + 1}",
-                        "qualityFlag": quality_flag if step == 7 else "valid",
+                        "qualityFlag": step_quality,
                         "provenanceKind": "simulated",
                         "measuredAt": ts,
                         "source": "NASA-PDS / Vitalis-Sim",
@@ -170,6 +189,9 @@ def generate(
             )
             latest_rate = rate
             latest_ts = ts
+            if mode == "chaos":
+                cum_dose = step_cum
+                quality_flag = step_quality
 
         data_rows.append(
             data_row(
@@ -199,6 +221,10 @@ def generate(
         if mode == "positive":
             comp_rate = round(base_rate + (idx - 2) * 1.4, 1)  # < 25% spread
             det_status = "online"
+        elif mode == "chaos":
+            comp_rates = [19.0, 2850.0, 420.0, 9400.0, 6150.0]
+            comp_rate = round(comp_rates[idx % len(comp_rates)] * random.uniform(0.65, 1.35), 1)
+            det_status = "suspect" if idx in (1, 3) else "online"
         elif mode == "negative":
             # Wide spread (>25%) & high airlock dose rate
             comp_rates = [42.0, 145.0, 220.0, 610.0, 180.0]
@@ -253,8 +279,19 @@ def stream_tick(
         elif sev == "critical":
             base_rate, cum_dose = 585.0, 213.0
 
-        rate = round(base_rate + math.sin(tick_index * 0.7 + idx) * (0.06 * base_rate), 1)
-        cum = round(cum_dose + tick_index * (rate * 0.0005), 2)
+        if mode == "chaos":
+            rate = round(
+                random.uniform(18.0, 120.0)
+                if (tick_index + idx) % 2 == 0
+                else random.uniform(2100.0, 7400.0),
+                1,
+            )
+            cum = round(140.0 + idx * 80.0 + tick_index * random.uniform(1.5, 9.0), 2)
+            q_flag = "suspect" if (tick_index + idx) % 3 == 0 else "valid"
+        else:
+            rate = round(base_rate + math.sin(tick_index * 0.7 + idx) * (0.06 * base_rate), 1)
+            cum = round(cum_dose + tick_index * (rate * 0.0005), 2)
+            q_flag = "valid"
         payload = {
             "doseRateValue": rate,
             "doseRateUnit": "µSv/h",
@@ -262,7 +299,7 @@ def stream_tick(
             "cumulativeDoseUnit": "mSv",
             "uncertaintyPercent": 7,
             "instrument": f"RAD-PD-0{idx + 1}",
-            "qualityFlag": "valid",
+            "qualityFlag": q_flag,
             "provenanceKind": "simulated",
             "measuredAt": ts,
             "source": "NASA-PDS / Vitalis-Sim (Live)",

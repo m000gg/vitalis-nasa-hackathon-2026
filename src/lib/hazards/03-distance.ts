@@ -1,4 +1,70 @@
+import type { ResearchInfoEntry } from "@/components/ResearchInfoModal";
 import { HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
+
+export const DISTANCE_RESEARCH_METADATA: Record<string, ResearchInfoEntry> = {
+  autonomy_briefing: {
+    id: "autonomy_briefing",
+    title: "Deep Space Autonomy & Mission Risk",
+    explanation:
+      "On Mars-class missions (~3 years), Mission Control cannot provide real-time consultation or rapid Earth evacuation, requiring local checklists and store-and-forward workflows.",
+    benchmark:
+      "NASA HRP identifies distance-induced communication latency (~8–48 min round-trip) and inability to evacuate rapidly as core deep-space operational constraints.",
+    links: [
+      {
+        label: "NASA HRP — Hazard: Distance From Earth",
+        url: "https://www.nasa.gov/hrp/hazard-distance-from-earth/",
+      },
+      {
+        label: "NASA — The Human Body in Space",
+        url: "https://www.nasa.gov/humans-in-space/the-human-body-in-space/",
+      },
+      {
+        label: "NASA Delay/Disruption Tolerant Networking (DTN)",
+        url: "https://www.nasa.gov/communicating-with-missions/delay-disruption-tolerant-networking/",
+      },
+    ],
+  },
+  ephemeris_latency: {
+    id: "ephemeris_latency",
+    title: "JPL Horizons Ephemeris & Light-Time Delay",
+    explanation:
+      "Computes one-way and round-trip signal delay directly from Earth–Mars distance (Delay = distance_km / 299,792.458 km/s) grounded in JPL Horizons planetary geometry.",
+    benchmark:
+      "One-way Earth–Mars radio travel time ranges ~4–24 min (~8–48 min earliest round-trip), varying continuously with orbital geometry.",
+    links: [
+      {
+        label: "NASA JPL — Horizons Ephemeris API",
+        url: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+      },
+      {
+        label: "NASA — Space Communications: 7 Things You Need to Know",
+        url: "https://www.nasa.gov/missions/tech-demonstration/space-communications-7-things-you-need-to-know/",
+      },
+      {
+        label: "NASA JPL — Deep Space Network Now",
+        url: "https://eyes.nasa.gov/apps/dsn-now/",
+      },
+    ],
+  },
+  medical_inventory: {
+    id: "medical_inventory",
+    title: "Integrated Medical Model & Supply Tracking",
+    explanation:
+      "Tracks onboard medical kit stock, expiring consumables, and low-stock warnings under strict mass/volume constraints when replacement resupply flights are infeasible.",
+    benchmark:
+      "NASA's Integrated Medical Model (IMM) uses probabilistic simulation over mission duration and crew size to size onboard medical capabilities.",
+    links: [
+      {
+        label: "NASA — Integrated Medical Model (IMM) Overview",
+        url: "https://www.nasa.gov/nasa-integrated-medical-model-imm-overview/",
+      },
+      {
+        label: "NASA — Integrated Medical Model (2026)",
+        url: "https://www.nasa.gov/general/nasas-integrated-medical-model-imm/",
+      },
+    ],
+  },
+};
 
 /**
  * ============================================================================
@@ -83,24 +149,26 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
 
   const immediateHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `${delay.oneWayLabel} one-way light delay and ${delay.roundTripLabel} Earth round-trip delay for ${validatedDistanceKm.toLocaleString()} km; autonomous onboard procedures cover the latency window.`
+      ? `Autonomous onboard procedures active (${delay.oneWayLabel} one-way delay — no real-time Earth support).`
       : distanceHazard.outputSlots.immediateHorizon;
 
   const prolongedHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `A ${delay.roundTripLabel} Earth round-trip delay requires autonomous medical inventory tracking and pre-approved crew checklists.`
+      ? "Track onboard medical stock and expirations for autonomous crew response."
       : distanceHazard.outputSlots.prolongedHorizon;
 
   const eta =
     validatedDistanceKm !== null && delay !== null
-      ? `RTT ${delay.roundTripLabel} (${delay.oneWayLabel} one-way) for ${validatedDistanceKm.toLocaleString()} km`
+      ? `RTT ${delay.roundTripLabel} (${delay.oneWayLabel} one-way)`
       : actor.metrics.etaSlot;
 
   const solutions = [
     delay
-      ? `One-way light-time is ${delay.oneWayLabel}; round-trip delay is ${delay.roundTripLabel} at ${DISTANCE_PIPELINE_VALUES.speedOfLightKmPerSecond} km/s.`
-      : "Validate Earth–Mars ephemeris distance in km in DB telemetry before using the comms-delay model.",
-    "Verify non-expired onboard medical kit supplies for autonomous crew response across the light-time window.",
+      ? delay.oneWaySeconds >= 600
+        ? "Run pre-approved local stabilization checklists instead of waiting for Earth reply."
+        : "Monitor Earth–Mars ephemeris distance and signal latency."
+      : "Validate Earth–Mars ephemeris distance (km) in telemetry.",
+    "Verify non-expired onboard medical kit supplies.",
   ];
 
   return {
@@ -157,12 +225,12 @@ export const distanceHazard: HazardSpec = {
       {
         title: "Light-Time Delay & Ephemeris Model",
         detail: "Calculates one-way and round-trip light-time latency from JPL Horizons Earth–Mars distance.",
-        actionSlot: "DB-driven ephemeris distance stream",
+        actionSlot: "Ephemeris distance stream",
       },
       {
         title: "Medical Inventory & Expiry Oversight",
         detail: "Track onboard medical kit stock, expiring consumables, and mission-duration sufficiency.",
-        actionSlot: "DB-driven medical inventory stream",
+        actionSlot: "Medical inventory stream",
       },
     ],
   },
@@ -173,7 +241,7 @@ export const distanceHazard: HazardSpec = {
       {
         title: "Autonomous Medical Kit Verification",
         detail: "Review locally available non-expired Med Kit supplies before crew response.",
-        actionSlot: "DB-driven onboard medical inventory",
+        actionSlot: "Onboard medical inventory",
       },
       {
         title: "Earth Delay Context & Autonomy Guidance",

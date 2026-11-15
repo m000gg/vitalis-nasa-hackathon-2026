@@ -3,7 +3,7 @@
 import React, { use } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Database } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { HazardScreen } from "@/components/hazards";
 import { getHazardBySlug, HAZARDS } from "@/lib/hazards";
@@ -21,7 +21,6 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     mission,
     activeCharacter,
     role,
-    dbStatus,
     actorInputs,
     hazardRecords,
     hazardSamples,
@@ -70,16 +69,6 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
           </Link>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                dbStatus === "connected"
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "bg-red-100 text-red-800"
-              }`}
-            >
-              <Database className="h-3 w-3" />
-              {dbStatus === "connected" ? "Supabase Synced" : "Supabase Error"}
-            </span>
             <span
               className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
                 snapshot.status === "CRITICAL"

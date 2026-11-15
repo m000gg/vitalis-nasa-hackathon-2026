@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -9,7 +9,6 @@ import {
   Database,
   Dumbbell,
   HeartPulse,
-  Info,
   Lock,
   ShieldCheck,
   Users,
@@ -17,11 +16,17 @@ import {
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
 import {
+  InfoCircle,
+  ResearchModal,
+  type ActiveResearchInfoState,
+} from "@/components/ResearchInfoModal";
+import {
   ConditioningStatusLabel,
   evaluateGravityCrewOverview,
   evaluateGravityDiagnostics,
   formatTrendCiRange,
   GRAVITY_PIPELINE_VALUES,
+  GRAVITY_RESEARCH_METADATA,
   GravityActorDiagnostics,
   GravityCrewOverview,
   LinearTrendResult,
@@ -53,18 +58,14 @@ function formatSignedPct(val: number): string {
 
 function renderTrendForecast(trend: LinearTrendResult, thresholdPct: number): string | null {
   if (trend.latestPctChange <= thresholdPct) {
-    return `Crossed ${thresholdPct}% [ASSUMPTION] threshold at latest reading (FD${trend.latestFlightDay})`;
+    return `Crossed ${thresholdPct}% limit at FD${trend.latestFlightDay}`;
   }
   if (trend.isThresholdProjectedCrossed && trend.projectedCrossFlightDay !== null) {
     const crossFd = Math.round(trend.projectedCrossFlightDay);
-    const projPart =
-      trend.projectedPctAtCurrentDay !== null
-        ? ` (~${trend.projectedPctAtCurrentDay.toFixed(1)}% projected today)`
-        : "";
-    return `Projected crossed ${thresholdPct}% [ASSUMPTION] ~FD${crossFd}${projPart}${formatTrendCiRange(trend)}`;
+    return `Projected crossed ${thresholdPct}% (~FD${crossFd})${formatTrendCiRange(trend)}`;
   }
   if (trend.etaDaysToThreshold !== null) {
-    return `Reaches ${thresholdPct}% [ASSUMPTION] in ~${trend.etaDaysToThreshold}d${formatTrendCiRange(trend)}`;
+    return `Reaches ${thresholdPct}% in ~${trend.etaDaysToThreshold}d${formatTrendCiRange(trend)}`;
   }
   return null;
 }
@@ -100,50 +101,33 @@ export function GravityHazardScreen({
 
   // Exclude generic sample-* fallback charts so dedicated normalized Calf %, Grip %, Exercise min, or RBAC Crew charts render cleanly
   const charts = (snapshot.charts ?? []).filter((c) => !c.id.startsWith("sample-"));
+  const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
 
   return (
     <div className="space-y-4">
-      {/* 1. Autonomous Telemetry & Role Context Banner */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800">
-                {role === "lead" ? (
-                  <>
-                    <Users className="h-3.5 w-3.5" /> Commander Flight Note View (RBAC Masked)
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-3.5 w-3.5" /> Astronaut Private Telemetry View
-                  </>
-                )}
-              </span>
-            </div>
-            <p className="text-xs text-slate-600">
-              {hazard.overviewSlot.replace(/^Here is:\s*/i, "")} Telemetry checks run
-              deterministically from synced DB records across MEDB 5.2, 5.4, MR081L, and MR026L.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-[11px] text-slate-600">
-            <div className="font-semibold text-slate-800">{mission.name}</div>
-            <div>
-              {hazardRecords.length} synced record(s) · {hazardSamples.length} sample(s)
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 2. Evaluated Deterministic Outputs & Guidance */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-slate-900">
-            Deterministic Evaluation Outputs ({activeCharacter.callsign})
-          </h2>
-          <span className="text-[11px] text-slate-500">
-            Read-only DB-synced output · Auto-refreshes every 12s
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-900">
+              Gravity &amp; Conditioning ({activeCharacter.callsign})
+            </h2>
+            <InfoCircle
+              entry={GRAVITY_RESEARCH_METADATA.eva_readiness_gate}
+              activeInfo={activeInfo}
+              onSelectInfo={setActiveInfo}
+            />
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+              {role === "lead" ? (
+                <>
+                  <Users className="h-3 w-3" /> Commander View
+                </>
+              ) : (
+                <>
+                  <Lock className="h-3 w-3" /> Personal View
+                </>
+              )}
+            </span>
+          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -171,7 +155,7 @@ export function GravityHazardScreen({
                   CONDITIONING_STYLES[diagnostics.conditioningStatus]
                 }`}
               >
-                {diagnostics.conditioningStatus}
+                {diagnostics.conditioningStatus.replace("_", " ")}
               </span>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-800">
@@ -191,9 +175,8 @@ export function GravityHazardScreen({
           <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 md:col-span-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-900">
-                1–2 Actionable Solutions
+                Prioritized Actions
               </span>
-              <span className="text-[11px] text-sky-700">Deterministic MRID/MEDB priority</span>
             </div>
             <ul className="mt-1.5 space-y-1 text-xs text-slate-800">
               {snapshot.solutions.map((action, idx) => (
@@ -211,9 +194,18 @@ export function GravityHazardScreen({
 
       {/* 3. Role-Specific Operational Views */}
       {role === "lead" && crewOverview ? (
-        <LeadGravitySection overview={crewOverview} hazard={hazard} />
+        <LeadGravitySection
+          overview={crewOverview}
+          hazard={hazard}
+          activeInfo={activeInfo}
+          onSelectInfo={setActiveInfo}
+        />
       ) : (
-        <MemberGravitySection diagnostics={diagnostics} />
+        <MemberGravitySection
+          diagnostics={diagnostics}
+          activeInfo={activeInfo}
+          onSelectInfo={setActiveInfo}
+        />
       )}
 
       {/* 4. Deterministic Telemetry Charts (with dashed threshold lines) */}
@@ -222,11 +214,11 @@ export function GravityHazardScreen({
           <div>
             <h2 className="text-sm font-bold text-slate-900">
               {role === "lead"
-                ? "Crew Conditioning & Adherence Telemetry (RBAC-Safe)"
+                ? "Crew Conditioning & Adherence Telemetry"
                 : "Personal Conditioning & Exercise Trends"}
             </h2>
             <p className="text-xs text-slate-500">
-              Dashed reference lines mark NASA targets or team-configured [ASSUMPTION] alert cutoffs.
+              Dashed lines mark target thresholds.
             </p>
           </div>
           <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
@@ -243,95 +235,67 @@ export function GravityHazardScreen({
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs text-slate-500">
             {role === "lead"
-              ? "No crew exercise adherence logs synced yet for this mission scenario."
-              : "No anthropometric or exercise time-series samples synced yet for this astronaut."}
+              ? "No crew exercise adherence logs recorded yet."
+              : "No conditioning or exercise time-series samples recorded yet."}
           </div>
         )}
       </section>
 
-      {/* 5. Synced DB Telemetry Streams & NASA Citations Footer */}
+      {/* 5. Telemetry Streams */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
-              <Database className="h-3.5 w-3.5 text-sky-600" />
-              Synced DB Telemetry Streams ({activeCharacter.callsign})
-            </h3>
-            <div className="mt-2.5 space-y-2">
-              {hazard.inputSlots.map((slot) => {
-                const rec = hazardRecords.find((r) => r.streamName === slot.streamName);
-                const streamSamples = hazardSamples.filter((s) => s.streamName === slot.streamName);
-                const hasAnyPrivateSubfield = slot.subfields?.some((sf) => sf.isPrivate);
-                const hideRawSummaryForLead =
-                  role === "lead" && slot.streamName === "Handgrip & Calf Volume";
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
+            <Database className="h-3.5 w-3.5 text-sky-600" />
+            Telemetry Streams ({activeCharacter.callsign})
+          </h3>
+          <InfoCircle
+            entry={GRAVITY_RESEARCH_METADATA.exercise_timing_reconditioning}
+            activeInfo={activeInfo}
+            onSelectInfo={setActiveInfo}
+          />
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {hazard.inputSlots.map((slot) => {
+            const rec = hazardRecords.find((r) => r.streamName === slot.streamName);
+            const hasAnyPrivateSubfield = slot.subfields?.some((sf) => sf.isPrivate);
+            const hideRawSummaryForLead =
+              role === "lead" && slot.streamName === "Handgrip & Calf Volume";
 
-                return (
-                  <div
-                    key={slot.streamName}
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-900">{slot.streamName}</span>
-                      <span className="rounded bg-white px-2 py-0.5 font-mono text-[10px] text-slate-600">
-                        {slot.sourceRef}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-slate-600">
-                      {hideRawSummaryForLead
-                        ? "Personal anthropometric values masked for Crew Lead (RBAC)."
-                        : rec?.rawValue
-                        ? rec.rawValue
-                        : "Awaiting DB telemetry record"}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-                      <span>
-                        {rec
-                          ? `Last synced: ${new Date(rec.updatedAt).toLocaleString()}`
-                          : "Not yet persisted"}
-                        {slot.recordSample ? ` · ${streamSamples.length} sample(s)` : ""}
-                      </span>
-                      {hasAnyPrivateSubfield && (
-                        <span className="inline-flex items-center gap-1 text-slate-600">
-                          <Lock className="h-3 w-3" /> Private subfields RBAC-protected
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
-                <Info className="h-3.5 w-3.5 text-sky-600" />
-                NASA Reference Anchors &amp; Scope Guardrails
-              </h3>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-600">
-                {hazard.nasaReferences.map((ref) => (
-                  <li key={ref}>{ref}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-[11px] text-amber-900">
-              <p className="font-semibold">
-                Explicit [ASSUMPTION] Cutoffs vs. NASA MRID/MEDB Rules
-              </p>
-              <p className="mt-1 leading-relaxed">
-                Pre-test condition windows (caffeine/meal/exercise), MEDB 5.2 (150 min/d),
-                and MR026L (120 min/d reconditioning) come directly from NASA documentation. Alert
-                cutoffs ({GRAVITY_PIPELINE_VALUES.assumptions.calfAtrophyAlertPct}% calf atrophy,{" "}
-                {GRAVITY_PIPELINE_VALUES.assumptions.gripDeclineAlertPct}% grip decline,{" "}
-                {GRAVITY_PIPELINE_VALUES.assumptions.weeklyAdherenceAlertPct}% weekly/load
-                discipline) are team-configured [ASSUMPTION] thresholds against each astronaut&apos;s
-                personal L+14 / FD14 baseline.
-              </p>
-            </div>
-          </div>
+            return (
+              <div
+                key={slot.streamName}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-900">{slot.streamName}</span>
+                  <span className="rounded bg-white px-2 py-0.5 font-mono text-[10px] text-slate-600">
+                    {slot.sourceRef}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-600">
+                  {hideRawSummaryForLead
+                    ? "Personal metrics hidden from Lead view."
+                    : rec?.rawValue
+                    ? rec.rawValue
+                    : "No telemetry yet"}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+                  <span>
+                    {rec ? `Updated ${new Date(rec.updatedAt).toLocaleString()}` : "—"}
+                  </span>
+                  {hasAnyPrivateSubfield && (
+                    <span className="inline-flex items-center gap-1 text-slate-600">
+                      <Lock className="h-3 w-3" /> Private to crew member
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
+
+      <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />
     </div>
   );
 }
@@ -339,9 +303,13 @@ export function GravityHazardScreen({
 function LeadGravitySection({
   overview,
   hazard,
+  activeInfo,
+  onSelectInfo,
 }: {
   overview: GravityCrewOverview;
   hazard: HazardScreenProps["hazard"];
+  activeInfo: ActiveResearchInfoState;
+  onSelectInfo: (next: ActiveResearchInfoState) => void;
 }) {
   return (
     <section className="space-y-4">
@@ -366,7 +334,7 @@ function LeadGravitySection({
                   : "bg-slate-100 text-slate-700"
               }`}
             >
-              {overview.teamExerciseBuffActive ? "BUFF ACTIVE" : "INACTIVE / MONITORING"}
+              {overview.teamExerciseBuffActive ? "ON TARGET" : "MONITORING"}
             </span>
           </div>
           <p className="mt-2 text-xs text-slate-700">
@@ -377,11 +345,10 @@ function LeadGravitySection({
                   {overview.teamExerciseDisciplinePct}%
                 </strong>{" "}
                 ({overview.disciplinedCrewCount}/{overview.loggedExerciseCrewCount} logged crew{" "}
-                &ge; {GRAVITY_PIPELINE_VALUES.assumptions.weeklyAdherenceAlertPct}% target
-                [ASSUMPTION]).
+                &ge; {GRAVITY_PIPELINE_VALUES.assumptions.weeklyAdherenceAlertPct}% target).
               </>
             ) : (
-              "No daily exercise logs synced across crew slots yet."
+              "No daily exercise logs recorded yet."
             )}
           </p>
         </div>
@@ -405,7 +372,7 @@ function LeadGravitySection({
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <Lock className="h-3.5 w-3.5 text-slate-600" /> RBAC Privacy Firewall
+            <Lock className="h-3.5 w-3.5 text-slate-600" /> Crew Privacy Guard
           </div>
           <p className="mt-1.5 text-[11px] leading-snug text-slate-600">
             {hazard.leadView.privacyRule}
@@ -417,9 +384,16 @@ function LeadGravitySection({
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              Crew Conditioning &amp; Atrophy Matrix (MEDB 5.2 / 5.4)
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">
+                Crew Conditioning &amp; Atrophy Matrix (MEDB 5.2 / 5.4)
+              </h2>
+              <InfoCircle
+                entry={GRAVITY_RESEARCH_METADATA.calf_atrophy_bone}
+                activeInfo={activeInfo}
+                onSelectInfo={onSelectInfo}
+              />
+            </div>
             <p className="text-xs text-slate-500">
               Shows conditioning band, blocker categories, and exercise adherence only — no raw
               anthropometrics or private notes.
@@ -451,7 +425,7 @@ function LeadGravitySection({
                         CONDITIONING_STYLES[m.conditioningStatus]
                       }`}
                     >
-                      {m.conditioningStatus}
+                      {m.conditioningStatus.replace("_", " ")}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 font-mono text-xs text-slate-800">
@@ -491,8 +465,12 @@ function LeadGravitySection({
 
 function MemberGravitySection({
   diagnostics,
+  activeInfo,
+  onSelectInfo,
 }: {
   diagnostics: GravityActorDiagnostics;
+  activeInfo: ActiveResearchInfoState;
+  onSelectInfo: (next: ActiveResearchInfoState) => void;
 }) {
   const { currentFlightDay, conditionChecks, atrophy } = diagnostics;
   const A = GRAVITY_PIPELINE_VALUES.assumptions;
@@ -503,10 +481,17 @@ function MemberGravitySection({
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <ShieldCheck className="h-4 w-4 text-sky-600" />
-              Pre-Test Condition Guard (Validity Windows)
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <ShieldCheck className="h-4 w-4 text-sky-600" />
+                Pre-Test Condition Guard (Validity Windows)
+              </h2>
+              <InfoCircle
+                entry={GRAVITY_RESEARCH_METADATA.eva_readiness_gate}
+                activeInfo={activeInfo}
+                onSelectInfo={onSelectInfo}
+              />
+            </div>
             <p className="mt-0.5 text-xs text-slate-500">
               Verifies MEDB 6.3, MR087L, and MEDB 5.4 fasting, caffeine, exercise, and morning sampling rules.
             </p>
@@ -550,8 +535,7 @@ function MemberGravitySection({
               Microgravity Atrophy, Proxy Bone-Shield &amp; Conditioning
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Low-N OLS projection against personal L+14 / FD14 baseline + resistance loading bone
-              proxy (DXA pre/postflight only, MEDB 1.11).
+              Personal L+14 / FD14 baseline trends and resistance adherence.
             </p>
           </div>
           {atrophy.adherenceSummary?.reconditioningDayRPlus !== null &&
@@ -567,11 +551,18 @@ function MemberGravitySection({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-900">Calf Volume (MEDB 5.4)</span>
-              {atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0 && (
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                  Overdue {atrophy.calfDaysOverdue}d
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0 && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    Overdue {atrophy.calfDaysOverdue}d
+                  </span>
+                )}
+                <InfoCircle
+                  entry={GRAVITY_RESEARCH_METADATA.calf_atrophy_bone}
+                  activeInfo={activeInfo}
+                  onSelectInfo={onSelectInfo}
+                />
+              </div>
             </div>
             {atrophy.calfTrend ? (
               <div className="mt-2 space-y-1">
@@ -611,11 +602,18 @@ function MemberGravitySection({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-900">Handgrip (MR081L)</span>
-              {atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0 && (
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                  Overdue {atrophy.gripDaysOverdue}d
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0 && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    Overdue {atrophy.gripDaysOverdue}d
+                  </span>
+                )}
+                <InfoCircle
+                  entry={GRAVITY_RESEARCH_METADATA.handgrip_dynamometry}
+                  activeInfo={activeInfo}
+                  onSelectInfo={onSelectInfo}
+                />
+              </div>
             </div>
             {atrophy.gripTrend ? (
               <div className="mt-2 space-y-1">
@@ -641,7 +639,7 @@ function MemberGravitySection({
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-slate-500">
-                No valid monthly handgrip samples synced yet (every 30d).
+                No monthly handgrip samples recorded yet (every 30d).
               </p>
             )}
           </div>
@@ -650,7 +648,14 @@ function MemberGravitySection({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-slate-900">Exercise &amp; Bone Proxy</span>
-              <HeartPulse className="h-3.5 w-3.5 text-sky-600" />
+              <div className="flex items-center gap-1.5">
+                <HeartPulse className="h-3.5 w-3.5 text-sky-600" />
+                <InfoCircle
+                  entry={GRAVITY_RESEARCH_METADATA.exercise_timing_reconditioning}
+                  activeInfo={activeInfo}
+                  onSelectInfo={onSelectInfo}
+                />
+              </div>
             </div>
             {atrophy.adherenceSummary ? (
               <div className="mt-2 space-y-1">
@@ -683,7 +688,14 @@ function MemberGravitySection({
 
           {/* Meal/Sleep Guard & Postflight Card */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
-            <div className="font-semibold text-slate-900">Timing Guard &amp; MR026L</div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-slate-900">Timing Guard &amp; MR026L</span>
+              <InfoCircle
+                entry={GRAVITY_RESEARCH_METADATA.exercise_timing_reconditioning}
+                activeInfo={activeInfo}
+                onSelectInfo={onSelectInfo}
+              />
+            </div>
             {atrophy.adherenceSummary ? (
               <div className="mt-2 space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-1.5">

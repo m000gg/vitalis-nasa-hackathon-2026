@@ -1,3 +1,4 @@
+import type { ResearchInfoEntry } from "@/components/ResearchInfoModal";
 import type { CrewSlot, MissionProfile, UserRole } from "../domain";
 import {
   HazardChartSpec,
@@ -7,6 +8,65 @@ import {
   HazardSampleRecord,
   HazardSpec,
 } from "./types";
+
+export const GRAVITY_RESEARCH_METADATA: Record<string, ResearchInfoEntry> = {
+  eva_readiness_gate: {
+    id: "eva_readiness_gate",
+    title: "Autonomous Pre-EVA Readiness Gate & Condition Guard",
+    explanation:
+      "Replaces real-time Flight Surgeon clearance during ~22-minute deep-space delays by validating pre-test confounders (fasting, caffeine, heavy exercise, vasoactive meds) and EVA test windows.",
+    benchmark:
+      "MEDB 6.1 (health exam <=48h pre-EVA, <=24h post-EVA), MEDB 6.3 (arm ergometry >=24h post heavy workout, >=8h no caffeine, >=2h post-meal), MR087L (VO₂ +-10% at 75%), MR090L (ISLE prerequisite).",
+    links: [
+      {
+        label: "NASA LSAH / JSC28913 MRID & MEDB Repository",
+        url: "https://nlsp.nasa.gov/resources/lsah",
+      },
+    ],
+  },
+  handgrip_dynamometry: {
+    id: "handgrip_dynamometry",
+    title: "Handgrip Strength & Endurance (MR081L)",
+    explanation:
+      "Monitors 3×5s maximal contractions, static endurance (50% max), and dynamic endurance (75% max) to detect forearm fatigue before pressurized-glove EVA operations.",
+    benchmark:
+      "MR081L schedule: FD14, every 30 days, and EVA -14d to -10d (+-2d flexibility); blocked within <24h of suit donning. 15% decline cutoff is mission-configured.",
+    links: [
+      {
+        label: "NASA LSAH — MR081L Handgrip Dynamometry",
+        url: "https://nlsp.nasa.gov/resources/lsah",
+      },
+    ],
+  },
+  calf_atrophy_bone: {
+    id: "calf_atrophy_bone",
+    title: "Calf Volume Atrophy & Bone-Shield Proxy (MEDB 5.4 / 1.11 / 1.13)",
+    explanation:
+      "Tracks low-N OLS calf volume trend paired with morning body mass against each astronaut's L+14 baseline, plus daily resistance loading as an in-flight bone-shield proxy.",
+    benchmark:
+      "MEDB 5.4 + MEDB 1.13 measured L+14 then every 14d (morning after sleep, before breakfast). MEDB 1.11 DXA bone density (~1–1.5%/mo microgravity loss) is pre/post-flight only.",
+    links: [
+      {
+        label: "NASA LSAH — MEDB 5.4, MEDB 1.13 & MEDB 1.11",
+        url: "https://nlsp.nasa.gov/resources/lsah",
+      },
+    ],
+  },
+  exercise_timing_reconditioning: {
+    id: "exercise_timing_reconditioning",
+    title: "Exercise Adherence, Timing Guard & Postflight (MEDB 5.2 / MR026L)",
+    explanation:
+      "Tracks daily aerobic and resistance duration, prescribed vs. dialled resistance load, meal/sleep buffer compliance, and post-landing reconditioning cadence.",
+    benchmark:
+      "MEDB 5.2 targets ~2.5 h/day (60m aerobic + 90m resistance), start >=90m post-meal and finish >=2h pre-sleep. MR026L postflight reconditioning requires 120 min/d for R+0..R+45.",
+    links: [
+      {
+        label: "NASA LSAH — MEDB 5.2 & MR026L Reconditioning",
+        url: "https://nlsp.nasa.gov/resources/lsah",
+      },
+    ],
+  },
+};
 
 /**
  * ============================================================================
@@ -740,12 +800,13 @@ function parseExerciseEntries(
 
 export function formatTrendCiRange(trend: LinearTrendResult): string {
   if (trend.etaMinDays === null && trend.etaMaxDays === null) return "";
-  const floorNote = trend.ciHasResidualFloor ? "±floor" : "";
   if (trend.etaMinDays !== null && trend.etaMaxDays !== null) {
-    return ` [CI${floorNote}: ${trend.etaMinDays}–${trend.etaMaxDays}d]`;
+    const min = Math.max(0, trend.etaMinDays);
+    const max = Math.max(min, trend.etaMaxDays);
+    return ` (${min}–${max}d range)`;
   }
   if (trend.etaMinDays !== null) {
-    return ` [CI${floorNote}: >= ${trend.etaMinDays}d; upper bound non-crossing]`;
+    return ` (>= ${Math.max(0, trend.etaMinDays)}d)`;
   }
   return "";
 }
@@ -755,30 +816,20 @@ function formatTrendProjectionAlert(
   baselineLabel: string,
   thresholdPct: number,
   trend: LinearTrendResult,
-  currentFlightDay: number,
+  _currentFlightDay: number,
   daysOverdue: number | null
 ): string | null {
   if (trend.latestPctChange <= thresholdPct) {
-    return `${metricLabel} ${trend.latestPctChange.toFixed(1)}% vs ${baselineLabel} (crossed ${thresholdPct}% [ASSUMPTION], N=${trend.sampleSize} pts)`;
+    return `${metricLabel} ${trend.latestPctChange.toFixed(1)}% vs ${baselineLabel} (crossed ${thresholdPct}% limit).`;
   }
   if (trend.isThresholdProjectedCrossed && trend.projectedCrossFlightDay !== null) {
     const crossFd = Math.round(trend.projectedCrossFlightDay);
-    const pastDays = Math.max(0, Math.round(currentFlightDay - trend.projectedCrossFlightDay));
-    const projStr =
-      trend.projectedPctAtCurrentDay !== null
-        ? `; projected ~${trend.projectedPctAtCurrentDay.toFixed(1)}% at FD${currentFlightDay}`
-        : "";
-    const staleStr =
-      daysOverdue !== null && daysOverdue > 0
-        ? `, overdue ${daysOverdue}d`
-        : trend.daysSinceLastMeasurement !== null
-        ? `, last reading ${trend.daysSinceLastMeasurement}d ago`
-        : "";
-    return `${metricLabel} projected crossed ${thresholdPct}% [ASSUMPTION] ~FD${crossFd} (${pastDays}d ago${projStr}${staleStr}, low-N fit N=${trend.sampleSize})`;
+    const overdueStr =
+      daysOverdue !== null && daysOverdue > 0 ? ` · check overdue ${daysOverdue}d` : "";
+    return `${metricLabel} projected to cross ${thresholdPct}% (~FD${crossFd})${overdueStr}.`;
   }
   if (trend.etaDaysToThreshold !== null) {
-    const ci = formatTrendCiRange(trend);
-    return `${metricLabel} trending ${(trend.slopePctPerDay * 7).toFixed(1)}%/wk; reaches ${thresholdPct}% [ASSUMPTION] in ~${trend.etaDaysToThreshold}d${ci} (low-N fit, N=${trend.sampleSize})`;
+    return `${metricLabel} ${(trend.slopePctPerDay * 7).toFixed(1)}%/wk (~${trend.etaDaysToThreshold}d to ${thresholdPct}%).`;
   }
   return null;
 }
@@ -948,37 +999,37 @@ function evaluateAtrophyAndConditioning(
       adherenceSummary.resistancePct < A.weeklyAdherenceAlertPct
     ) {
       alerts.push(
-        `In-flight exercise adherence ${adherenceSummary.overallPct}% (Resistance ${adherenceSummary.resistancePct}%, <${A.weeklyAdherenceAlertPct}% [ASSUMPTION] of 150 min/d MEDB 5.2) — elevated estimated bone unloading risk (DXA pre/post only, MEDB 1.11)`
+        `Exercise adherence ${adherenceSummary.overallPct}% (resistance ${adherenceSummary.resistancePct}% < ${A.weeklyAdherenceAlertPct}% target).`
       );
-      actions.push("Prioritize full 90-min resistance session today toward 150 min/d MEDB 5.2 bone-loading target.");
+      actions.push("Complete today's 90-min resistance session toward the 150 min/d total (60m aerobic + 90m resistance) target.");
     }
 
     if (adherenceSummary.sleepViolations > 0) {
       alerts.push(
-        `Exercise ended <2h before sleep in ${adherenceSummary.sleepViolations} session(s) (MEDB 5.2 sleep protection rule)`
+        `Exercise ended <2h before sleep in ${adherenceSummary.sleepViolations} session(s).`
       );
-      actions.push("Shift daily workout end time to >=2h prior to scheduled sleep and >=90m after meals (MEDB 5.2).");
+      actions.push("Finish workouts >=2h before sleep and start >=90m after meals (MEDB 5.2).");
     } else if (adherenceSummary.mealViolations > 0) {
       alerts.push(
-        `Exercise started <90 min after meal in ${adherenceSummary.mealViolations} session(s) (MEDB 5.2)`
+        `Exercise started <90 min after meal in ${adherenceSummary.mealViolations} session(s).`
       );
     }
   }
 
   const etaDays = calfTrend?.etaDaysToThreshold ?? gripTrend?.etaDaysToThreshold ?? null;
-  let etaLabel = "Log >=2 valid baseline measurements (L+14 / FD14) for trend projection";
+  let etaLabel = "Log >=2 baseline readings (L+14 / FD14) for trend";
   if (calfDaysOverdue !== null && calfDaysOverdue > 0 && etaDays !== null && etaDays <= 0) {
-    etaLabel = `Projected threshold crossed ~${Math.abs(etaDays)}d ago [ASSUMPTION]; calf measurement overdue by ${calfDaysOverdue}d`;
+    etaLabel = `Threshold crossed ~${Math.abs(etaDays)}d ago · calf overdue ${calfDaysOverdue}d`;
   } else if (calfDaysOverdue !== null && calfDaysOverdue > 0) {
-    etaLabel = `Calf measurement overdue by ${calfDaysOverdue}d (next valid window: morning pre-breakfast)`;
+    etaLabel = `Calf check overdue ${calfDaysOverdue}d (morning fasted)`;
   } else if (etaDays !== null && etaDays <= 0) {
-    etaLabel = `Projected conditioning threshold crossed ~${Math.abs(etaDays)}d ago [ASSUMPTION]`;
+    etaLabel = `Conditioning limit crossed ~${Math.abs(etaDays)}d ago`;
   } else if (etaDays !== null) {
-    etaLabel = `~${etaDays} days until conditioning threshold [ASSUMPTION]`;
+    etaLabel = `~${etaDays}d to conditioning limit`;
   } else if (adherenceSummary) {
     etaLabel = isReconditioningPhase
-      ? `Reconditioning adherence ${adherenceSummary.reconditioningPct ?? adherenceSummary.overallPct}% (120 min/d MR026L)`
-      : `Weekly adherence ${adherenceSummary.overallPct}% (target 150 min/d, MEDB 5.2)`;
+      ? `Reconditioning ${adherenceSummary.reconditioningPct ?? adherenceSummary.overallPct}% (120 min/d)`
+      : `Weekly adherence ${adherenceSummary.overallPct}% (150 min/d target)`;
   }
 
   return {
@@ -1016,7 +1067,7 @@ function buildGravityCharts(
       series: atrophy.calfTrend.series,
       thresholds: [
         {
-          label: "Atrophy Alert [ASSUMPTION]",
+          label: "Atrophy Alert",
           value: A.calfAtrophyAlertPct,
           color: "#ef4444",
         },
@@ -1037,7 +1088,7 @@ function buildGravityCharts(
       series: atrophy.gripTrend.series,
       thresholds: [
         {
-          label: "Decline Alert [ASSUMPTION]",
+          label: "Decline Alert",
           value: A.gripDeclineAlertPct,
           color: "#ef4444",
         },
@@ -1078,7 +1129,7 @@ function buildGravityCharts(
               color: "#10b981",
             },
             {
-              label: "80% Watch [ASSUMPTION]",
+              label: "80% Watch",
               value: Math.round((S.dailyTotalTargetMin * A.weeklyAdherenceAlertPct) / 100),
               color: "#f59e0b",
             },
@@ -1096,15 +1147,16 @@ function buildLeadGravityCharts(crewOverview: GravityCrewOverview): HazardChartS
   return [
     {
       id: "gravity-crew-exercise-discipline",
-      title: "Crew Exercise Discipline Adherence (RBAC-Safe, MEDB 5.2 / MR026L)",
+      title: "Crew Exercise Adherence (MEDB 5.2 / MR026L)",
       unit: "%",
+      chartType: "bar",
       series: loggedMembers.map((m) => ({
         label: m.callsign.split("—")[0]?.trim() || m.callsign,
         value: m.adherencePct ?? 0,
       })),
       thresholds: [
         {
-          label: "Team Buff [ASSUMPTION]",
+          label: "Team Target",
           value: GRAVITY_PIPELINE_VALUES.assumptions.weeklyAdherenceAlertPct,
           color: "#10b981",
         },
@@ -1328,63 +1380,62 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
   });
   const { conditionViolations, atrophy, status, sleepCrossNote, conditioningStatus } = diag;
 
+  const immediateItems: string[] = [];
+  if (conditionViolations.length > 0) {
+    immediateItems.push(`Pre-test hold: ${conditionViolations.join("; ")}`);
+  }
+  if (atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0) {
+    immediateItems.push(`Calf check overdue ${atrophy.calfDaysOverdue}d`);
+  }
+  if (atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0) {
+    immediateItems.push(`Handgrip overdue ${atrophy.gripDaysOverdue}d`);
+  }
+
   const immediateHorizon =
-    conditionViolations.length > 0 || atrophy.alerts.length > 0
-      ? [
-          conditionViolations.length > 0
-            ? `Pre-test condition flags (${conditionViolations.length}): ${conditionViolations.join("; ")}`
-            : null,
-          atrophy.alerts.length > 0 ? atrophy.alerts.join("; ") : null,
-        ]
-          .filter(Boolean)
-          .join(" | ")
+    immediateItems.length > 0
+      ? immediateItems.join(" · ")
       : atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
-      ? `Nominal — ${
-          atrophy.adherenceSummary
-            ? `7d exercise adherence ${adherenceLabel(atrophy.adherenceSummary)}`
-            : "pre-test validity clean"
-        }`
+      ? `Pre-test conditions valid${
+          atrophy.adherenceSummary ? ` · 7d exercise ${atrophy.adherenceSummary.overallPct}%` : ""
+        }.`
       : gravityHazard.outputSlots.immediateHorizon;
 
   // Prolonged Horizon (Role-aware RBAC output)
   const prolongedParts: string[] = [];
   if (effectiveRole === "lead") {
     if (conditioningStatus !== "UNLOGGED") {
-      prolongedParts.push(`Conditioning Status: ${conditioningStatus} (RBAC masked raw anthropometrics)`);
+      prolongedParts.push(`Conditioning: ${conditioningStatus.replace("_", " ")}`);
     }
     if (atrophy.adherenceSummary) {
-      prolongedParts.push(`Exercise Adherence: ${adherenceLabel(atrophy.adherenceSummary)}`);
+      prolongedParts.push(`Exercise: ${adherenceLabel(atrophy.adherenceSummary)}`);
     }
     if (atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0) {
-      prolongedParts.push(`Category Flag: MEDB 5.4 calf check overdue (${atrophy.calfDaysOverdue}d)`);
+      prolongedParts.push(`Calf overdue ${atrophy.calfDaysOverdue}d`);
     }
     if (atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0) {
-      prolongedParts.push(`Category Flag: MR081L handgrip check overdue (${atrophy.gripDaysOverdue}d)`);
+      prolongedParts.push(`Handgrip overdue ${atrophy.gripDaysOverdue}d`);
     }
+  } else if (atrophy.alerts.length > 0) {
+    prolongedParts.push(atrophy.alerts.join(" "));
   } else {
     if (atrophy.calfTrend) {
       prolongedParts.push(
-        `Calf volume: ${atrophy.calfTrend.latestPctChange >= 0 ? "+" : ""}${atrophy.calfTrend.latestPctChange.toFixed(1)}% vs L+14 baseline (N=${atrophy.calfTrend.sampleSize}, MEDB 5.4)`
+        `Calf ${atrophy.calfTrend.latestPctChange >= 0 ? "+" : ""}${atrophy.calfTrend.latestPctChange.toFixed(1)}% vs L+14`
       );
     }
     if (atrophy.gripTrend) {
       prolongedParts.push(
-        `Handgrip: ${atrophy.gripTrend.latestPctChange >= 0 ? "+" : ""}${atrophy.gripTrend.latestPctChange.toFixed(1)}% vs FD14 baseline (N=${atrophy.gripTrend.sampleSize}, MR081L)`
+        `Handgrip ${atrophy.gripTrend.latestPctChange >= 0 ? "+" : ""}${atrophy.gripTrend.latestPctChange.toFixed(1)}% vs FD14`
       );
     }
     if (atrophy.adherenceSummary) {
-      prolongedParts.push(
-        `7d Exercise: ${adherenceLabel(atrophy.adherenceSummary)} (bone loss estimated via resistance loading; DXA pre/post only, MEDB 1.11)`
-      );
-    }
-    if (atrophy.alerts.length > 0) {
-      prolongedParts.push(`Flags: ${atrophy.alerts.join("; ")}`);
+      prolongedParts.push(`7d Exercise ${adherenceLabel(atrophy.adherenceSummary)}`);
     }
   }
 
   const prolongedHorizon =
     prolongedParts.length > 0
-      ? `${prolongedParts.join(" | ")}${effectiveRole === "member" ? sleepCrossNote : ""}`
+      ? `${prolongedParts.join(" · ")}${effectiveRole === "member" ? sleepCrossNote : ""}`
       : gravityHazard.outputSlots.prolongedHorizon;
 
   const eta =
@@ -1450,7 +1501,7 @@ export const gravityHazard: HazardSpec = {
   inputSlots: [
     {
       streamName: "Pre-Test Conditions",
-      inputPrompt: "Add your info: Pre-test fasting, caffeine, workout & med hours here",
+      inputPrompt: "Pre-test fasting, caffeine, workout & med hours",
       sourceRef: "MEDB 6.3 / MR087L / MEDB 5.4",
       subfields: [
         {
@@ -1458,47 +1509,47 @@ export const gravityHazard: HazardSpec = {
           label: "Hours Since Meal",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours since last meal (>=2h required) here",
+          prompt: "Hours since last meal (>= 2 h required)",
         },
         {
           key: "hoursSinceCaffeine",
           label: "Hours Since Caffeine",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours since caffeine (>=8h required) here",
+          prompt: "Hours since caffeine (>= 8 h required)",
         },
         {
           key: "hoursSinceStrenuousExercise",
           label: "Hours Since Strenuous Exercise",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours since strenuous workout (>=24h required) here",
+          prompt: "Hours since strenuous workout (>= 24 h required)",
         },
         {
           key: "hoursSinceAlcoholOrMeds",
           label: "Hours Since Alcohol / Cold Meds",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours since alcohol/vasoactive meds (>=24h arm) here",
+          prompt: "Hours since alcohol or vasoactive meds (>= 24 h)",
         },
         {
           key: "hoursSinceNblSession",
           label: "Hours Since NBL Session",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours since NBL session (>=48h arm) here",
+          prompt: "Hours since NBL session (>= 48 h)",
         },
         {
           key: "calfMorningFastedPaired",
           label: "Calf Morning Fasted + Mass",
           fieldType: "boolean",
-          prompt: "Add your info: yes or no (morning after sleep, before breakfast) here",
+          prompt: "Morning after sleep, before breakfast (yes/no)",
         },
       ],
     },
     {
       streamName: "Handgrip & Calf Volume",
-      inputPrompt: "Add your info: grip_strength, calf_volume, body_mass, flight_day here",
+      inputPrompt: "grip_strength, calf_volume, body_mass, flight_day",
       sourceRef: "MR081L / MEDB 5.4 / MEDB 1.13",
       recordSample: true,
       unit: "kg",
@@ -1508,48 +1559,48 @@ export const gravityHazard: HazardSpec = {
           label: "Max Handgrip (3x5s)",
           fieldType: "number",
           unit: "kg",
-          prompt: "Add your info: Maximal handgrip contraction here",
+          prompt: "Maximal handgrip contraction (kg)",
         },
         {
           key: "gripStaticEnduranceSec",
           label: "Static Endurance (to 50%)",
           fieldType: "number",
           unit: "s",
-          prompt: "Add your info: Non-dominant hold time to 50% max here",
+          prompt: "Non-dominant hold time to 50% max (s)",
         },
         {
           key: "gripDynamicEnduranceReps",
           label: "Dynamic Endurance (to 75%)",
           fieldType: "number",
           unit: "reps",
-          prompt: "Add your info: Dominant reps until <75% max here",
+          prompt: "Dominant reps until < 75% max",
         },
         {
           key: "calfVolumeValue",
           label: "EZOG Calf Volume",
           fieldType: "number",
           unit: "mL",
-          prompt: "Add your info: Manual EZOG stocking reading here",
+          prompt: "EZOG stocking reading (mL)",
         },
         {
           key: "bodyMassKg",
           label: "Paired Body Mass (MEDB 1.13)",
           fieldType: "number",
           unit: "kg",
-          prompt: "Add your info: Morning body mass paired with calf here",
+          prompt: "Morning body mass paired with calf (kg)",
         },
         {
           key: "measurementFlightDay",
           label: "Measurement Flight Day",
           fieldType: "number",
           unit: "FD",
-          prompt: "Add your info: Flight day of reading (e.g. 14, 28) here",
+          prompt: "Flight day of reading (e.g., 14, 28)",
         },
       ],
     },
     {
       streamName: "Daily Exercise Log",
-      inputPrompt: "Add your info: aerobic_min, resistance_min, prescribed vs dialled load here",
+      inputPrompt: "aerobic_min, resistance_min, prescribed vs dialled load",
       sourceRef: "MEDB 5.2 / MR026L",
       recordSample: true,
       unit: "min",
@@ -1559,56 +1610,56 @@ export const gravityHazard: HazardSpec = {
           label: "Aerobic Duration (target 60)",
           fieldType: "number",
           unit: "min",
-          prompt: "Add your info: Aerobic session minutes today here",
+          prompt: "Aerobic session minutes today",
         },
         {
           key: "resistanceMinutes",
           label: "Resistance Duration (target 90)",
           fieldType: "number",
           unit: "min",
-          prompt: "Add your info: Resistance session minutes today here",
+          prompt: "Resistance session minutes today",
         },
         {
           key: "prescribedLoadKg",
           label: "Prescribed Resistance Load",
           fieldType: "number",
           unit: "kg",
-          prompt: "Add your info: Prescribed target load here",
+          prompt: "Prescribed target load (kg)",
         },
         {
           key: "actualLoadKg",
           label: "Actual Dialled Load",
           fieldType: "number",
           unit: "kg",
-          prompt: "Add your info: Actual dialled load here",
+          prompt: "Actual dialled load (kg)",
         },
         {
           key: "hoursAfterMeal",
           label: "Hours After Meal (>=1.5h)",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours after meal at workout start here",
+          prompt: "Hours after meal at workout start",
         },
         {
           key: "hoursBeforeSleep",
           label: "Hours Before Sleep (>=2h)",
           fieldType: "number",
           unit: "h",
-          prompt: "Add your info: Hours before sleep at workout end here",
+          prompt: "Hours before sleep at workout end",
         },
         {
           key: "reconditioningDayRPlus",
           label: "Postflight Day (Optional R+0..45)",
           fieldType: "number",
           unit: "R+d",
-          prompt: "Add your info: R+ day for 120 min/d reconditioning here",
+          prompt: "R+ day for 120 min/d reconditioning",
         },
         {
           key: "flightDay",
           label: "Session Flight Day",
           fieldType: "number",
           unit: "FD",
-          prompt: "Add your info: Flight day of session here",
+          prompt: "Flight day of session",
         },
       ],
     },
@@ -1621,12 +1672,12 @@ export const gravityHazard: HazardSpec = {
   },
   leadView: {
     summary: "Per-crew conditioning status (ON_TRACK / WATCH / ALERT), blocker categories, and team exercise discipline buff.",
-    privacyRule: "RBAC: Lead sees conditioning band & category flags only (e.g., 'test overdue') — no raw anthropometric values or private notes.",
+    privacyRule: "Lead sees conditioning band and category flags only — no raw personal metrics or private notes.",
     modules: [
       {
         title: "Crew Conditioning & Atrophy Matrix",
         detail: "Summary conditioning band & adherence categories per crew member without exposing private raw values.",
-        actionSlot: "DB-driven exercise & cadence tracking",
+        actionSlot: "Exercise & cadence tracking",
       },
       {
         title: "Team Exercise Discipline Buff",

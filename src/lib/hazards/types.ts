@@ -41,7 +41,9 @@ export interface HazardChartSpec {
   id: string;
   title: string;
   unit: string;
+  chartType?: "line" | "bar";
   series: HazardChartPoint[];
+  projectionSeries?: HazardChartPoint[];
   thresholds?: HazardChartThreshold[];
 }
 

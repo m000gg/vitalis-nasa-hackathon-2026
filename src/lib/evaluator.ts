@@ -430,14 +430,32 @@ export function evaluateHazardForActor(
     const autoId = `sample-${streamName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
     if (existingIds.has(autoId)) return;
     const slotMeta = hazard.inputSlots.find((slot) => slot.streamName === streamName);
+    const spansMultipleDays =
+      points.length >= 2 &&
+      new Date(points[0].recordedAt).toDateString() !==
+        new Date(points[points.length - 1].recordedAt).toDateString();
     charts.push({
       id: autoId,
       title: `${streamName} Telemetry`,
       unit: slotMeta?.unit ?? "",
-      series: points.map((p) => ({
-        label: new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        value: Number((p.numericValue as number).toFixed(4)),
-      })),
+      series: points.map((p) => {
+        const dt = new Date(p.recordedAt);
+        const label = Number.isNaN(dt.getTime())
+          ? p.recordedAt
+          : spansMultipleDays
+          ? dt.toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })
+          : dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        return {
+          label,
+          value: Number((p.numericValue as number).toFixed(4)),
+        };
+      }),
     });
   });
 

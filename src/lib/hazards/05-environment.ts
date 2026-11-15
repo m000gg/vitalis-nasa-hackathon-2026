@@ -1,4 +1,70 @@
+import type { ResearchInfoEntry } from "@/components/ResearchInfoModal";
 import { HazardChartSpec, HazardEvaluationInput, HazardEvaluationResult, HazardSpec } from "./types";
+
+export const ENVIRONMENT_RESEARCH_METADATA: Record<string, ResearchInfoEntry> = {
+  habitat_air_briefing: {
+    id: "habitat_air_briefing",
+    title: "Closed-Habitat Atmosphere & Pressure Limits",
+    explanation:
+      "Monitors module O₂ partial pressure, total cabin pressure, CO₂, and acoustic exposure across Lab, Habitat, Galley, and Airlock to prevent acute hypoxia or decompression risks.",
+    benchmark:
+      "O₂ normal ~149 mmHg with 122 mmHg (1-h TWA) absolute lower floor; total pressure 5.0–15.0 psia indefinite exposure; CO₂ target <=4 mmHg; noise <85 dBA (NC-40 in sleep areas).",
+    links: [
+      {
+        label: "NASA HRP — Hazard: Hostile/Closed Environments",
+        url: "https://www.nasa.gov/hrp/hazard-hostile-closed-environments/",
+      },
+      {
+        label: "NASA OCHMO Habitable Atmosphere Technical Brief (PDF)",
+        url: "https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-003-habitable-atmosphere.pdf",
+      },
+    ],
+  },
+  co2_headache_risk: {
+    id: "co2_headache_risk",
+    title: "CO₂ Partial Pressure & Astronaut Headache Odds",
+    explanation:
+      "Tracks rising module ppCO₂ trends and cumulative time above NASA's 4 mmHg target, replaying real ISS cabin telemetry from NASA OSDR alongside module offsets.",
+    benchmark:
+      "NASA operational CO₂ target <=4 mmHg cuts weekly headache risk from ~3.3% to ~1.6%; each +1 mmHg CO₂ doubles the odds of a crew headache.",
+    links: [
+      {
+        label: "NASA OCHMO CO₂ Technical Brief (PDF)",
+        url: "https://nasa.gov/wp-content/uploads/2023/03/co2-technical-brief-ochmo.pdf",
+      },
+      {
+        label: "NASA Study on CO₂ and Crew Headaches",
+        url: "https://www.news-medical.net/news/20140501/Headaches-an-occupational-hazard-astronauts.aspx",
+      },
+      {
+        label: "NASA OSDR Environmental Data App (EDA)",
+        url: "https://visualization.osdr.nasa.gov/eda",
+      },
+      {
+        label: "OSDR EDA Download & Mission Comparison Guide",
+        url: "https://dev2-osdr-tutorials.readthedocs.io/en/latest/pages/guides/environmental_data_application.html",
+      },
+    ],
+  },
+  module_acoustics: {
+    id: "module_acoustics",
+    title: "Hazardous & Sleep-Area Acoustic Exposure",
+    explanation:
+      "Compares module sound pressure levels against acute hearing limits and sleep-quarter acoustic curves to flag noisy compartments before sleep quality degrades.",
+    benchmark:
+      "Hazardous noise must remain <85 dBA regardless of duration; missions over 30 days limit continuous sleep-area noise to the NC-40 curve.",
+    links: [
+      {
+        label: "NASA OCHMO Acoustics Technical Brief (PDF)",
+        url: "https://www.nasa.gov/sites/default/files/atoms/files/acoustics_technical_brief_ochmo_0.pdf",
+      },
+      {
+        label: "NASA HRP — Hazard: Hostile/Closed Environments",
+        url: "https://www.nasa.gov/hrp/hazard-hostile-closed-environments/",
+      },
+    ],
+  },
+};
 
 /**
  * ============================================================================
@@ -67,7 +133,7 @@ export const ENVIRONMENT_PIPELINE_VALUES = {
   // --- Demo scenarios (the "demo buttons", entered through the "Demo Scenario" input) ---
   // [DEMO] values from the approved demo set. Ramps are applied in a straight line over the stated time.
   demoScenarios: {
-    ids: ["none", "co2-scrubber-failure", "o2-leak-lab", "noisy-galley"], // "none" = Clear
+    ids: ["none", "co2-scrubber-failure", "o2-leak-lab", "noisy-galley", "chaos"], // "none" = Clear
     co2ScrubberFailure: { co2RiseMmhgPerMin: 0.04, co2RiseCapMmhg: 3, appliesTo: "all modules" },
     o2LeakLab: { moduleId: "lab", o2FallsToMmhg: 118, overMin: 20 },
     noisyGalley: { moduleId: "galley", noiseRisesToDba: 90, overMin: 10 },
@@ -124,9 +190,6 @@ const V = ENVIRONMENT_PIPELINE_VALUES;
 
 // Presentation only: how many decimals are printed. Not data and not a research claim.
 const FORMAT = { co2Decimals: 2, otherDecimals: 1, slopeDecimals: 3, floatGuardDecimals: 6 };
-
-// Tag printed next to CO2 values. It becomes "[REAL]" when the EDA CSV replaces the demo series.
-const CO2_SOURCE_TAG = "[DEMO]";
 
 // Action texts: the team's existing wording in this file, with the sleep, relocation and
 // crew-redistribution parts removed. Module level only.
@@ -389,6 +452,36 @@ export function buildLedger(history: Co2Sample[]): ModuleLedger {
  * Example (Habitat, offset +0.4, elapsed 20): 3.4, 3.5, 3.6
  */
 export function buildModuleSimulation(module: ModuleConfig, elapsedMin: number, scenarioId: string): ModuleSimulation {
+  if (scenarioId === "chaos") {
+    const modIndex = Math.max(
+      0,
+      V.modules.findIndex((m) => m.id === module.id)
+    );
+    const stepMin = 10;
+    const lastIndex = Math.max(11, Math.floor(Math.max(0, elapsedMin) / stepMin));
+    const history: Co2Sample[] = [];
+    for (let k = 0; k <= lastIndex; k++) {
+      const tMin = k * stepMin;
+      const swing = Math.sin((k + 1) * 1.85 + modIndex * 1.4) * 3.4;
+      const spike = (k + modIndex) % 2 === 0 ? 2.2 : -1.4;
+      const co2Mmhg = cleanFloat(Math.max(1.2, 4.9 + swing + spike));
+      history.push({ tMin, co2Mmhg });
+    }
+    const lastSample = history[history.length - 1];
+    const phase = lastSample.tMin / 10 + modIndex;
+    return {
+      moduleId: module.id,
+      moduleName: module.name,
+      history,
+      reading: {
+        co2Mmhg: lastSample.co2Mmhg,
+        o2Mmhg: cleanFloat(132 + Math.cos(phase * 2.1) * 24),
+        pressurePsia: cleanFloat(10.2 + Math.sin(phase * 1.7) * 5.6),
+        noiseDba: cleanFloat(76 + Math.sin(phase * 2.5) * 26),
+      },
+    };
+  }
+
   const series = V.demoCo2Series;
   const stepMin = series[1].tMin - series[0].tMin;
   const lastIndex = Math.floor(Math.max(0, elapsedMin) / stepMin);
@@ -492,6 +585,22 @@ function buildSolutions(analyses: ModuleAnalysis[], maxSolutions: number): strin
     const line = `${text} (${moduleName})`;
     if (!actions.includes(line)) actions.push(line);
   };
+
+  if (analyses.length > 0 && analyses.every((a) => a.air.status === "red")) {
+    const byCo2Desc = [...analyses].sort((a, b) => b.sim.reading.co2Mmhg - a.sim.reading.co2Mmhg);
+    const worst = byCo2Desc[0];
+    const lowest = byCo2Desc[byCo2Desc.length - 1];
+    const worstMetric = worst.air.worstMetric.metric;
+    add(
+      worstMetric === "o2" ? ACTION_TEXTS.inspectO2Supply : ACTION_TEXTS.inspectScrubber,
+      worst.sim.moduleName
+    );
+    actions.push(
+      `Stage non-essential work in lowest-CO₂ module (${lowest.sim.moduleName}: ${formatMetric("co2", lowest.sim.reading.co2Mmhg)})`
+    );
+    return actions.slice(0, maxSolutions);
+  }
+
   for (const a of problems) {
     const metric = a.air.status === "green" ? "co2" : a.air.worstMetric.metric;
     add(metric === "o2" ? ACTION_TEXTS.inspectO2Supply : metric === "co2" ? ACTION_TEXTS.inspectScrubber : ACTION_TEXTS.isolateModule, a.sim.moduleName);
@@ -501,7 +610,13 @@ function buildSolutions(analyses: ModuleAnalysis[], maxSolutions: number): strin
 }
 
 export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardEvaluationResult {
-  const { actor, actorInputs, hazardRecords, scenarioHazardRecords = [] } = input;
+  const {
+    actor,
+    actorInputs,
+    hazardRecords,
+    scenarioHazardRecords = [],
+    scenarioHazardSamples = [],
+  } = input;
   const maxSolutions = 2;
 
   const readStream = (streamName: string) =>
@@ -512,7 +627,41 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
   const scenarioId = normalizeScenario(readStream(V.streams.demoScenario));
   const elapsedMin = parseElapsed(readStream(V.streams.simulatedMinutes));
 
-  const analyses = V.modules.map((module) => analyzeModule(buildModuleSimulation(module, elapsedMin, scenarioId)));
+  const analyses = V.modules.map((module) => {
+    if (scenarioId === "chaos") {
+      const modSamples = scenarioHazardSamples
+        .filter((s) => s.hazardSlug === "environment" && s.streamName === module.streamName && s.numericValue !== null)
+        .slice(-16);
+      if (modSamples.length >= 2) {
+        const t0 = Date.parse(modSamples[0].recordedAt) || 0;
+        const history: Co2Sample[] = modSamples.map((s, idx) => {
+          const ts = Date.parse(s.recordedAt) || t0 + idx * 10 * 60_000;
+          const tMin = Math.max(0, Math.round((ts - t0) / 60_000));
+          return { tMin, co2Mmhg: cleanFloat(s.numericValue as number) };
+        });
+        const latestRec =
+          scenarioHazardRecords.find((r) => r.hazardSlug === "environment" && r.streamName === module.streamName)
+            ?.payload ?? modSamples[modSamples.length - 1].samplePayload;
+        const n = (k: string, fb: number) => {
+          const v = Number(latestRec?.[k]);
+          return Number.isFinite(v) ? v : fb;
+        };
+        const sim: ModuleSimulation = {
+          moduleId: module.id,
+          moduleName: module.name,
+          history,
+          reading: {
+            co2Mmhg: history[history.length - 1].co2Mmhg,
+            o2Mmhg: cleanFloat(n("o2MmHg", module.o2Mmhg)),
+            pressurePsia: cleanFloat(n("pressurePsia", module.pressurePsia)),
+            noiseDba: cleanFloat(n("noiseDba", module.noiseDba)),
+          },
+        };
+        return analyzeModule(sim);
+      }
+    }
+    return analyzeModule(buildModuleSimulation(module, elapsedMin, scenarioId));
+  });
   const statuses = analyses.map((a) => a.air.status);
   const nowMin = analyses[0].sim.history[analyses[0].sim.history.length - 1].tMin;
 
@@ -523,72 +672,88 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
     : "NOMINAL";
   const status = airStatus;
 
-  // Immediate: critical alerts (CO2 above target), trend warnings, then every module that is not green.
+  // Immediate: critical alerts (CO2 above target), trend warnings, then affected modules.
   const immediateLines: string[] = [];
-  for (const a of analyses) {
-    if (co2Status(a.sim.reading.co2Mmhg) === "red") {
-      immediateLines.push(
-        `CRITICAL ${a.sim.moduleName} (${formatMetric("co2", a.sim.reading.co2Mmhg)} ${CO2_SOURCE_TAG}): ${V.messages.overTarget}`
-      );
-    }
+  const overTargetModules = analyses.filter((a) => co2Status(a.sim.reading.co2Mmhg) === "red");
+  if (overTargetModules.length > 0) {
+    const listed = overTargetModules
+      .map((a) => `${a.sim.moduleName} (${formatMetric("co2", a.sim.reading.co2Mmhg)})`)
+      .join(", ");
+    immediateLines.push(`${listed}: ${V.messages.overTarget}`);
   }
   for (const a of analyses) {
     if (hasTrendWarning(a) && a.minutesToTarget !== null) {
-      immediateLines.push(`WARNING ${a.sim.moduleName}: ${trendMessage(a.minutesToTarget)} [ARITHMETIC]`);
+      immediateLines.push(`${a.sim.moduleName}: ${trendMessage(a.minutesToTarget)}`);
     }
   }
   for (const a of analyses) {
-    if (a.air.status !== "green") {
-      immediateLines.push(`${a.sim.moduleName}: ${a.air.status} - ${a.air.worstMetric.text} [DEMO]`);
+    if (a.air.status !== "green" && co2Status(a.sim.reading.co2Mmhg) !== "red") {
+      immediateLines.push(`${a.sim.moduleName}: ${a.air.worstMetric.text}`);
     }
   }
 
-  // Prolonged: per-module CO2 picture, then the ledger, then the fixed study facts.
-  const moduleLines = analyses.map((a) => {
-    const co2 = a.sim.reading.co2Mmhg;
-    const parts = [
-      `${a.sim.moduleName}: ${formatMetric("co2", co2)} ${CO2_SOURCE_TAG}`,
-      co2Status(co2) === "red" ? V.messages.overTarget : V.messages.withinTarget,
-    ];
-    const odds = headacheOddsText(co2);
-    if (odds) parts.push(`${odds} [2]`);
-    if (a.trend.state === "collecting") {
-      parts.push(V.messages.collecting);
-    } else {
-      const sign = a.trend.slopeMmhgPerMin > 0 ? "+" : "";
-      parts.push(`trend ${a.trend.label} (${sign}${fmt(a.trend.slopeMmhgPerMin, FORMAT.slopeDecimals)} mmHg/min) [ARITHMETIC]`);
-    }
-    return parts.join("; ");
-  });
-  const ledgerLines = analyses.map(
-    (a) =>
-      `${a.sim.moduleName}: ${fmt(a.ledger.minutesAboveTarget, FORMAT.otherDecimals)} min above ${V.limits.co2TargetMmhg} mmHg, max CO2 ${fmt(a.ledger.maxCo2Mmhg, FORMAT.co2Decimals)} mmHg [ARITHMETIC]`
+  // Prolonged: concise peak CO2 & exposure summary + NASA headache benchmark.
+  const peakModule = analyses.reduce((best, curr) =>
+    curr.sim.reading.co2Mmhg > best.sim.reading.co2Mmhg ? curr : best
   );
+  const exposedModules = analyses.filter((a) => a.ledger.minutesAboveTarget > 0);
+  const exposureSummary =
+    exposedModules.length > 0
+      ? exposedModules
+          .map(
+            (a) =>
+              `${a.sim.moduleName} (${fmt(a.ledger.minutesAboveTarget, FORMAT.otherDecimals)} min > ${V.limits.co2TargetMmhg} mmHg, max ${fmt(a.ledger.maxCo2Mmhg, FORMAT.co2Decimals)} mmHg)`
+          )
+          .join(", ")
+      : `All 4 modules remain within ${V.limits.co2TargetMmhg} mmHg CO₂ target (0 min over target)`;
 
-  // ETA: the nearest time to target among the modules, otherwise the existing slot text.
-  const eta = analyses
+  const prolongedHorizon = `Peak CO₂: ${fmt(peakModule.sim.reading.co2Mmhg, FORMAT.co2Decimals)} mmHg in ${peakModule.sim.moduleName}. ${exposureSummary}. ${V.studyFactsText}`;
+
+  // ETA: nearest time to target among rising modules, otherwise factual status summary.
+  const trendEta = analyses
     .filter((a) => a.minutesToTarget !== null)
     .sort((a, b) => (a.minutesToTarget as number) - (b.minutesToTarget as number))
-    .map((a) => `${a.sim.moduleName}: ${trendMessage(a.minutesToTarget as number)} [ARITHMETIC]`)[0];
+    .map((a) => `${a.sim.moduleName}: ${trendMessage(a.minutesToTarget as number)}`)[0];
+  const fallbackEta =
+    status === "CRITICAL"
+      ? "Target exceeded — active scrubber remediation required"
+      : status === "ELEVATED"
+      ? "Elevated telemetry — monitor CO₂ / O₂ trend"
+      : "Nominal — all modules within NASA atmosphere limits";
+  const eta = trendEta ?? (actor.metrics.etaSlot.toLowerCase().includes("add your info") ? fallbackEta : actor.metrics.etaSlot);
 
-  const charts: HazardChartSpec[] = analyses.map((a) => ({
-    id: `co2-${a.sim.moduleId}`,
-    title: `${a.sim.moduleName} CO2 (${V.chartTitleNote}) ${CO2_SOURCE_TAG}`,
-    unit: "mmHg",
-    series: a.sim.history
-      .filter((s) => s.tMin >= nowMin - V.demoSettings.historyWindowMin)
-      .map((s) => ({ label: `${s.tMin} min`, value: s.co2Mmhg })),
-    thresholds: [
-      { label: "NASA target", value: V.limits.co2TargetMmhg, color: "#ef4444" },
-    ],
-  }));
+  const charts: HazardChartSpec[] = analyses.map((a) => {
+    const trendSlope = a.trend.state === "ready" ? a.trend.slopeMmhgPerMin : null;
+    const projectionSeries =
+      trendSlope !== null
+        ? [30, 60, 90, 120].map((stepMin) => ({
+            label: `+${stepMin}m`,
+            value: Math.max(
+              0,
+              Number((a.sim.reading.co2Mmhg + trendSlope * stepMin).toFixed(FORMAT.co2Decimals))
+            ),
+          }))
+        : undefined;
+    return {
+      id: `co2-${a.sim.moduleId}`,
+      title: `${a.sim.moduleName} CO₂ (${V.chartTitleNote})`,
+      unit: "mmHg",
+      series: a.sim.history
+        .filter((s) => s.tMin >= nowMin - V.demoSettings.historyWindowMin)
+        .map((s) => ({ label: `${s.tMin} min`, value: s.co2Mmhg })),
+      projectionSeries,
+      thresholds: [
+        { label: "NASA target", value: V.limits.co2TargetMmhg, color: "#ef4444" },
+      ],
+    };
+  });
 
   return {
     status,
-    scenarioStatusSlot: `${formatBanner(statuses)} | ${CO2_SOURCE_TAG} ${V.demoDataBadge} | simulated minute ${nowMin} | scenario: ${scenarioId}`,
-    immediateHorizon: immediateLines.length > 0 ? immediateLines.join(" | ") : "No red or yellow modules.",
-    prolongedHorizon: `${moduleLines.join(" | ")} | Ledger: ${ledgerLines.join(" | ")} | ${V.studyFactsText} [2]`,
-    eta: eta ?? actor.metrics.etaSlot,
+    scenarioStatusSlot: `${formatBanner(statuses)} · ${scenarioId === "none" ? "Nominal Ops" : scenarioId}`,
+    immediateHorizon: immediateLines.length > 0 ? immediateLines.join(" · ") : "All habitat modules nominal.",
+    prolongedHorizon,
+    eta,
     solutions: buildSolutions(analyses, maxSolutions),
     charts,
   };
@@ -610,61 +775,61 @@ export const environmentHazard: HazardSpec = {
     "NASA OSDR Environmental Data App (EDA)",
   ],
   overviewSlot:
-    "Here is: Closed-ecosystem habitat telemetry linking cabin CO₂, O₂, pressure, humidity, acoustics, and microbial contact context to early crew symptom prevention.",
+    "Closed-ecosystem habitat telemetry for cabin CO₂, O₂, pressure, acoustics, and crew relocation.",
   inputSlots: [
     ...V.modules.map((m) => ({
       streamName: m.streamName,
-      inputPrompt: `Add your info: ${m.name} CO₂ (mmHg vs 4 mmHg target), O₂ (mmHg vs 122 mmHg floor), pressure (5.0–15.0 psia), noise (<85 dBA) here`,
+      inputPrompt: `${m.name} CO₂ (<= 4 mmHg), O₂ (>= 122 mmHg), pressure (5.0–15.0 psia), noise (< 85 dBA)`,
       sourceRef: "OCHMO CO₂ / Habitable Atmosphere / Acoustics",
     })),
     {
       streamName: V.streams.demoScenario,
-      inputPrompt: "Add your info: Demo scenario id (none, co2-scrubber-failure, o2-leak-lab, noisy-galley) here",
+      inputPrompt: "Demo scenario id (none, co2-scrubber-failure, o2-leak-lab, noisy-galley)",
       sourceRef: "05-hostile-closed-environments.md §4 Demo Scenarios",
     },
     {
       streamName: V.streams.simulatedMinutes,
-      inputPrompt: "Add your info: Elapsed simulated minutes (0+) for OSDR EDA / demo replay here",
+      inputPrompt: "Elapsed simulated minutes (0+) for replay",
       sourceRef: "05-hostile-closed-environments.md §4 Shared Simulation",
       fieldType: "number",
       unit: "min",
     },
   ],
   outputSlots: {
-    immediateHorizon: "Here is: Acute hypoxia / rapid pressure-change / hazardous noise alarm & module evacuation advice.",
-    prolongedHorizon: "Here is: CO₂ headache risk forecast, module weather map (green/yellow/red), and morning sleep-environment report.",
-    etaSlot: "Here is: Projected time until module CO₂ or O₂ crosses NASA OCHMO operational limit.",
-    solutionsSlot: "Here is: 1–2 actions (e.g., Sleep relocation to Module B tonight; Inspect CO₂ scrubber / ECLSS ducting).",
+    immediateHorizon: "Acute hypoxia, pressure-change, or noise alarms and module evacuation.",
+    prolongedHorizon: "CO₂ headache risk forecast, module map, and sleep-environment report.",
+    etaSlot: "Projected time until CO₂ or O₂ crosses NASA OCHMO operational limit.",
+    solutionsSlot: "Module relocation or ECLSS inspection actions.",
   },
   leadView: {
-    summary: "Module Weather Map (green/yellow/red across all spacecraft modules), crew-wide CO₂ headache forecast, and sleep-relocation orders.",
-    privacyRule: "Environmental module telemetry is crew-wide; contact tracing / contagion views are flagged as future work with limited public data.",
+    summary: "Module weather map, CO₂ headache forecast, and crew relocation orders.",
+    privacyRule: "Module telemetry is crew-wide; contact tracing is disabled.",
     modules: [
       {
         title: "Module Weather Map & Replay Control",
-        detail: "Here is: Live or OSDR-EDA replayed green/yellow/red status per module for CO₂, O₂, pressure, temp, and noise.",
-        actionSlot: "Add your info: Module telemetry override or EDA replay mission_id here",
+        detail: "Live or replayed green/yellow/red status per module for CO₂, O₂, pressure, and noise.",
+        actionSlot: "Module telemetry override or replay",
       },
       {
-        title: "Crew Headache Forecast & Relocation Orders",
-        detail: "Here is: Cross-crew headache odds alert (e.g., CO₂ rising across shared sleeping bay) + relocation plan.",
-        actionSlot: "Add your info: Crew module reassignment plan here",
+        title: "Crew Headache Forecast & Relocation",
+        detail: "Cross-crew headache odds alert and module reassignment plan.",
+        actionSlot: "Crew module reassignment",
       },
     ],
   },
   memberView: {
-    summary: "Personal 'Where to go' relocation advice, morning Sleep & Environment report (linking sleep quality to night noise & CO₂), and personal local readings.",
-    privacyRule: "Personal symptom logs remain private while shared module alerts warn the whole crew early.",
+    summary: "Module relocation guidance and morning Sleep & Environment summary.",
+    privacyRule: "Personal symptom logs remain private while shared module alerts warn the crew.",
     modules: [
       {
-        title: "Where-to-Go & Sleep Environment Report",
-        detail: "Here is: Plain-language morning briefing & relocation advice (e.g., 'Module A CO₂ elevated — sleep in Module B tonight').",
-        actionSlot: "Add your info: Morning symptom check (headache / dizziness / sleep) here",
+        title: "Where-to-Go & Sleep Report",
+        detail: "Morning briefing and module relocation guidance.",
+        actionSlot: "Morning symptom check",
       },
       {
-        title: "Module Safety Limits Reference",
-        detail: "Here is: Displays NASA OCHMO operational context (CO₂ <= 4 mmHg target, O₂ >= 122 mmHg floor, 5–15 psia, <85 dBA / NC-40).",
-        actionSlot: "Add your info: Local handheld sensor check here",
+        title: "Module Safety Limits",
+        detail: "NASA OCHMO bounds: CO₂ <= 4 mmHg, O₂ >= 122 mmHg, 5–15 psia, < 85 dBA / NC-40.",
+        actionSlot: "Handheld sensor check",
       },
     ],
   },
@@ -675,9 +840,9 @@ export const environmentHazard: HazardSpec = {
   alarmPreset: {
     title: "CLOSED HABITAT ATMOSPHERE BREACH — CO₂ / O₂ / PRESSURE ALERT",
     severity: "CRITICAL",
-    etaLabel: "Here is: Estimated Time of Action before 1-hour TWA O₂ floor or CO₂ headache/hypercapnia threshold",
+    etaLabel: "Estimated Time of Action before O₂ floor or CO₂ threshold",
     descriptionSlot:
-      "Here is: Module A atmospheric telemetry breached operational bounds. Multiple crew members at risk of shared environmental debuff.",
+      "Module A atmospheric telemetry breached operational bounds. Crew at risk of shared environmental debuff.",
     leadActions: [
       "1. Evacuate/isolate affected module and redistribute crew to green-status compartments.",
       "2. Dispatch Flight Engineer to inspect CO₂ scrubber / O₂ supply loop.",

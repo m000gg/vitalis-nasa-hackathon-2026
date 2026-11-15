@@ -371,9 +371,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_seed = sub.add_parser("seed", help="Seed telemetry across scenarios and hazards.")
     p_seed.add_argument(
         "--mode",
-        choices=["positive", "negative", "demo"],
+        choices=["positive", "negative", "demo", "chaos"],
         default="demo",
-        help="Telemetry profile: positive (nominal), negative (critical faults), or demo (mixed).",
+        help="Telemetry profile: positive (nominal), negative (critical faults), demo (mixed), or chaos (extreme erratic spikes across all charts).",
     )
     p_seed.add_argument("--scenario", action="append", help="Scenario ID filter.")
     p_seed.add_argument("--hazard", action="append", help="Hazard slug filter.")
@@ -386,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_stream = sub.add_parser("stream", help="Emit live incremental sensor ticks.")
     p_stream.add_argument(
         "--mode",
-        choices=["positive", "negative", "demo"],
+        choices=["positive", "negative", "demo", "chaos"],
         default="demo",
         help="Streaming telemetry profile.",
     )

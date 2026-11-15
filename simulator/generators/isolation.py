@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from config import ScenarioInfo
@@ -12,6 +13,8 @@ from generators import data_row, iso_hours_ago, is_surface_scenario, sample_row
 def _member_profile(idx: int, mode: str) -> str:
     if mode == "positive":
         return "nominal"
+    if mode == "chaos":
+        return "chaos"
     if mode == "negative":
         return "critical" if idx in (1, 2, 3) else "elevated"
     # demo mix
@@ -34,8 +37,8 @@ def generate(
     # For strictly NOMINAL positive runs, place positive outside 50..75% (e.g. 34% / 78%).
     if mode == "positive":
         mission_pct = 78 if surface else 34
-    elif mode == "negative":
-        mission_pct = 58 if surface else 64
+    elif mode in ("negative", "chaos"):
+        mission_pct = 58 if surface else 66
     else:
         mission_pct = 58 if surface else 44
 
@@ -78,6 +81,36 @@ def generate(
             veggie_done = idx % 2 == 0
             connect_done = True
             sleep_med_priv = False
+        elif prof == "chaos":
+            sleep_series = [
+                round(random.uniform(1.8, 3.4) if (s + idx) % 2 == 0 else random.uniform(11.5, 14.4), 2)
+                for s in range(12)
+            ]
+            activity_series = [
+                int(random.uniform(800, 3200) if (s + idx) % 2 == 0 else random.uniform(32000, 42500))
+                for s in range(12)
+            ]
+            pvt_series = [
+                int(random.uniform(190, 245) if (s + idx) % 2 == 0 else random.uniform(760, 1180))
+                for s in range(12)
+            ]
+            noise_series = [
+                round(random.uniform(32.0, 41.5) if (s + idx) % 2 == 0 else random.uniform(82.0, 106.5), 1)
+                for s in range(12)
+            ]
+            efficiency = 58
+            circadian_drift = 148
+            hrv = 12
+            impulse_spikes = 19
+            lux_match = 29
+            lapses = 12
+            fatigue = 5
+            strain = 5
+            mood_priv = 1
+            journal_priv = "PRIVATE: Total circadian disarray and alarms going off continuously."
+            veggie_done = False
+            connect_done = False
+            sleep_med_priv = True
         else:  # critical
             sleep_series = [7.8, 7.1, 6.6, 6.1, 5.7, 5.4]
             activity_series = [21000, 19400, 17600, 15900, 14400, 13100]
@@ -97,9 +130,10 @@ def generate(
             connect_done = False
             sleep_med_priv = True
 
-        # Generate 6 historical points spaced every 24h so charts & +2 SD baselines populate cleanly
-        for step in range(6):
-            ts = iso_hours_ago((5 - step) * 24.0 + 0.5)
+        # Generate historical points spaced every 24h so charts & +2 SD baselines populate cleanly
+        num_steps = len(sleep_series)
+        for step in range(num_steps):
+            ts = iso_hours_ago((num_steps - 1 - step) * 24.0 + 0.5)
             slp = sleep_series[step]
             act = activity_series[step]
             pvt = pvt_series[step]
@@ -248,10 +282,19 @@ def stream_tick(
 
     for idx, member in enumerate(scenario.crew):
         prof = _member_profile(idx, mode)
-        base_noise = 43.6 if prof == "nominal" else (52.0 if prof == "elevated" else 59.5)
-        noise = round(base_noise + math.sin(tick_index * 0.8 + idx) * 1.1, 1)
-        base_pvt = 248 if prof == "nominal" else (305 if prof == "elevated" else 374)
-        pvt = int(round(base_pvt + math.cos(tick_index * 0.6 + idx) * 6))
+        if prof == "chaos":
+            noise = round(
+                random.uniform(33.0, 42.0) if (tick_index + idx) % 2 == 0 else random.uniform(84.0, 108.0),
+                1,
+            )
+            pvt = int(
+                random.uniform(195, 250) if (tick_index + idx) % 2 == 1 else random.uniform(790, 1190)
+            )
+        else:
+            base_noise = 43.6 if prof == "nominal" else (52.0 if prof == "elevated" else 59.5)
+            noise = round(base_noise + math.sin(tick_index * 0.8 + idx) * 1.1, 1)
+            base_pvt = 248 if prof == "nominal" else (305 if prof == "elevated" else 374)
+            pvt = int(round(base_pvt + math.cos(tick_index * 0.6 + idx) * 6))
 
         hab_payload = {
             "sleep_quarter_noise_dba": noise,

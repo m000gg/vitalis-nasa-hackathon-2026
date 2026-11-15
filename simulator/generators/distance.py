@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from typing import Any
 
 from config import ScenarioInfo
@@ -17,6 +18,19 @@ def _distance_trajectory_km(scenario: ScenarioInfo, mode: str) -> list[float]:
             if surface
             else [78_000_000, 84_000_000, 90_500_000, 97_000_000, 103_500_000, 110_000_000]
         )
+    if mode == "chaos":
+        return [
+            54_000_000,
+            398_000_000,
+            66_500_000,
+            412_000_000,
+            79_000_000,
+            386_000_000,
+            61_000_000,
+            418_500_000,
+            92_000_000,
+            405_000_000,
+        ]
     if mode == "negative":
         # >= 179.87M km (>= 10 min one-way) => ELEVATED autonomy latency
         return (
@@ -69,7 +83,15 @@ def generate(
             )
         )
 
-        if mode == "positive":
+        if mode == "chaos":
+            inv_raw = "CRITICAL CHAOS: Antibiotics EXPIRED (0d left) · 8% kit remaining"
+            inv_payload = {
+                "kitStatus": "CRITICAL",
+                "remainingConsumablesPct": 8,
+                "nextExpiringItem": "Broad-spectrum antibiotics",
+                "daysUntilExpiry": 0,
+            }
+        elif mode == "positive":
             inv_raw = "100% nominal (nearest expiry: Epinephrine 410d)"
             inv_payload = {
                 "kitStatus": "NOMINAL",
@@ -117,7 +139,15 @@ def stream_tick(
     data_rows: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
     traj = _distance_trajectory_km(scenario, mode)
-    dist_km = traj[-1] + tick_index * 180_000.0
+    if mode == "chaos":
+        dist_km = round(
+            random.uniform(52_000_000, 98_000_000)
+            if tick_index % 2 == 0
+            else random.uniform(355_000_000, 422_000_000),
+            0,
+        )
+    else:
+        dist_km = traj[-1] + tick_index * 180_000.0
     ts = iso_hours_ago(0.0)
 
     for member in scenario.crew:

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
-  Database,
   LayoutDashboard,
   RefreshCw,
   Shield,
@@ -24,8 +23,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     dbStatus,
     dbError,
     refreshScenarios,
-    lastTelemetrySyncAt,
-    refreshHazardTelemetry,
     role,
   } = useMission();
   const { pushToast } = useAlerts();
@@ -76,35 +73,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                dbStatus === "connected"
-                  ? "bg-emerald-50 text-emerald-700"
-                  : dbStatus === "error"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              <Database className="h-3.5 w-3.5" />
-              {dbStatus === "connected"
-                ? "Supabase"
-                : dbStatus === "error"
-                ? "DB Error"
-                : "Loading..."}
-            </span>
-
-            <button
-              type="button"
-              onClick={() => {
-                void refreshHazardTelemetry();
-              }}
-              title={lastTelemetrySyncAt ? `Last synced at ${lastTelemetrySyncAt}` : "Sync telemetry from Supabase"}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>{lastTelemetrySyncAt ? `Sync (${lastTelemetrySyncAt})` : "Sync DB"}</span>
-            </button>
-
             {mission && activeCharacter && (
               <select
                 value={activeCharacter.id}
@@ -114,7 +82,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   if (next) {
                     pushToast({
                       title: `Switched Character (${next.isLeadSlot ? "Lead" : "Member"})`,
-                      message: `Here is: Viewing dashboard as ${next.callsign}.`,
+                      message: `Viewing dashboard as ${next.callsign}.`,
                       variant: "info",
                     });
                   }
@@ -191,7 +159,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <div className="space-y-1">
                   <p className="inline-flex items-center gap-2 text-sm font-bold text-red-900">
                     <AlertTriangle className="h-4 w-4" />
-                    Supabase Database Error
+                    Connection Error
                   </p>
                   <p className="font-mono text-xs text-red-800">{dbError}</p>
                 </div>
@@ -209,11 +177,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
           {dbStatus === "loading" ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-              Loading mission telemetry from Supabase...
+              Loading mission telemetry...
             </div>
           ) : !mission || !activeCharacter ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
-              No active scenario or character loaded from Supabase.{" "}
+              No active scenario or character selected.{" "}
               <Link href="/" className="font-semibold underline">
                 Go to Scenarios
               </Link>
