@@ -275,7 +275,11 @@ node --test tests/radiation.test.mjs tests/rbac.test.mjs
 
 ## 👥 Authors
 
-* **m000gg & Vitalis NASA Hackathon 2026 Team** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+* **m000gg** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+* **Sabir2005** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+* **qqvoid** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+* **S1nflex** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+* **idkhtoc** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
 
 ---
 
