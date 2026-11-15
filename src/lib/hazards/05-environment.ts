@@ -951,16 +951,17 @@ function buildSolutions(model: EnvironmentModel, maxSolutions: number): string[]
   return actions.slice(0, maxSolutions);
 }
 
-function chartFor(m: ModuleModel): HazardChartSpec {
+function chartFor(m: ModuleModel, scenarioId: string): HazardChartSpec {
   const thresholds: HazardChartThreshold[] = [
     { label: V.chart.limitLabel, value: V.limits.co2TargetMmhg, color: V.chart.limitColor },
   ];
-  const projPts = m.projection
-    .slice(1)
-    .map((p, idx) => ({
-      label: `+${(idx + 1) * V.demoSettings.projectionStepMin}m`,
-      value: Number(p.co2Mmhg.toFixed(FORMAT.co2Decimals)),
-    }));
+  const projPts =
+    scenarioId === "chaos"
+      ? []
+      : m.projection.slice(1).map((p, idx) => ({
+          label: `+${(idx + 1) * V.demoSettings.projectionStepMin}m`,
+          value: Number(p.co2Mmhg.toFixed(FORMAT.co2Decimals)),
+        }));
   return {
     id: `co2-${m.moduleId}`,
     title: `${m.moduleName} CO₂ (NASA target ${V.limits.co2TargetMmhg} mmHg)`,
@@ -1041,7 +1042,7 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
     prolongedHorizon,
     eta,
     solutions: buildSolutions(model, maxSolutions),
-    charts: model.modules.map((m) => chartFor(m)),
+    charts: model.modules.map((m) => chartFor(m, model.scenarioId)),
   };
 }
 

@@ -18,24 +18,40 @@ MODULES = [
 ]
 
 
+def _select_cabin_window(points: list[EdaCo2Point], mode: str) -> list[EdaCo2Point]:
+    """Select authentic NASA OSDR RR-1 telemetry segments appropriate to each mode."""
+    if not points:
+        return []
+    if mode == "positive" and len(points) >= 5804:
+        return points[5780:5804]  # Low baseline ~1.4-1.9 mmHg
+    if mode == "demo" and len(points) >= 9954:
+        return points[9930:9954]  # Natural climbing segment ~2.78 -> 3.44 mmHg
+    if mode == "negative" and len(points) >= 5034:
+        return points[5010:5034]  # Peak ISS segment up to ~3.55 mmHg
+    return points[:24]
+
+
 def _pick_nasa_co2_mmhg(
     eda_points: list[EdaCo2Point],
     point_index: int,
     mode: str,
     module_name: str,
-) -> tuple[float, str, str]:
-    """Return (co2_mmhg, controller_time_gmt, source_label) driven by NASA EDA CSV when available."""
+) -> tuple[float, str, str, float | None, float | None]:
+    """Return (co2_mmhg, controller_time_gmt, source_label, temp_c, rh_pct) driven by NASA EDA CSV."""
     if eda_points:
         pt = eda_points[point_index % len(eda_points)]
         base_mmhg = pt.co2_mmhg_iss
         gmt = pt.controller_time_gmt
+        temp_c = pt.temp_deg_c_iss
+        rh_pct = pt.rh_percent_iss
         src = "NASA-RR1-EDA-CSV"
     else:
         base_mmhg = 2.25
         gmt = "2014-09-25T12:00:00Z"
+        temp_c = 23.5
+        rh_pct = 40.0
         src = "Vitalis-Fallback-ECLSS"
 
-    # Keep positive Habitat <= 2.9 mmHg so 02-isolation.ts does not raise false cross-hazard alert.
     if mode == "chaos":
         co2 = round(
             random.uniform(1.4, 2.6)
@@ -45,17 +61,15 @@ def _pick_nasa_co2_mmhg(
         )
     elif mode == "positive":
         mod_offset = {"Lab": 0.12, "Habitat": 0.04, "Galley": 0.18, "Airlock": -0.05}[module_name]
-        co2 = min(2.85, max(1.6, round(base_mmhg + mod_offset, 2)))
+        co2 = min(2.85, max(1.3, round(base_mmhg + mod_offset, 2)))
     elif mode == "negative":
-        # Push Habitat & Lab into elevated/critical scrub failure range
         boost = {"Lab": 1.95, "Habitat": 2.45, "Galley": 1.65, "Airlock": 1.35}[module_name]
         co2 = min(6.2, round(base_mmhg + boost, 2))
     else:
-        # Demo: Habitat / Galley slightly lively, Lab/Airlock nominal (overall amber/demo mix)
-        boost = {"Lab": 0.25, "Habitat": 1.05, "Galley": 0.85, "Airlock": 0.10}[module_name]
-        co2 = min(4.1, round(base_mmhg + boost, 2))
+        boost = {"Lab": 0.0, "Habitat": 0.4, "Galley": 0.2, "Airlock": -0.4}[module_name]
+        co2 = min(4.2, round(base_mmhg + boost, 2))
 
-    return co2, gmt, src
+    return co2, gmt, src, temp_c, rh_pct
 
 
 def generate(
@@ -65,14 +79,14 @@ def generate(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     data_rows: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
-    points = eda_points or []
+    all_points = eda_points or []
+    points = _select_cabin_window(all_points, mode)
 
-    # Owner slot for scenario-level Environment controls
     owner = next((c for c in scenario.crew if c.is_lead_slot), scenario.crew[0])
 
     if mode == "positive":
         demo_scenario = "none"
-        sim_minutes = 20  # tMin = 20 -> co2Trend 'collecting', all 4 modules green in 05-environment.ts
+        sim_minutes = 120
     elif mode == "chaos":
         demo_scenario = "chaos"
         sim_minutes = 150
@@ -80,8 +94,8 @@ def generate(
         demo_scenario = "co2-scrubber-failure"
         sim_minutes = 120
     else:
-        demo_scenario = "noisy-galley"
-        sim_minutes = 45
+        demo_scenario = "none"
+        sim_minutes = 230  # reaches climbing end of NASA 9930..9953 window -> yellow forecast
 
     data_rows.append(
         data_row(
@@ -107,8 +121,7 @@ def generate(
     )
 
     if points and mode != "chaos":
-        cabin_pts = points[:24]
-        for row_idx, pt in enumerate(cabin_pts):
+        for row_idx, pt in enumerate(points):
             sample_rows.append(
                 sample_row(
                     scenario.id,
@@ -120,15 +133,16 @@ def generate(
                     {
                         "unit": "ppm",
                         "rowIndex": row_idx,
+                        "temperatureC": pt.temp_deg_c_iss,
+                        "humidityPct": pt.rh_percent_iss,
                         "controllerTimeGmt": pt.controller_time_gmt,
                         "source": "NASA-RR1-EDA-CSV",
                     },
-                    iso_minutes_ago((len(cabin_pts) - row_idx) * 10.0),
+                    iso_minutes_ago((len(points) - row_idx) * 10.0),
                 )
             )
 
     # Module air streams (backed by RR-1_EDA_Telemetry_table.csv CO2_ppm_ISS * 0.00076)
-    # Assign to up to 4 crew members deterministically so each slot carries distinct module telemetry too
     sample_count = 16
     for mod_idx, (stream_name, mod_name) in enumerate(MODULES):
         member = scenario.crew[mod_idx % len(scenario.crew)]
@@ -136,8 +150,8 @@ def generate(
         latest_raw = ""
 
         for s_idx in range(sample_count):
-            csv_idx = s_idx * 4 + mod_idx
-            co2, gmt, src = _pick_nasa_co2_mmhg(points, csv_idx, mode, mod_name)
+            csv_idx = s_idx + mod_idx
+            co2, gmt, src, temp_c, rh_pct = _pick_nasa_co2_mmhg(points, csv_idx, mode, mod_name)
 
             if mode == "positive":
                 o2_mmhg = round(159.5 + math.sin(s_idx * 0.4 + mod_idx) * 1.1, 1)
@@ -163,6 +177,8 @@ def generate(
                 "o2MmHg": o2_mmhg,
                 "pressurePsia": pressure,
                 "noiseDba": noise,
+                "temperatureC": temp_c,
+                "humidityPct": rh_pct,
                 "controllerTimeGmt": gmt,
                 "source": src,
                 "provenanceKind": "simulated",
@@ -208,13 +224,13 @@ def stream_tick(
     """Emit fresh ECLSS readings and advance Simulated Minutes Elapsed smoothly."""
     data_rows: list[dict[str, Any]] = []
     sample_rows: list[dict[str, Any]] = []
-    points = eda_points or []
+    points = _select_cabin_window(eda_points or [], mode)
     ts = iso_hours_ago(0.0)
 
     owner = next((c for c in scenario.crew if c.is_lead_slot), scenario.crew[0])
     if mode == "positive":
         demo_scenario = "none"
-        sim_minutes = 20 + (tick_index % 3) * 5  # stay < 90 in positive mode
+        sim_minutes = 120 + (tick_index % 6) * 10
     elif mode == "chaos":
         demo_scenario = "chaos"
         sim_minutes = 150 + tick_index * 10
@@ -222,8 +238,8 @@ def stream_tick(
         demo_scenario = "co2-scrubber-failure"
         sim_minutes = 120 + tick_index * 10
     else:
-        demo_scenario = "noisy-galley"
-        sim_minutes = 45 + (tick_index % 5) * 5
+        demo_scenario = "none"
+        sim_minutes = 200 + (tick_index % 4) * 10
 
     data_rows.append(
         data_row(
@@ -251,7 +267,9 @@ def stream_tick(
 
     for mod_idx, (stream_name, mod_name) in enumerate(MODULES):
         member = scenario.crew[mod_idx % len(scenario.crew)]
-        co2, gmt, src = _pick_nasa_co2_mmhg(points, tick_index * 3 + mod_idx, mode, mod_name)
+        co2, gmt, src, temp_c, rh_pct = _pick_nasa_co2_mmhg(
+            points, tick_index * 3 + mod_idx, mode, mod_name
+        )
 
         if mode == "positive":
             o2_mmhg = round(159.4 + math.sin(tick_index + mod_idx) * 0.8, 1)
@@ -276,6 +294,8 @@ def stream_tick(
             "o2MmHg": o2_mmhg,
             "pressurePsia": pressure,
             "noiseDba": noise,
+            "temperatureC": temp_c,
+            "humidityPct": rh_pct,
             "controllerTimeGmt": gmt,
             "source": src,
             "provenanceKind": "simulated",

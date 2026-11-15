@@ -216,45 +216,46 @@ def generate(
             )
         )
 
-        # Compartment sensor mapped cleanly per crew slot
-        comp_name, comp_pos = COMPARTMENTS[idx % len(COMPARTMENTS)]
-        if mode == "positive":
-            comp_rate = round(base_rate + (idx - 2) * 1.4, 1)  # < 25% spread
-            det_status = "online"
-        elif mode == "chaos":
-            comp_rates = [19.0, 2850.0, 420.0, 9400.0, 6150.0]
-            comp_rate = round(comp_rates[idx % len(comp_rates)] * random.uniform(0.65, 1.35), 1)
-            det_status = "suspect" if idx in (1, 3) else "online"
-        elif mode == "negative":
-            # Wide spread (>25%) & high airlock dose rate
-            comp_rates = [42.0, 145.0, 220.0, 610.0, 180.0]
-            comp_rate = comp_rates[idx % len(comp_rates)]
-            det_status = "suspect" if idx == 3 else "online"
-        else:
-            comp_rates = [24.0, 31.0, 88.0, 140.0, 33.0]
-            comp_rate = comp_rates[idx % len(comp_rates)]
-            det_status = "online"
+        # Compartment sensor mapped cleanly (1 per unique compartment)
+        if idx < len(COMPARTMENTS):
+            comp_name, comp_pos = COMPARTMENTS[idx]
+            if mode == "positive":
+                comp_rate = round(base_rate + (idx - 2) * 1.4, 1)  # < 25% spread
+                det_status = "online"
+            elif mode == "chaos":
+                comp_rates = [19.0, 2850.0, 420.0, 9400.0, 6150.0]
+                comp_rate = round(comp_rates[idx] * random.uniform(0.65, 1.35), 1)
+                det_status = "suspect" if idx in (1, 3) else "online"
+            elif mode == "negative":
+                # Wide spread (>25%) & high airlock dose rate
+                comp_rates = [42.0, 145.0, 220.0, 610.0, 180.0]
+                comp_rate = comp_rates[idx]
+                det_status = "suspect" if idx == 3 else "online"
+            else:
+                comp_rates = [24.0, 31.0, 88.0, 140.0, 33.0]
+                comp_rate = comp_rates[idx]
+                det_status = "online"
 
-        data_rows.append(
-            data_row(
-                scenario.id,
-                member.id,
-                "radiation",
-                "Compartment Sensors",
-                f"{comp_name}: {comp_rate} µSv/h ({det_status})",
-                {
-                    "compartmentId": comp_name,
-                    "doseRateValue": comp_rate,
-                    "doseRateUnit": "µSv/h",
-                    "detectorStatus": det_status,
-                    "position": comp_pos,
-                    "uncertaintyPercent": 6,
-                    "provenanceKind": "simulated",
-                    "measuredAt": latest_ts,
-                },
-                hours_ago=0.2,
+            data_rows.append(
+                data_row(
+                    scenario.id,
+                    member.id,
+                    "radiation",
+                    "Compartment Sensors",
+                    f"{comp_name}: {comp_rate} µSv/h ({det_status})",
+                    {
+                        "compartmentId": comp_name,
+                        "doseRateValue": comp_rate,
+                        "doseRateUnit": "µSv/h",
+                        "detectorStatus": det_status,
+                        "position": comp_pos,
+                        "uncertaintyPercent": 6,
+                        "provenanceKind": "simulated",
+                        "measuredAt": latest_ts,
+                    },
+                    hours_ago=0.2,
+                )
             )
-        )
 
     return data_rows, sample_rows
 

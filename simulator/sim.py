@@ -194,7 +194,7 @@ def cmd_status(client: Client) -> int:
     scenarios = fetch_scenarios_and_crew(client)
     data_resp = client.table("character_hazard_data").select("scenario_id,hazard_slug").execute()
     sample_resp = client.table("character_hazard_samples").select("scenario_id,hazard_slug").execute()
-    eda_points, csv_loaded = load_nasa_eda_co2_series(DEFAULT_CSV_PATH, max_rows=300)
+    eda_points, csv_loaded = load_nasa_eda_co2_series(DEFAULT_CSV_PATH)
 
     data_rows: list[dict[str, Any]] = data_resp.data or []
     sample_rows: list[dict[str, Any]] = sample_resp.data or []
@@ -255,7 +255,7 @@ def cmd_seed(
         print("No matching scenarios found in Supabase.", file=sys.stderr)
         return 1
 
-    eda_points, csv_loaded = load_nasa_eda_co2_series(DEFAULT_CSV_PATH, max_rows=300)
+    eda_points, csv_loaded = load_nasa_eda_co2_series(DEFAULT_CSV_PATH)
     if "environment" in hazards:
         note = f"NASA EDA CSV ({len(eda_points)} pts)" if csv_loaded else "built-in ECLSS fallback"
         print(f"Environment CO2 curve source: {note}")
@@ -301,7 +301,7 @@ def cmd_stream(
         print("No matching scenarios found in Supabase.", file=sys.stderr)
         return 1
 
-    eda_points, _ = load_nasa_eda_co2_series(DEFAULT_CSV_PATH, max_rows=300)
+    eda_points, _ = load_nasa_eda_co2_series(DEFAULT_CSV_PATH)
     session = requests.Session() if via == "api" else None
     tick = 0
 

@@ -17,13 +17,24 @@ class EdaCo2Point:
     controller_time_gmt: str
     co2_ppm_iss: float
     co2_mmhg_iss: float
+    temp_deg_c_iss: float | None = None
+    rh_percent_iss: float | None = None
+
+
+def _opt_float(raw: str | None) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return round(float(raw), 2)
+    except ValueError:
+        return None
 
 
 def load_nasa_eda_co2_series(
     csv_path: Path = DEFAULT_CSV_PATH,
     max_rows: int | None = None,
 ) -> tuple[list[EdaCo2Point], bool]:
-    """Load real ISS CO2 measurements (CO2_ppm_ISS -> mmHg) from the OSDR CSV.
+    """Load real ISS CO2, temp & RH measurements from the NASA OSDR RR-1 CSV.
 
     Returns (points, used_real_csv). Falls back gracefully if CSV is missing.
     """
@@ -34,6 +45,8 @@ def load_nasa_eda_co2_series(
                 controller_time_gmt=f"2014-09-20 04:{(i * 5) % 60:02d}",
                 co2_ppm_iss=round((2.5 + 0.03 * (i % 20)) / CO2_PPM_TO_MMHG, 1),
                 co2_mmhg_iss=round(2.5 + 0.03 * (i % 20), 3),
+                temp_deg_c_iss=23.5,
+                rh_percent_iss=40.0,
             )
             for i in range(60)
         ]
@@ -57,6 +70,8 @@ def load_nasa_eda_co2_series(
                     controller_time_gmt=raw_time,
                     co2_ppm_iss=ppm,
                     co2_mmhg_iss=round(ppm * CO2_PPM_TO_MMHG, 3),
+                    temp_deg_c_iss=_opt_float(row.get("Temp_degC_ISS")),
+                    rh_percent_iss=_opt_float(row.get("RH_percent_ISS")),
                 )
             )
             if max_rows is not None and len(points) >= max_rows:
