@@ -62,8 +62,8 @@ Note: all documents are ISS-era (2000-2018). Applicability to lunar/Mars suits a
 - Return to gravity: reconditioning R+0 to R+45, 120 min/day, extension decided by crew surgeon + ASCR review.
 
 ### 4.2 Pre-test condition rules (differ per test, so store them as data per test)
-- Arm ergometry: no strenuous exercise 24 h before, no meal 2 h before, no alcohol or vasoactive substances (e.g. cold medications) 24 h before, no caffeine or nicotine 8 h before. Test >= 48 h from a neutral-buoyancy session.
-- Cycle tests (MR087L): no max exercise 24 h before, no regular exercise 8 h before, limited food 2 h, no alcohol/nicotine/vasoactive substances 8 h, caffeine limited 8 h.
+- Arm ergometry: no strenuous exercise 24 h before, no meal 2 h before, no alcohol or vasoactive substances (e.g. cold medications) 24 h before, no caffeine 8 h before. Test >= 48 h from a neutral-buoyancy session.
+- Cycle tests (MR087L): no max exercise 24 h before, no regular exercise 8 h before, limited food 2 h, no alcohol/vasoactive substances 8 h, caffeine limited 8 h.
 - Functional fitness (ground): no maximal exercise 4 h, no food 90 min.
 - Grip: no test within 24 h of an EVA.
 
@@ -185,6 +185,7 @@ Jev returns typed decisions (probabilities, confidence, values) and does not wri
 > **NASA Source Basis:** `MR081L` (Handgrip Dynamometry), `MEDB 6.3` (Arm Ergometry), `MR087L` (EVA Exercise Prebreathe), `MEDB 6.1/6.2` (EVA Medical Monitoring), `MEDB 5.2` (Periodic Fitness Evaluation / PFE), `MR090L` (ISLE Prebreathe Prerequisite).
 
 https://nlsp.nasa.gov/resources/lsah
+
 ---
 
 ## 1. Space Health Problem & Purpose
@@ -227,12 +228,12 @@ This feature implements a **100% deterministic, rule-based TypeScript engine** (
      - `hoursSinceStrenuousExercise` (must be $\ge 24\text{ h}$)
      - `hoursSinceMeal` (must be $\ge 2\text{ h}$)
      - `hoursSinceAlcoholOrVasoactiveMeds` (e.g., cold medicine; must be $\ge 24\text{ h}$)
-     - `hoursSinceCaffeineOrNicotine` (must be $\ge 8\text{ h}$)
+     - `hoursSinceCaffeine` (must be $\ge 8\text{ h}$)
 3. **EVA Exercise Prebreathe Practice (`MR087L`):**
    - `takenAt` (timestamp, target ~7 days pre-EVA)
    - `measuredVo2Last2MinAt75Pct` and `targetVo2At75Pct` (must fall within **$\pm 10\%$ of target**)
    - `conditions`:
-     - `hoursSinceMaxExercise` ($\ge 24\text{ h}$), `hoursSinceRegularExercise` ($\ge 8\text{ h}$), `hoursSinceMeal` ($\ge 2\text{ h}$), `hoursSinceAlcoholNicotineVasoactive` ($\ge 8\text{ h}$), `caffeineLimitedLast8h` (`boolean`)
+     - `hoursSinceMaxExercise` ($\ge 24\text{ h}$), `hoursSinceRegularExercise` ($\ge 8\text{ h}$), `hoursSinceMeal` ($\ge 2\text{ h}$), `hoursSinceAlcoholOrVasoactive` ($\ge 8\text{ h}$), `caffeineLimitedLast8h` (`boolean`)
 4. **Periodic Fitness Evaluation / PFE (`MEDB 5.2`, `MR087L`):**
    - `lastCompletedFlightDay` (checked against configurable recency window, e.g., within 30 days)
 5. **Pre-EVA Health Status Check (`MEDB 6.1`):**
@@ -253,7 +254,7 @@ Before accepting any test measurement as valid, the code checks the test-specifi
   conditionsMet = (hoursSinceStrenuousExercise >= 24)
                && (hoursSinceMeal >= 2)
                && (hoursSinceAlcoholOrVasoactiveMeds >= 24)
-               && (hoursSinceCaffeineOrNicotine >= 8)
+               && (hoursSinceCaffeine >= 8)
   ```
 - **For Cycle / Prebreathe (`MR087L`):** Checks the 24h max exercise, 8h regular exercise/caffeine/medication, and 2h food rules.
 - **For Handgrip (`MR081L`):** Checks that the test was **not** taken within `< 24 hours` of `plannedEvaTimestamp` (hard block to prevent pre-EVA forearm fatigue).
@@ -319,6 +320,7 @@ In accordance with `MEDB 6.1/6.2` (where the Flight Surgeon provides a *Flight N
 > **NASA Source Basis:** `MEDB 5.2` (On-Orbit Strength & Conditioning Monitoring), `MEDB 5.4` (Calf Volume via EZOG Device), `MEDB 1.13` (Body Mass), `MR081L` (Handgrip Dynamometry), `MEDB 1.11` (Bone Densitometry Context), `MR026L` (Postflight Reconditioning Context).
 
 https://nlsp.nasa.gov/resources/lsah
+
 ---
 
 ## 1. Space Health Problem & Purpose
