@@ -185,6 +185,7 @@ Jev returns typed decisions (probabilities, confidence, values) and does not wri
 > **NASA Source Basis:** `MR081L` (Handgrip Dynamometry), `MEDB 6.3` (Arm Ergometry), `MR087L` (EVA Exercise Prebreathe), `MEDB 6.1/6.2` (EVA Medical Monitoring), `MEDB 5.2` (Periodic Fitness Evaluation / PFE), `MR090L` (ISLE Prebreathe Prerequisite).
 
 https://nlsp.nasa.gov/resources/lsah
+
 ---
 
 ## 1. Space Health Problem & Purpose
@@ -319,6 +320,7 @@ In accordance with `MEDB 6.1/6.2` (where the Flight Surgeon provides a *Flight N
 > **NASA Source Basis:** `MEDB 5.2` (On-Orbit Strength & Conditioning Monitoring), `MEDB 5.4` (Calf Volume via EZOG Device), `MEDB 1.13` (Body Mass), `MR081L` (Handgrip Dynamometry), `MEDB 1.11` (Bone Densitometry Context), `MR026L` (Postflight Reconditioning Context).
 
 https://nlsp.nasa.gov/resources/lsah
+
 ---
 
 ## 1. Space Health Problem & Purpose
