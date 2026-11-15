@@ -327,7 +327,7 @@ export function EnvironmentHazardScreen({
               </ol>
             ) : (
               <p className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900">
-                All modules are green with no CO₂ limit crossings projected within 120 simulated minutes.
+                All modules nominal · 0 CO₂ alerts in 120 min window.
               </p>
             )}
           </div>

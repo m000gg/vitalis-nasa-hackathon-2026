@@ -891,8 +891,8 @@ export function RadiationHazardScreen({
           {whatIfResults.length === 0 ? (
             <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
               {activeDosimeterSource
-                ? "Run comparison to evaluate baseline vs storm shelter vs higher-exposure multipliers."
-                : "Requires an active compatible dosimeter reading before running What-If comparisons."}
+                ? "Click Compare Options to evaluate multipliers."
+                : "Requires active compatible dosimeter reading."}
             </p>
           ) : (
             <div className="mt-3 space-y-2">
@@ -960,9 +960,9 @@ export function RadiationHazardScreen({
               </button>
             </div>
           </div>
-          <p className="mt-1.5 text-xs text-slate-500">
-            External heliophysics events only; never converted directly into spacecraft or crew dose.
-          </p>
+          <span className="mt-1 inline-block rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+            Weather context only · not crew dose
+          </span>
 
           {syncedSpaceWeather && (
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
@@ -1029,9 +1029,6 @@ export function RadiationHazardScreen({
               Simulation Scenarios (Lead Only)
             </h3>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Run simulated radiation scenarios for crew drill and response verification.
-          </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {scenarios.map((scenario) => (
               <div

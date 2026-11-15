@@ -79,11 +79,9 @@ export default function GreetingScenarioPage() {
 
       <main className="mx-auto max-w-4xl space-y-8 px-6 py-12">
         <section className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome to Vitalis+</h1>
-            <p className="text-sm text-slate-600">
-              Select a mission scenario, then pick your character (Leader or Member).
-            </p>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Vitalis+</h1>
+            <p className="text-sm text-slate-600">Select a mission scenario.</p>
           </div>
           <button
             type="button"

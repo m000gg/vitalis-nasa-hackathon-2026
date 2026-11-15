@@ -1026,13 +1026,13 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
     ? `${formatNumber(latest.value)} ${latest.unit} — ${summary}`
     : summary;
 
-  let prolongedHorizon = "Forecast needs cumulative dose, rate, and remaining hours.";
+  let prolongedHorizon = "Need rate, cumulative dose, and hours left.";
   if (forecast?.supported && forecast.projectedValue !== null && forecast.unit) {
     const interval =
       forecast.lowerValue !== null && forecast.upperValue !== null
         ? ` (${formatNumber(forecast.lowerValue)}–${formatNumber(forecast.upperValue)} ${forecast.unit})`
         : "";
-    prolongedHorizon = `Projected mission-end dose: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval} at constant current rate.`;
+    prolongedHorizon = `Projected mission-end: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval}.`;
   } else if (currentDose) {
     prolongedHorizon = `Cumulative dose: ${formatNumber(currentDose.value)} ${currentDose.unit}.`;
   }
@@ -1048,21 +1048,21 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
   ) {
     const remainingDose = policy.cumulativeBudget.value - currentDose.value;
     const hours = Math.max(0, remainingDose / latest.value);
-    eta = `${formatNumber(hours, 2)} h to radiation budget at current rate`;
+    eta = `${formatNumber(hours, 2)} h to budget`;
   } else if (status === "CRITICAL") {
     eta = "Immediate action required";
   }
 
   const solutions: string[] = [];
   if (status === "CRITICAL" || activeSpaceWeatherEvent) {
-    solutions.push("Verify onboard dosimeters and follow radiation flight rule (DONKI is not crew dose).");
+    solutions.push("Verify onboard dosimeters; DONKI is weather context only.");
   } else if (status === "ELEVATED") {
-    solutions.push("Check dosimeter health, units, and a backup detector.");
+    solutions.push("Check dosimeter health and a backup detector.");
   } else {
     solutions.push("Continue routine dose-rate monitoring.");
   }
   if (disagreement.supported && disagreement.disagreement) {
-    solutions.push("Isolate suspect detector and compare compartment sensors.");
+    solutions.push("Isolate suspect detector; compare compartment sensors.");
   } else {
     solutions.push("Review high-exposure tasks against dose budget.");
   }

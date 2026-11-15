@@ -395,8 +395,7 @@ function LeadGravitySection({
               />
             </div>
             <p className="text-xs text-slate-500">
-              Shows conditioning band, blocker categories, and exercise adherence only — no raw
-              anthropometrics or private notes.
+              Conditioning band, flags &amp; adherence only · raw anthropometrics sealed
             </p>
           </div>
         </div>
@@ -493,7 +492,7 @@ function MemberGravitySection({
               />
             </div>
             <p className="mt-0.5 text-xs text-slate-500">
-              Verifies MEDB 6.3, MR087L, and MEDB 5.4 fasting, caffeine, exercise, and morning sampling rules.
+              Fasting, caffeine, exercise &amp; morning timing checks
             </p>
           </div>
           <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
@@ -535,7 +534,7 @@ function MemberGravitySection({
               Microgravity Atrophy, Proxy Bone-Shield &amp; Conditioning
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Personal L+14 / FD14 baseline trends and resistance adherence.
+              L+14 / FD14 trends &amp; resistance adherence
             </p>
           </div>
           {atrophy.adherenceSummary?.reconditioningDayRPlus !== null &&

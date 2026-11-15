@@ -53,8 +53,7 @@ export default function MembersOverviewPage() {
             <div className="space-y-2">
               <h1 className="text-base font-bold">Leader Access Only</h1>
               <p className="text-sm text-amber-900">
-                The Members directory is restricted to crew leaders. Members have direct access to the
-                5-hazard vital Dashboard and each individual hazard workspace.
+                Switch to a Lead character to view the crew directory.
               </p>
               <Link
                 href="/dashboard"
@@ -97,9 +96,8 @@ export default function MembersOverviewPage() {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               Crew Members & Hazard Matrix
             </h1>
-            <p className="text-sm text-slate-600">
-              Privacy-filtered crew health overview across all 5 NASA HRP hazards (private check-in notes
-              and raw individual clinical biomarkers remain sealed).
+            <p className="text-xs text-slate-500">
+              Operational status · private notes &amp; raw biomarkers masked
             </p>
           </div>
 

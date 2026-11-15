@@ -992,7 +992,7 @@ function evaluateAtrophyAndConditioning(
         alerts.push(
           `Return-to-gravity R+${rDay}/${S.reconditioningDurationDays} reconditioning at ${pct}% of 120 min/day target (MR026L)`
         );
-        actions.push("Complete 120 min/day MR026L postflight reconditioning block (recovery benchmark: ~2% of baseline, MEDB 1.11).");
+        actions.push("Complete 120 min/d postflight MR026L reconditioning.");
       }
     } else if (
       adherenceSummary.overallPct < A.weeklyAdherenceAlertPct ||
@@ -1001,17 +1001,17 @@ function evaluateAtrophyAndConditioning(
       alerts.push(
         `Exercise adherence ${adherenceSummary.overallPct}% (resistance ${adherenceSummary.resistancePct}% < ${A.weeklyAdherenceAlertPct}% target).`
       );
-      actions.push("Complete today's 90-min resistance session toward the 150 min/d total (60m aerobic + 90m resistance) target.");
+      actions.push("Complete today's 90-min resistance + 60-min aerobic workout.");
     }
 
     if (adherenceSummary.sleepViolations > 0) {
       alerts.push(
-        `Exercise ended <2h before sleep in ${adherenceSummary.sleepViolations} session(s).`
+        `Exercise ended <2h before sleep (${adherenceSummary.sleepViolations}x).`
       );
-      actions.push("Finish workouts >=2h before sleep and start >=90m after meals (MEDB 5.2).");
+      actions.push("Finish workouts ≥2 h before sleep, ≥90 min post-meal.");
     } else if (adherenceSummary.mealViolations > 0) {
       alerts.push(
-        `Exercise started <90 min after meal in ${adherenceSummary.mealViolations} session(s).`
+        `Exercise started <90 min after meal (${adherenceSummary.mealViolations}x).`
       );
     }
   }
@@ -1378,7 +1378,7 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     allHazardRecords,
     missionContext,
   });
-  const { conditionViolations, atrophy, status, sleepCrossNote, conditioningStatus } = diag;
+  const { conditionViolations, atrophy, status, conditioningStatus } = diag;
 
   const immediateItems: string[] = [];
   if (conditionViolations.length > 0) {
@@ -1393,14 +1393,14 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
 
   const immediateHorizon =
     immediateItems.length > 0
-      ? immediateItems.join(" · ")
+      ? immediateItems.slice(0, 3).join(" · ")
       : atrophy.hasAnyAnthropometric || atrophy.hasAnyExercise
       ? `Pre-test conditions valid${
           atrophy.adherenceSummary ? ` · 7d exercise ${atrophy.adherenceSummary.overallPct}%` : ""
         }.`
       : gravityHazard.outputSlots.immediateHorizon;
 
-  // Prolonged Horizon (Role-aware RBAC output)
+  // Prolonged Horizon (Role-aware RBAC output, max 1 concise line)
   const prolongedParts: string[] = [];
   if (effectiveRole === "lead") {
     if (conditioningStatus !== "UNLOGGED") {
@@ -1409,14 +1409,6 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
     if (atrophy.adherenceSummary) {
       prolongedParts.push(`Exercise: ${adherenceLabel(atrophy.adherenceSummary)}`);
     }
-    if (atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0) {
-      prolongedParts.push(`Calf overdue ${atrophy.calfDaysOverdue}d`);
-    }
-    if (atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0) {
-      prolongedParts.push(`Handgrip overdue ${atrophy.gripDaysOverdue}d`);
-    }
-  } else if (atrophy.alerts.length > 0) {
-    prolongedParts.push(atrophy.alerts.join(" "));
   } else {
     if (atrophy.calfTrend) {
       prolongedParts.push(
@@ -1429,13 +1421,13 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
       );
     }
     if (atrophy.adherenceSummary) {
-      prolongedParts.push(`7d Exercise ${adherenceLabel(atrophy.adherenceSummary)}`);
+      prolongedParts.push(`7d Exercise ${atrophy.adherenceSummary.overallPct}%`);
     }
   }
 
   const prolongedHorizon =
     prolongedParts.length > 0
-      ? `${prolongedParts.join(" · ")}${effectiveRole === "member" ? sleepCrossNote : ""}`
+      ? prolongedParts.slice(0, 3).join(" · ")
       : gravityHazard.outputSlots.prolongedHorizon;
 
   const eta =
@@ -1444,8 +1436,8 @@ export function evaluateGravityHazard(input: HazardEvaluationInput): HazardEvalu
       : actor.metrics.etaSlot;
 
   const fallbackSolutions = [
-    "Maintain daily 2.5h exercise (1h aerobic + 1.5h resistance, >=2h before sleep) and morning fasted EZOG calf volume every 14 days (MEDB 5.2 / 5.4).",
-    "Verify clean pre-test conditions (>=2h fast, >=8h caffeine abstinence) before anthropometric or cycle sessions.",
+    "Complete daily 150 min workout and biweekly fasted calf check.",
+    "Verify ≥2 h fast and ≥8 h no caffeine before testing.",
   ];
 
   const solutions = (atrophy.actions.length > 0 ? atrophy.actions : fallbackSolutions).slice(0, 2);

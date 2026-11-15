@@ -407,11 +407,8 @@ export default function DashboardOverviewPage() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            All 5 NASA HRP Hazard Zones · Live Vitals
+            5 NASA HRP Hazard Zones · Live Vitals
           </h2>
-          <span className="text-xs text-slate-500">
-            Click any zone for detailed charts & protocol guidance
-          </span>
         </div>
 
         <div className="grid gap-5 md:grid-cols-2">
@@ -583,7 +580,7 @@ export default function DashboardOverviewPage() {
                 Crew Operational Roster ({leaderModel.totalCrew} Members)
               </h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                Privacy-filtered operational status across all crew. Private notes, mood, and raw anthropometrics remain sealed.
+                Operational overview · private notes masked
               </p>
             </div>
             <Link

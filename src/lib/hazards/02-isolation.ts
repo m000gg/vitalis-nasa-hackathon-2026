@@ -497,11 +497,6 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   } = input;
 
   const maxSolutions = 2;
-  const isMarsSurface =
-    mission.durationContext.toLowerCase().includes("surface") ||
-    mission.durationContext.toLowerCase().includes("sol") ||
-    mission.name.toLowerCase().includes("chapea") ||
-    mission.name.toLowerCase().includes("mars");
 
   // 1. Parse actor-level numeric inputs from DB streams
   const wearableSamples = hazardSamples.filter((s) => s.streamName === STREAM_WEARABLE);
@@ -661,164 +656,114 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   // 9. Factual Operational Window & Horizon Summaries (no invented countdown formulas)
   let eta = actor.metrics.etaSlot;
   if (hasCriticalTelemetry) {
-    eta = "Pre-task hold — NASA threshold exceeded";
+    eta = "Pre-task hold — threshold exceeded";
   } else if (hasElevatedTelemetry) {
-    eta = "Active — mitigate before next sleep or duty cycle";
+    eta = "Mitigate before next sleep cycle";
   } else if (hasAnyIsolationTelemetry) {
-    eta = "Nominal — within NASA-STD-3001 & Cognition bounds";
+    eta = "Nominal — within NASA bounds";
   }
 
   const immediateFindings: string[] = [];
   if (sleepBelowIssMean) {
     immediateFindings.push(
-      `Sleep ${sleepDurationH} h (below ${V.issHistoricalMeanSleepHours} h ISS historical mean, Barger et al. 2014; NASA-STD-3001 req ${V.nasaStd3001SleepReqHours} h)`
+      `Sleep ${sleepDurationH} h (< ${V.issHistoricalMeanSleepHours} h ISS mean)`
     );
   } else if (sleepBelowNasaReq) {
     immediateFindings.push(
-      `Sleep ${sleepDurationH} h (below ${V.nasaStd3001SleepReqHours} h NASA-STD-3001 Vol. 1 requirement; ${V.scheduledSleepHours} h scheduled)`
+      `Sleep ${sleepDurationH} h (< ${V.nasaStd3001SleepReqHours} h req)`
     );
   }
   if (sleepRollingLow && sleepRolling3dMean !== null) {
-    immediateFindings.push(`Rolling 3-sample sleep mean ${sleepRolling3dMean} h (< 6.5 h chronic deficit trigger)`);
+    immediateFindings.push(`3-sample sleep avg ${sleepRolling3dMean} h (< 6.5 h)`);
   }
   if (pvtCritical || pvtElevated) {
     const zLabel = pvtZScore !== null ? ` (${pvtZScore >= 0 ? "+" : ""}${pvtZScore.toFixed(1)} SD)` : "";
     immediateFindings.push(
-      `PVT-B ${pvtMedianRtMs ?? "—"} ms${zLabel}, ${pvtLapsesCount ?? 0} lapses (threshold ${V.pvtLapseThresholdMs} ms)`
+      `PVT-B ${pvtMedianRtMs ?? "—"} ms${zLabel}, ${pvtLapsesCount ?? 0} lapses`
     );
   }
   if (acousticCritical || acousticElevated) {
     immediateFindings.push(
-      `Sleep-quarter noise ${sleepNoiseDba ?? "—"} dBA (exceeds NASA-STD-3001 NC-40 limit of ${V.sleepQuarterNoiseLimitNc40Dba} dBA)`
+      `Quarter noise ${sleepNoiseDba ?? "—"} dBA (> ${V.sleepQuarterNoiseLimitNc40Dba} NC-40)`
     );
   }
   if (sharedEnvCause) {
-    immediateFindings.push(`Cross-Hazard Link: ${sharedEnvCause}`);
+    immediateFindings.push(`Cross-hazard: ${sharedEnvCause}`);
   }
 
   const immediateHorizon =
     immediateFindings.length > 0
-      ? immediateFindings.join(" · ")
+      ? immediateFindings.slice(0, 3).join(" · ")
       : hasAnyIsolationTelemetry
       ? `Nominal — ${[
           sleepDurationH !== null ? `Sleep ${sleepDurationH} h` : null,
-          pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (${pvtLapsesCount ?? 0} lapses)` : null,
-          sleepNoiseDba !== null
-            ? `Quarter noise ${sleepNoiseDba} dBA (<= ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
-            : null,
+          pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms` : null,
+          sleepNoiseDba !== null ? `Noise ${sleepNoiseDba} dBA` : null,
         ]
           .filter(Boolean)
-          .join(", ")}.`
+          .join(" · ")}.`
       : isolationHazard.outputSlots.immediateHorizon;
 
   const prolongedFindings: string[] = [];
   if (circadianElevated) {
     prolongedFindings.push(
-      `Circadian phase shift ${circadianShiftMin ?? 0} min${isMarsSurface ? ` (24h 39m Martian sol drift)` : ""}${
-        luxCompliancePct !== null ? `, lighting match ${luxCompliancePct}%` : ""
-      }`
+      `Drift ${circadianShiftMin ?? 0} min${luxCompliancePct !== null ? ` · light ${luxCompliancePct}%` : ""}`
     );
   }
   if (inThirdQuarter) {
     const actText =
       activityChangePct !== null
-        ? `, daytime activity ${activityChangePct >= 0 ? "+" : ""}${activityChangePct.toFixed(0)}% vs. early samples`
+        ? ` · activity ${activityChangePct >= 0 ? "+" : ""}${activityChangePct.toFixed(0)}%`
         : "";
-    prolongedFindings.push(`Mars500 Third-Quarter window (${missionDayPct}% elapsed)${actText}`);
+    prolongedFindings.push(`Third quarter (${missionDayPct}%)${actText}`);
   }
   if (commsDelayMin !== null && commsDelayMin > 0) {
-    prolongedFindings.push(
-      `Earth-comms delay ${commsDelayMin} min RTT (CHAPEA max ${V.chapeaMaxCommsRttMin} min)`
-    );
+    prolongedFindings.push(`Comms ${commsDelayMin} min RTT`);
   }
   if (role === "lead" && crewSleepValues.length > 0) {
     const teamAcousticDebuff =
-      crewNoiseBreachCount >= 2 ? ` · Team-Wide Acoustic Debuff (${crewNoiseBreachCount} quarters > 49 dBA NC-40)` : crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} quarter(s) > 49 dBA NC-40` : "";
+      crewNoiseBreachCount >= 2 ? ` · ${crewNoiseBreachCount} > NC-40` : crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} noisy` : "";
     prolongedFindings.push(
-      `Crew Aggregate (Anonymized): ${crewBelowIssMeanCount}/${crewSleepValues.length} below ${V.issHistoricalMeanSleepHours} h ISS mean` +
+      `Crew: ${crewBelowIssMeanCount}/${crewSleepValues.length} < ${V.issHistoricalMeanSleepHours} h` +
         teamAcousticDebuff +
-        (crewVeggieCount > 0 ? ` · ISS Veggie (${crewVeggieCount} logged)` : "")
+        (crewVeggieCount > 0 ? ` · ${crewVeggieCount} Veggie` : "")
     );
   }
 
   const prolongedHorizon =
     prolongedFindings.length > 0
-      ? prolongedFindings.join(" | ")
+      ? prolongedFindings.slice(0, 3).join(" · ")
       : isolationHazard.outputSlots.prolongedHorizon;
 
-  // 10. Actionable 1–2 Solutions (grounded in NASA-STD-3001, Barger 2014, Cognition, CONNECT, ISS Veggie, Emerging from Isolation)
+  // 10. Actionable 1–2 Solutions (concise, max 12 words each)
   const rankedSolutions: string[] = [];
   if (acousticCritical || acousticElevated || sharedEnvCause || leadSharedAcousticFlag) {
-    rankedSolutions.push(
-      `Acoustic / Habitat Mitigation [NASA-STD-3001 Vol. 2]: ${
-        sleepNoiseDba !== null && sleepNoiseDba > V.sleepQuarterNoiseLimitNc40Dba
-          ? `Quarter noise is ${sleepNoiseDba} dBA (> ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)`
-          : sharedEnvCause ?? `${crewNoiseBreachCount} crew quarter(s) > ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40`
-      } — inspect habitat fan/ECLSS noise source and provide onboard hearing protection.`
-    );
+    rankedSolutions.push("Inspect quarter fan/ECLSS noise source and issue hearing protection.");
   }
   if (pvtCritical || sleepBelowIssMean) {
-    rankedSolutions.push(
-      `Pre-Task Hold & Recovery Sleep [NASA-STD-3001 / Cognition]: ${
-        pvtCritical
-          ? `PVT-B ${pvtMedianRtMs} ms (>= ${V.pvtLapseThresholdMs} ms lapse ceiling)`
-          : `Sleep ${sleepDurationH} h (< ${V.issHistoricalMeanSleepHours} h ISS mean)`
-      } — defer precision tasks until an ${V.nasaStd3001SleepReqHours}–${V.scheduledSleepHours} h sleep window is completed.`
-    );
+    rankedSolutions.push("Defer precision tasks until 8–8.5 h recovery sleep.");
   } else if (sleepBelowNasaReq || pvtElevated) {
-    rankedSolutions.push(
-      `Sleep Window Protection [NASA-STD-3001 Vol. 1]: ${
-        sleepDurationH !== null
-          ? `Sleep ${sleepDurationH} h (< ${V.nasaStd3001SleepReqHours} h requirement)`
-          : `PVT-B ${pvtMedianRtMs ?? "—"} ms (${pvtLapsesCount ?? 0} lapses)`
-      } — protect the scheduled ${V.scheduledSleepHours} h sleep opportunity.`
-    );
+    rankedSolutions.push(`Protect scheduled ${V.scheduledSleepHours} h sleep window tonight.`);
   }
   if (circadianElevated) {
-    rankedSolutions.push(
-      `Circadian Lighting Entrainment [NASA-STD-3001 Vol. 2]: Phase shift ${circadianShiftMin ?? 0} min — align with blue-enriched wake light and dim red-shifted pre-sleep lighting.`
-    );
+    rankedSolutions.push("Use bright wake light and dim red pre-sleep light.");
   }
   if (inThirdQuarter) {
-    rankedSolutions.push(
-      `Mars500 Third-Quarter Countermeasure: Mission at ${missionDayPct}% (50%–75% window) — schedule physical exercise and ISS Veggie plant care / CONNECT crew check-in.`
-    );
+    rankedSolutions.push("Schedule daily exercise, Veggie care, and CONNECT check-in.");
   }
 
   if (rankedSolutions.length === 0) {
     if (!hasAnyIsolationTelemetry) {
-      rankedSolutions.push(
-        "Awaiting Telemetry: Connect Wearable / Actigraphy, Habitat Acoustics, or PVT-B streams to evaluate against NASA benchmarks."
-      );
+      rankedSolutions.push("Connect Wearable, Acoustics, or PVT-B telemetry streams.");
     } else {
-      const verifiedChecks = [
-        sleepDurationH !== null ? `Sleep ${sleepDurationH} h (>= ${V.nasaStd3001SleepReqHours} h req)` : null,
-        pvtMedianRtMs !== null ? `PVT-B ${pvtMedianRtMs} ms (< ${V.pvtLapseThresholdMs} ms lapse)` : null,
-        sleepNoiseDba !== null ? `Noise ${sleepNoiseDba} dBA (<= ${V.sleepQuarterNoiseLimitNc40Dba} dBA NC-40)` : null,
-      ]
-        .filter(Boolean)
-        .join(", ");
-
-      rankedSolutions.push(
-        `Within NASA Bounds: ${verifiedChecks} — preserve scheduled ${V.scheduledSleepHours} h sleep opportunity & pre-sleep lighting.`
-      );
+      rankedSolutions.push(`Preserve ${V.scheduledSleepHours} h sleep window and pre-sleep lighting.`);
 
       if (veggieCareDone !== true) {
-        rankedSolutions.push(
-          `ISS Veggie Countermeasure: Plant-module care is ${
-            veggieCareDone === false ? "pending" : "unlogged"
-          } — complete scheduled Veggie sensory care.`
-        );
+        rankedSolutions.push("Complete scheduled ISS Veggie plant-module care.");
       } else if (socialCheckinDone !== true) {
-        rankedSolutions.push(
-          `NASA CONNECT Check-In: Crew/async check-in is ${
-            socialCheckinDone === false ? "pending" : "unlogged"
-          } — log shared crew briefing or async Earth message.`
-        );
+        rankedSolutions.push("Log crew briefing or async Earth CONNECT check-in.");
       } else {
-        rankedSolutions.push(
-          "NASA Countermeasures Complete: ISS Veggie care and CONNECT check-in are both complete."
-        );
+        rankedSolutions.push("Veggie care and CONNECT check-in complete.");
       }
     }
   }

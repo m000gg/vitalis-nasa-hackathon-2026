@@ -925,7 +925,7 @@ function buildSolutions(model: EnvironmentModel, maxSolutions: number): string[]
     const lowest = byCo2Desc[byCo2Desc.length - 1];
     return [
       fill(V.otherActions.inspectScrubber, { Module: worst.moduleName }),
-      `Stage non-essential work in lowest-CO₂ module (${lowest.moduleName}: ${fmt(lowest.reading.co2Mmhg, FORMAT.co2Decimals)} mmHg)`,
+      `Stage crew in ${lowest.moduleName} (${fmt(lowest.reading.co2Mmhg, FORMAT.co2Decimals)} mmHg CO₂).`,
     ].slice(0, maxSolutions);
   }
 
@@ -1008,15 +1008,10 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
   const exposedModules = model.modules.filter((m) => m.ledger.minutesAboveLimit > 0);
   const exposureSummary =
     exposedModules.length > 0
-      ? exposedModules
-          .map(
-            (m) =>
-              `${m.moduleName} (${m.ledger.minutesAboveLimit} min > ${V.limits.co2TargetMmhg} mmHg, max ${fmt(m.ledger.maxCo2Mmhg, FORMAT.co2Decimals)} mmHg)`
-          )
-          .join(", ")
-      : `All 4 modules within ${V.limits.co2TargetMmhg} mmHg limit (0 min over target)`;
+      ? `${exposedModules.length}/4 modules > ${V.limits.co2TargetMmhg} mmHg`
+      : `0/4 modules over ${V.limits.co2TargetMmhg} mmHg limit`;
 
-  const prolongedHorizon = `Peak CO₂: ${fmt(peakModule.reading.co2Mmhg, FORMAT.co2Decimals)} mmHg in ${peakModule.moduleName} (${peakModule.multiplierText}, ${peakModule.weeklyRiskText}). ${exposureSummary}. ${V.studyFactsText}`;
+  const prolongedHorizon = `Peak CO₂: ${fmt(peakModule.reading.co2Mmhg, FORMAT.co2Decimals)} mmHg (${peakModule.moduleName}, ${peakModule.weeklyRiskText}) · ${exposureSummary}`;
 
   const warningNearest = model.alerts
     .filter((a) => a.severity === "warning")
@@ -1027,8 +1022,8 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
       : warningNearest
       ? `${warningNearest.moduleName}: ~${warningNearest.etaMin} min to ${V.limits.co2TargetMmhg} mmHg`
       : status === "ELEVATED"
-      ? "Elevated telemetry — monitor CO₂ / O₂ trend"
-      : "Nominal — all modules within NASA atmosphere limits";
+      ? "Elevated CO₂ / O₂ trend"
+      : "Nominal habitat air";
   const eta = actor.metrics.etaSlot.toLowerCase().includes("add your info")
     ? fallbackEta
     : criticalAlerts.length > 0 || warningNearest
@@ -1038,7 +1033,7 @@ export function evaluateEnvironmentHazard(input: HazardEvaluationInput): HazardE
   return {
     status,
     scenarioStatusSlot: `${model.banner} · ${model.scenarioLabel}`,
-    immediateHorizon: immediateLines.length > 0 ? immediateLines.join(" · ") : "All habitat modules nominal.",
+    immediateHorizon: immediateLines.length > 0 ? immediateLines.slice(0, 3).join(" · ") : "All 4 habitat modules nominal.",
     prolongedHorizon,
     eta,
     solutions: buildSolutions(model, maxSolutions),

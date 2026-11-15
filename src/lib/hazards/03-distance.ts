@@ -149,12 +149,12 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
 
   const immediateHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `Autonomous onboard procedures active (${delay.oneWayLabel} one-way delay — no real-time Earth support).`
+      ? `Autonomous mode · ${delay.oneWayLabel} one-way delay.`
       : distanceHazard.outputSlots.immediateHorizon;
 
   const prolongedHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? "Track onboard medical stock and expirations for autonomous crew response."
+      ? "Track onboard medical stock and expiry dates."
       : distanceHazard.outputSlots.prolongedHorizon;
 
   const eta =
@@ -165,10 +165,10 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
   const solutions = [
     delay
       ? delay.oneWaySeconds >= 600
-        ? "Run pre-approved local stabilization checklists instead of waiting for Earth reply."
-        : "Monitor Earth–Mars ephemeris distance and signal latency."
-      : "Validate Earth–Mars ephemeris distance (km) in telemetry.",
-    "Verify non-expired onboard medical kit supplies.",
+        ? "Run local stabilization checklists (no real-time Earth support)."
+        : "Monitor Earth–Mars ephemeris and signal latency."
+      : "Verify Earth–Mars ephemeris distance in telemetry.",
+    "Check onboard medical kit stock and expiry.",
   ];
 
   return {
