@@ -4,6 +4,7 @@
 <p><em>A full-stack, NASA-grounded mission telemetry dashboard and simulation suite for autonomous long-duration spaceflight</em></p>
 
 <p>
+  <a href="https://vitalis-three-teal.vercel.app/"><img src="https://img.shields.io/badge/Live%20Demo%20%26%20Landing-vitalis--three--teal-3B82F6?logo=vercel" alt="Live Demo & Landing"></a>
   <a href="https://github.com/m000gg/vitalis-nasa-hackathon-2026/issues"><img src="https://img.shields.io/github/issues/m000gg/vitalis-nasa-hackathon-2026.svg" alt="Issues"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Next.js-15.3-black?logo=next.js" alt="Next.js 15">
@@ -18,6 +19,7 @@
 ---
 
 ## Contents
+* *[Live Demo &amp; Landing](#-live-demo--landing)*
 * *[About this project](#about-this-project)*
 * *[Use Cases](#use-cases)*
 * *[Target Users](#target-users)*
@@ -35,6 +37,12 @@
 * *[Verification & Tests](#verification--tests)*
 * *[Authors](#authors)*
 * *[License](#license)*
+
+---
+
+## 🌐 Live Demo & Landing
+
+* **Landing Page & Project Overview:** [vitalis-three-teal.vercel.app](https://vitalis-three-teal.vercel.app/) — *Vitalis+ — NASA Space Apps Challenge 2026* overview, system walkthrough, crew view previews, and scenario impact showcase.
 
 ---
 
