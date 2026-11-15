@@ -3,8 +3,10 @@
 import React, { useState } from "react";
 import {
   AlertTriangle,
+  Calendar,
   CheckCircle2,
   Clock,
+  Globe2,
   Lock,
   Package,
   Radio,
@@ -17,6 +19,7 @@ import {
   ResearchModal,
   type ActiveResearchInfoState,
 } from "@/components/ResearchInfoModal";
+import { useMission } from "@/context/MissionContext";
 import {
   DISTANCE_PIPELINE_VALUES,
   DISTANCE_RESEARCH_METADATA,
@@ -69,6 +72,60 @@ export function DistanceHazardScreen({
   const charts = snapshot.charts ?? [];
   const commsLabel = mission.commsDelayLabel?.replace(/^Add your info:\s*/i, "").trim();
   const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
+
+  const { saveActorInput } = useMission();
+  const [nasaQueryDate, setNasaQueryDate] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [nasaFetchState, setNasaFetchState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [nasaFetchMessage, setNasaFetchMessage] = useState<string>("");
+
+  const handleFetchNasaDistance = async () => {
+    if (!nasaQueryDate.trim()) {
+      setNasaFetchState("error");
+      setNasaFetchMessage("Please choose a date before fetching NASA JPL Horizons data.");
+      return;
+    }
+
+    setNasaFetchState("loading");
+    setNasaFetchMessage("Fetching Earth–Mars ephemeris from NASA JPL Horizons...");
+
+    try {
+      const response = await fetch(`/api/horizons/earth-mars?date=${encodeURIComponent(nasaQueryDate)}`);
+      const payload = (await response.json()) as { distanceKm?: number | string; error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || `NASA Horizons request failed with HTTP ${response.status}.`);
+      }
+
+      const numericDistance = Number(payload.distanceKm);
+      if (!Number.isFinite(numericDistance) || numericDistance <= 0) {
+        throw new Error("NASA Horizons response did not include a valid positive Earth–Mars distance in kilometers.");
+      }
+
+      const distanceValue = String(numericDistance);
+      await saveActorInput("Earth–Mars Ephemeris (JPL Horizons)", distanceValue, "distance", {
+        payload: {
+          source: "NASA/JPL Horizons",
+          queryDate: nasaQueryDate,
+          distanceKm: numericDistance,
+          unit: "km",
+          note: "Earth–Mars ephemeris from NASA JPL Horizons; not live spacecraft telemetry.",
+        },
+        numericValue: numericDistance,
+        recordSample: false,
+      });
+
+      setNasaFetchState("success");
+      setNasaFetchMessage(
+        `Loaded ${distanceValue} km for Earth–Mars ephemeris on ${nasaQueryDate} and synced to Supabase. (NASA JPL Horizons ephemeris, not live spacecraft telemetry.)`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch NASA Horizons data.";
+      setNasaFetchState("error");
+      setNasaFetchMessage(message);
+    }
+  };
 
   const crewReadinessRows =
     role === "lead"
@@ -250,6 +307,71 @@ export function DistanceHazardScreen({
             Autonomous onboard stock · verify consumable expiry dates
           </p>
         </div>
+      </section>
+
+      {/* NASA JPL Horizons Query + Supabase Sync */}
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Globe2 className="h-4 w-4 text-[#3B82F6]" aria-hidden="true" />
+            <h2 className="font-display text-sm font-bold text-slate-100">NASA JPL Horizons</h2>
+          </div>
+          <span className="rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/15 px-2.5 py-0.5 text-[11px] font-medium text-blue-300">
+            Earth–Mars ephemeris query
+          </span>
+        </div>
+
+        <p className="mt-2 text-xs text-slate-400">
+          Fetch Earth–Mars position data from NASA JPL Horizons for the selected date and persist the updated communication delay baseline to Supabase.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex-1 space-y-1.5">
+            <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+              Selected NASA query date (UTC)
+            </span>
+            <input
+              type="date"
+              value={nasaQueryDate}
+              onChange={(event) => {
+                setNasaQueryDate(event.target.value);
+                if (nasaFetchState !== "idle") {
+                  setNasaFetchState("idle");
+                  setNasaFetchMessage("");
+                }
+              }}
+              className="w-full rounded-lg border border-slate-700 bg-[#060A14] px-3 py-2 font-mono text-xs text-slate-100 focus:border-[#3B82F6] focus:outline-none"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={handleFetchNasaDistance}
+            disabled={nasaFetchState === "loading"}
+            className="cursor-pointer rounded-lg border border-[#3B82F6]/50 bg-[#3B82F6] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {nasaFetchState === "loading" ? "Fetching..." : "Fetch NASA Data"}
+          </button>
+        </div>
+
+        {nasaFetchState === "loading" && (
+          <div className="mt-3 rounded-lg border border-[#3B82F6]/35 bg-[#3B82F6]/12 px-3 py-2 text-xs text-blue-200">
+            {nasaFetchMessage}
+          </div>
+        )}
+
+        {nasaFetchState === "success" && (
+          <div className="mt-3 rounded-lg border border-[#16A34A]/40 bg-[#16A34A]/15 px-3 py-2 text-xs text-emerald-200">
+            {nasaFetchMessage}
+          </div>
+        )}
+
+        {nasaFetchState === "error" && (
+          <div className="mt-3 rounded-lg border border-[#DC2626]/45 bg-[#DC2626]/15 px-3 py-2 text-xs text-red-200">
+            {nasaFetchMessage}
+          </div>
+        )}
       </section>
 
       {/* 3. Lead Crew Autonomy & Medical Supply Matrix */}
