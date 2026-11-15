@@ -1,4 +1,4 @@
-import { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
+import type { CrewSlot, MissionProfile, UserRole } from "../domain";
 
 export type HazardSlug = "radiation" | "isolation" | "distance" | "gravity" | "environment";
 

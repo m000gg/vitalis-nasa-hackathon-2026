@@ -266,10 +266,13 @@ export function IsolationHazardScreen({
           return {
             id: member.id,
             callsign: member.callsign,
+            roleTitle: member.assignedRoleTitle,
+            isLeadSlot: member.isLeadSlot,
             sleepH: getNum(mWearable, "sleep_duration_h"),
             noiseDba: getNum(mHabitat, "sleep_quarter_noise_dba"),
             pvtRt: getNum(mCheck, "pvt_median_rt_ms"),
             veggieDone: getBool(mConnect, "veggie_plant_care_done"),
+            socialDone: getBool(mConnect, "crew_social_checkin_done"),
             status: memberSnap.status,
           };
         })
@@ -301,6 +304,17 @@ export function IsolationHazardScreen({
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+              {role === "lead" ? (
+                <>
+                  <Users className="h-3 w-3" /> Commander View (All Crew)
+                </>
+              ) : (
+                <>
+                  <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
+                </>
+              )}
+            </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -486,7 +500,7 @@ export function IsolationHazardScreen({
                       </th>
                       <th className="px-3.5 py-2.5 text-right">
                         <span className="inline-flex items-center justify-end gap-1.5">
-                          Status
+                          Veggie / CONNECT
                           <InfoCircle
                             entry={ISOLATION_RESEARCH_METADATA.mission_connect}
                             activeInfo={activeInfo}
@@ -494,6 +508,7 @@ export function IsolationHazardScreen({
                           />
                         </span>
                       </th>
+                      <th className="px-3.5 py-2.5 text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -502,9 +517,23 @@ export function IsolationHazardScreen({
                       return (
                         <tr
                           key={row.id}
-                          className={isActive ? "bg-sky-50/60 font-medium" : "bg-white"}
+                          className={isActive ? "bg-sky-50/60" : "bg-white"}
                         >
-                          <td className="px-3.5 py-2.5 text-slate-900">{row.callsign}</td>
+                          <td className="px-3.5 py-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-slate-900">{row.callsign}</span>
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  row.isLeadSlot
+                                    ? "bg-sky-100 text-sky-800"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {row.isLeadSlot ? "LEAD" : "MEMBER"}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">{row.roleTitle}</div>
+                          </td>
                           <td className="px-3 py-2.5 tabular-nums text-slate-700">
                             {formatNum(row.sleepH, "h", 1)}
                           </td>
@@ -513,6 +542,10 @@ export function IsolationHazardScreen({
                           </td>
                           <td className="px-3 py-2.5 tabular-nums text-slate-700">
                             {formatNum(row.pvtRt, "ms")}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right text-[11px] text-slate-700">
+                            {row.veggieDone === true ? "Veggie ✓" : "Veggie —"} ·{" "}
+                            {row.socialDone === true ? "CONNECT ✓" : "CONNECT —"}
                           </td>
                           <td className="px-3.5 py-2.5 text-right">
                             <span

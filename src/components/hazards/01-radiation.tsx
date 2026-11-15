@@ -5,6 +5,7 @@ import {
   Activity,
   CloudSun,
   Download,
+  Lock,
   RefreshCw,
   ShieldAlert,
   SlidersHorizontal,
@@ -179,8 +180,9 @@ export function RadiationHazardScreen({
   const displayedCharts = snapshot.charts ?? [];
 
   const crewDoseRows = useMemo(
-    () =>
-      mission.crew.map((crew) => {
+    () => {
+      const targetCrew = role === "lead" ? mission.crew : [activeCharacter];
+      return targetCrew.map((crew) => {
         const record = personalRecords
           .filter((item) => item.characterId === crew.id)
           .slice()
@@ -207,6 +209,8 @@ export function RadiationHazardScreen({
         return {
           id: crew.id,
           callsign: crew.callsign,
+          roleTitle: crew.assignedRoleTitle,
+          isLeadSlot: crew.isLeadSlot,
           status: memberStatus,
           sheltered: Boolean(activeEmergency?.shelterCheckIns?.[crew.id]),
           rateLabel: rate ? `${formatNum(rate.value, 4)} ${rate.unit}` : "—",
@@ -216,8 +220,10 @@ export function RadiationHazardScreen({
           provenance:
             typeof payload.provenanceKind === "string" ? payload.provenanceKind : "missing",
         };
-      }),
+      });
+    },
     [
+      activeCharacter,
       activeEmergency?.shelterCheckIns,
       hazard,
       mission,
@@ -508,13 +514,24 @@ export function RadiationHazardScreen({
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-slate-900">Radiation Decision Summary</h2>
               <InfoCircle
                 entry={RADIATION_RESEARCH_METADATA.decision_summary}
                 activeInfo={activeInfo}
                 onSelectInfo={setActiveInfo}
               />
+              <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                {role === "lead" ? (
+                  <>
+                    <Users className="h-3 w-3" /> Commander View (All Crew)
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
+                  </>
+                )}
+              </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {hazardRecords.length} personal snapshot(s) · {hazardSamples.length} sample(s) ·{" "}
@@ -678,8 +695,27 @@ export function RadiationHazardScreen({
                 </thead>
                 <tbody>
                   {crewDoseRows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 text-slate-700">
-                      <td className="py-2 pr-3 font-medium text-slate-900">{row.callsign}</td>
+                    <tr
+                      key={row.id}
+                      className={`border-b border-slate-100 text-slate-700 ${
+                        row.id === activeCharacter.id ? "bg-sky-50/50" : ""
+                      }`}
+                    >
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-900">{row.callsign}</span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              row.isLeadSlot
+                                ? "bg-sky-100 text-sky-800"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {row.isLeadSlot ? "LEAD" : "MEMBER"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">{row.roleTitle}</div>
+                      </td>
                       <td className="py-2 pr-3">
                         <span
                           className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass(row.status)}`}

@@ -73,6 +73,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {activeCharacter && (
+              <span
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                  role === "lead"
+                    ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200"
+                    : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                }`}
+              >
+                {role === "lead" ? "Lead · All Crew" : "Member · Own Stats"}
+              </span>
+            )}
             {mission && activeCharacter && (
               <select
                 value={activeCharacter.id}

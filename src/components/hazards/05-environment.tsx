@@ -6,8 +6,10 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Lock,
   TrendingDown,
   TrendingUp,
+  Users,
   Wind,
   XCircle,
 } from "lucide-react";
@@ -200,6 +202,10 @@ function AlertBannerCard({
  * alert acknowledgements, and interactive habitat map with feat/combine's clean layout.
  */
 export function EnvironmentHazardScreen({
+  hazard,
+  mission,
+  activeCharacter,
+  role,
   snapshot,
   hazardRecords,
   hazardSamples,
@@ -230,6 +236,10 @@ export function EnvironmentHazardScreen({
 
   const charts = snapshot.charts ?? [];
   const openAlerts = model.alerts.filter((a) => !acked.includes(a.ackKey)).length;
+  const safestGreenModule =
+    model.modules.find((m) => m.moduleId === model.lowestCo2ModuleId && m.air.status === "green") ??
+    model.modules.find((m) => m.air.status === "green") ??
+    null;
 
   return (
     <div className="space-y-6">
@@ -251,6 +261,17 @@ export function EnvironmentHazardScreen({
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+              {role === "lead" ? (
+                <>
+                  <Users className="h-3 w-3" /> Commander View (All Crew)
+                </>
+              ) : (
+                <>
+                  <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
+                </>
+              )}
+            </span>
             <span className="rounded-md bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-700 border border-slate-200">
               {model.dataTag === "REAL" ? "Cabin CO₂: NASA OSDR EDA" : "Cabin CO₂: Simulated Replay"}
             </span>
@@ -503,6 +524,69 @@ export function EnvironmentHazardScreen({
           ))}
         </div>
       </section>
+
+      {role === "lead" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Users className="h-4 w-4 text-sky-600" />
+                Crew Habitat Relocation &amp; Accountability ({mission.crew.length} Crew)
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {hazard.leadView.privacyRule}
+              </p>
+            </div>
+            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+              Safe Zone Target: {safestGreenModule?.moduleName ?? "No green module"}
+            </span>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {mission.crew.map((member, idx) => {
+              const assignedMod = model.modules[idx % model.modules.length];
+              const modStatus = assignedMod?.air.status ?? "green";
+              return (
+                <div
+                  key={member.id}
+                  className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-xs ${
+                    member.id === activeCharacter.id
+                      ? "border-sky-300 bg-sky-50/40"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-900">{member.callsign}</span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          member.isLeadSlot
+                            ? "bg-sky-100 text-sky-800"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {member.isLeadSlot ? "LEAD" : "MEMBER"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">{member.assignedRoleTitle}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-700">
+                      Station: <strong>{assignedMod?.moduleName ?? "Habitat"}</strong>
+                      {modStatus !== "green" && safestGreenModule
+                        ? ` → Move to ${safestGreenModule.moduleName}`
+                        : " · Clear"}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold ${AIR_STYLE[modStatus].badge}`}
+                  >
+                    {AIR_STYLE[modStatus].label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <ResearchModal entry={activeInfo?.entry ?? null} onClose={() => setActiveInfo(null)} />
     </div>

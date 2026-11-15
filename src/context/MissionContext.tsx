@@ -11,7 +11,11 @@ import React, {
 } from "react";
 import { AuditLogEntry, CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
 import { HAZARDS, HazardDataRecord, HazardSampleRecord, HazardSlug } from "@/lib/hazards";
-import { evaluateHazardForActor } from "@/lib/evaluator";
+import {
+  evaluateHazardForActor,
+  sanitizeHazardRecordsForRole,
+  sanitizeHazardSamplesForRole,
+} from "@/lib/evaluator";
 import { useAlerts } from "@/context/AlertContext";
 
 export interface SaveActorInputOptions {
@@ -320,20 +324,35 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [missionIdLoaded, fetchScenarioTelemetry]);
 
+  const visibleScenarioRecords = useMemo(
+    () => sanitizeHazardRecordsForRole(scenarioHazardRecords, role, activeCharacter?.id),
+    [scenarioHazardRecords, role, activeCharacter?.id]
+  );
+
+  const visibleScenarioSamples = useMemo(
+    () => sanitizeHazardSamplesForRole(scenarioHazardSamples, role, activeCharacter?.id),
+    [scenarioHazardSamples, role, activeCharacter?.id]
+  );
+
+  const visibleActorInputs = useMemo(() => {
+    if (role === "lead") return actorInputs;
+    return activeCharacter ? { [activeCharacter.id]: actorInputs[activeCharacter.id] ?? {} } : {};
+  }, [actorInputs, role, activeCharacter]);
+
   const hazardRecords = useMemo(
     () =>
       activeCharacter
-        ? scenarioHazardRecords.filter((r) => r.characterId === activeCharacter.id)
+        ? visibleScenarioRecords.filter((r) => r.characterId === activeCharacter.id)
         : [],
-    [scenarioHazardRecords, activeCharacter]
+    [visibleScenarioRecords, activeCharacter]
   );
 
   const hazardSamples = useMemo(
     () =>
       activeCharacter
-        ? scenarioHazardSamples.filter((s) => s.characterId === activeCharacter.id)
+        ? visibleScenarioSamples.filter((s) => s.characterId === activeCharacter.id)
         : [],
-    [scenarioHazardSamples, activeCharacter]
+    [visibleScenarioSamples, activeCharacter]
   );
 
   useEffect(() => {
@@ -341,15 +360,15 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     if (hasLoadedScenarioTelemetryRef.current !== mission.id) return;
 
     const actorKey = `${mission.id}::${activeCharacter.id}::${role}`;
-    const currentActorInputs = actorInputs[activeCharacter.id] ?? {};
+    const currentActorInputs = visibleActorInputs[activeCharacter.id] ?? {};
     const nextStatuses: Record<string, "NOMINAL" | "ELEVATED" | "CRITICAL"> = {};
     const snapshots = HAZARDS.map((h) => {
       const snap = evaluateHazardForActor(mission, activeCharacter, h, {
         actorInputs: currentActorInputs,
         hazardRecords,
         hazardSamples,
-        scenarioHazardRecords,
-        scenarioHazardSamples,
+        scenarioHazardRecords: visibleScenarioRecords,
+        scenarioHazardSamples: visibleScenarioSamples,
         role,
       });
       nextStatuses[h.slug] = snap.status;
@@ -389,11 +408,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
     mission,
     activeCharacter,
     role,
-    actorInputs,
+    visibleActorInputs,
     hazardRecords,
     hazardSamples,
-    scenarioHazardRecords,
-    scenarioHazardSamples,
+    visibleScenarioRecords,
+    visibleScenarioSamples,
     pushToast,
     triggerAlarm,
   ]);
@@ -772,11 +791,11 @@ export function MissionProvider({ children }: { children: React.ReactNode }) {
         setRole,
         selectedMemberId,
         setSelectedMemberId,
-        actorInputs,
+        actorInputs: visibleActorInputs,
         hazardRecords,
         hazardSamples,
-        scenarioHazardRecords,
-        scenarioHazardSamples,
+        scenarioHazardRecords: visibleScenarioRecords,
+        scenarioHazardSamples: visibleScenarioSamples,
         lastTelemetrySyncAt,
         refreshHazardTelemetry,
         saveActorInput,

@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, ShieldAlert, UserCheck, Users } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useMission } from "@/context/MissionContext";
@@ -21,6 +22,7 @@ function statusPillClass(status: HazardEvaluationResult["status"]): string {
 }
 
 export default function MembersOverviewPage() {
+  const router = useRouter();
   const {
     mission,
     activeCharacter,
@@ -190,6 +192,9 @@ export default function MembersOverviewPage() {
                         message: `Switched active crew profile to ${member.callsign}.`,
                         variant: "info",
                       });
+                      if (!member.isLeadSlot) {
+                        router.push("/dashboard");
+                      }
                     }}
                     className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold ${
                       isCurrent
@@ -198,8 +203,38 @@ export default function MembersOverviewPage() {
                     }`}
                   >
                     <UserCheck className="h-3.5 w-3.5" />
-                    {isCurrent ? "Active Profile" : "Inspect Vitals"}
+                    {isCurrent ? "Active Profile" : "Open Member View"}
                   </button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <p className="text-[11px] text-slate-500">Radiation (Rate · Cum)</p>
+                  <p className="mt-0.5 font-mono font-semibold text-slate-900">
+                    {member.operationalVitals.doseRateLabel} · {member.operationalVitals.cumulativeDoseLabel}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <p className="text-[11px] text-slate-500">Isolation (Sleep · Noise)</p>
+                  <p className="mt-0.5 font-mono font-semibold text-slate-900">
+                    {member.operationalVitals.sleepLabel} · {member.operationalVitals.acousticsLabel}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <p className="text-[11px] text-slate-500">Gravity Conditioning</p>
+                  <p className="mt-0.5 font-mono font-semibold text-slate-900">
+                    {gravMember ? gravMember.conditioningStatus.replace("_", " ") : "—"}
+                    {member.operationalVitals.exercisePct !== null
+                      ? ` · ${member.operationalVitals.exercisePct}%`
+                      : ""}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <p className="text-[11px] text-slate-500">Distance / Med Kit</p>
+                  <p className="mt-0.5 font-mono font-semibold text-slate-900">
+                    {member.operationalVitals.medKitLabel}
+                  </p>
                 </div>
               </div>
 

@@ -46,8 +46,16 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
     role,
   });
 
-  const safeScenarioRecords = sanitizeHazardRecordsForRole(scenarioHazardRecords, role);
-  const safeScenarioSamples = sanitizeHazardSamplesForRole(scenarioHazardSamples, role);
+  const safeScenarioRecords = sanitizeHazardRecordsForRole(
+    scenarioHazardRecords,
+    role,
+    activeCharacter.id
+  );
+  const safeScenarioSamples = sanitizeHazardSamplesForRole(
+    scenarioHazardSamples,
+    role,
+    activeCharacter.id
+  );
   const safeHazardRecords = safeScenarioRecords.filter(
     (r) => r.characterId === activeCharacter.id && r.hazardSlug === hazard.slug
   );

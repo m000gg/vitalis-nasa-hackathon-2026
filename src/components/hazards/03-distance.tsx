@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Lock,
   Package,
   Radio,
   ShieldAlert,
+  Users,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
 import {
@@ -52,9 +54,13 @@ function StatusIcon({ status, className = "h-3.5 w-3.5" }: { status: StatusKey; 
  * Displays the evaluated light-time delay model and synced DB streams.
  */
 export function DistanceHazardScreen({
+  hazard,
   mission,
+  activeCharacter,
+  role,
   snapshot,
   hazardRecords,
+  scenarioHazardRecords,
 }: HazardScreenProps) {
   const ephemerisRec = hazardRecords.find(
     (r) => r.streamName === "Earth–Mars Ephemeris (JPL Horizons)"
@@ -63,6 +69,46 @@ export function DistanceHazardScreen({
   const charts = snapshot.charts ?? [];
   const commsLabel = mission.commsDelayLabel?.replace(/^Add your info:\s*/i, "").trim();
   const [activeInfo, setActiveInfo] = useState<ActiveResearchInfoState>(null);
+
+  const crewReadinessRows =
+    role === "lead"
+      ? mission.crew.map((member) => {
+          const memberInv =
+            scenarioHazardRecords.find(
+              (r) =>
+                r.characterId === member.id &&
+                r.hazardSlug === "distance" &&
+                r.streamName === "Onboard Medical Inventory"
+            ) ?? inventoryRec;
+          const memberEphem =
+            scenarioHazardRecords.find(
+              (r) =>
+                r.characterId === member.id &&
+                r.hazardSlug === "distance" &&
+                r.streamName === "Earth–Mars Ephemeris (JPL Horizons)"
+            ) ?? ephemerisRec;
+          const distSnap = hazard.evaluate({
+            mission,
+            actor: member,
+            role: "lead",
+            actorInputs: {},
+            hazardRecords: memberEphem ? [memberEphem] : [],
+            hazardSamples: [],
+            allHazardRecords: [],
+            allHazardSamples: [],
+            scenarioHazardRecords,
+          });
+          return {
+            id: member.id,
+            callsign: member.callsign,
+            roleTitle: member.assignedRoleTitle,
+            isLeadSlot: member.isLeadSlot,
+            status: distSnap.status,
+            eta: distSnap.eta,
+            kitSummary: memberInv?.rawValue || "Nominal kit",
+          };
+        })
+      : [];
 
   return (
     <div className="space-y-6">
@@ -84,6 +130,17 @@ export function DistanceHazardScreen({
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+              {role === "lead" ? (
+                <>
+                  <Users className="h-3 w-3" /> Commander View (All Crew)
+                </>
+              ) : (
+                <>
+                  <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
+                </>
+              )}
+            </span>
           </div>
 
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
@@ -192,7 +249,71 @@ export function DistanceHazardScreen({
         </div>
       </section>
 
-      {/* 3. Ephemeris / Telemetry Charts */}
+      {/* 3. Lead Crew Autonomy & Medical Supply Matrix */}
+      {role === "lead" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Users className="h-4 w-4 text-sky-600" />
+                Crew Autonomous Readiness &amp; Med Kit Allocation ({crewReadinessRows.length} Crew)
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {hazard.leadView.privacyRule}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[600px] text-left text-xs">
+              <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3.5 py-2.5">Crew Member</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5">Signal Delay Window</th>
+                  <th className="px-3.5 py-2.5">Assigned Med Kit / Expiry</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {crewReadinessRows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={row.id === activeCharacter.id ? "bg-sky-50/50" : "bg-white"}
+                  >
+                    <td className="px-3.5 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-slate-900">{row.callsign}</span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            row.isLeadSlot
+                              ? "bg-sky-100 text-sky-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {row.isLeadSlot ? "LEAD" : "MEMBER"}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">{row.roleTitle}</div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[row.status].badge}`}
+                      >
+                        <StatusIcon status={row.status} className="h-3 w-3" />
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-slate-700">{row.eta}</td>
+                    <td className="px-3.5 py-2.5 text-slate-700">{row.kitSummary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* 4. Ephemeris / Telemetry Charts */}
       <section className="space-y-3">
         <h2 className="text-sm font-bold text-slate-900">Ephemeris &amp; Distance Telemetry History</h2>
         {charts.length > 0 ? (

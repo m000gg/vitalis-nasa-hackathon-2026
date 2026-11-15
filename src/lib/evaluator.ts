@@ -1,4 +1,4 @@
-import { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
+import type { CrewSlot, MissionProfile, UserRole } from "@/lib/domain";
 import {
   HAZARDS,
   HazardChartSpec,
@@ -9,6 +9,11 @@ import {
   HazardSlug,
   HazardSpec,
 } from "@/lib/hazards";
+import {
+  sanitizeActorInputsForRole as sanitizeActorInputsCore,
+  sanitizeHazardRecordsForRole as sanitizeRecordsCore,
+  sanitizeHazardSamplesForRole as sanitizeSamplesCore,
+} from "@/lib/rbac";
 
 /**
  * Info-agnostic dashboard evaluation layer.
@@ -32,21 +37,31 @@ export interface CharacterDashboardModel {
   };
 }
 
+export interface CrewMatrixMember {
+  id: string;
+  callsign: string;
+  assignedRoleTitle: string;
+  isLeadSlot: boolean;
+  overallStatus: HazardEvaluationResult["status"];
+  publicStatusSummary: string;
+  blockerCount: number;
+  hazardStatuses: Record<HazardSlug, HazardEvaluationResult["status"]>;
+  operationalVitals: {
+    doseRateLabel: string;
+    cumulativeDoseLabel: string;
+    sleepLabel: string;
+    acousticsLabel: string;
+    exercisePct: number | null;
+    medKitLabel: string;
+  };
+}
+
 export interface LeaderDashboardModel {
   totalCrew: number;
   nominalCount: number;
   elevatedCount: number;
   criticalCount: number;
-  crewMatrix: Array<{
-    id: string;
-    callsign: string;
-    assignedRoleTitle: string;
-    isLeadSlot: boolean;
-    overallStatus: HazardEvaluationResult["status"];
-    publicStatusSummary: string;
-    blockerCount: number;
-    hazardStatuses: Record<HazardSlug, HazardEvaluationResult["status"]>;
-  }>;
+  crewMatrix: CrewMatrixMember[];
   derivedTeamAlerts: string[];
 }
 
@@ -61,106 +76,20 @@ function findInputSlot(hazardSlug: HazardSlug, streamName: string): HazardInputS
   return spec?.inputSlots.find((s) => s.streamName === streamName);
 }
 
-function getPrivateSubfieldKeys(slot?: HazardInputSlot): Set<string> {
-  const keys = new Set<string>();
-  if (slot?.subfields) {
-    slot.subfields.forEach((sf) => {
-      if (sf.isPrivate) {
-        keys.add(sf.key);
-      }
-    });
-  }
-  if (slot?.streamName === "60-Second Self-Check (Private)") {
-    keys.add("privateJournalNote");
-  }
-  return keys;
-}
-
-function stripKeysFromPayload(
-  payload: Record<string, unknown>,
-  privateKeys: Set<string>
-): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload)) {
-    if (!privateKeys.has(k)) {
-      cleaned[k] = v;
-    }
-  }
-  return cleaned;
-}
-
 export function sanitizeHazardRecordsForRole(
   records: readonly HazardDataRecord[],
-  role: UserRole
+  role: UserRole,
+  actorId?: string
 ): HazardDataRecord[] {
-  if (role !== "lead") {
-    return [...records];
-  }
-
-  const sanitized: HazardDataRecord[] = [];
-  for (const rec of records) {
-    const slot = findInputSlot(rec.hazardSlug, rec.streamName);
-    if (slot?.isPrivate) {
-      continue;
-    }
-
-    const privateKeys = getPrivateSubfieldKeys(slot);
-    if (privateKeys.size === 0) {
-      sanitized.push(rec);
-      continue;
-    }
-
-    const cleanedPayload = stripKeysFromPayload(rec.payload ?? {}, privateKeys);
-    let cleanedRawValue = rec.rawValue;
-
-    if (slot?.subfields && slot.subfields.length > 0) {
-      const publicParts = slot.subfields
-        .filter((sf) => !sf.isPrivate && cleanedPayload[sf.key] !== undefined && cleanedPayload[sf.key] !== "")
-        .map((sf) => `${sf.label}: ${String(cleanedPayload[sf.key])}${sf.unit ? ` ${sf.unit}` : ""}`);
-      cleanedRawValue = publicParts.join(", ");
-    } else {
-      const hasAnyPrivateInPayload = Object.keys(rec.payload ?? {}).some((k) => privateKeys.has(k));
-      if (hasAnyPrivateInPayload && Object.keys(cleanedPayload).length === 0) {
-        cleanedRawValue = "";
-      }
-    }
-
-    sanitized.push({
-      ...rec,
-      rawValue: cleanedRawValue,
-      payload: cleanedPayload,
-    });
-  }
-  return sanitized;
+  return sanitizeRecordsCore(records, role, actorId, findInputSlot);
 }
 
 export function sanitizeHazardSamplesForRole(
   samples: readonly HazardSampleRecord[],
-  role: UserRole
+  role: UserRole,
+  actorId?: string
 ): HazardSampleRecord[] {
-  if (role !== "lead") {
-    return [...samples];
-  }
-
-  const sanitized: HazardSampleRecord[] = [];
-  for (const sample of samples) {
-    const slot = findInputSlot(sample.hazardSlug, sample.streamName);
-    if (slot?.isPrivate) {
-      continue;
-    }
-
-    const privateKeys = getPrivateSubfieldKeys(slot);
-    if (privateKeys.size === 0) {
-      sanitized.push(sample);
-      continue;
-    }
-
-    sanitized.push({
-      ...sample,
-      samplePayload: stripKeysFromPayload(sample.samplePayload ?? {}, privateKeys),
-    });
-  }
-  return sanitized;
+  return sanitizeSamplesCore(samples, role, actorId, findInputSlot);
 }
 
 function sanitizeActorInputsForRole(
@@ -169,29 +98,7 @@ function sanitizeActorInputsForRole(
   role: UserRole,
   sanitizedRecords: readonly HazardDataRecord[]
 ): Record<string, string> {
-  if (role !== "lead") {
-    return actorInputs;
-  }
-
-  const cleaned: Record<string, string> = {};
-  for (const [streamName, value] of Object.entries(actorInputs)) {
-    const slot = findInputSlot(hazardSlug, streamName);
-    if (slot?.isPrivate) {
-      continue;
-    }
-    const privateKeys = getPrivateSubfieldKeys(slot);
-    if (privateKeys.size > 0) {
-      const safeRec = sanitizedRecords.find(
-        (r) => r.hazardSlug === hazardSlug && r.streamName === streamName
-      );
-      if (safeRec && safeRec.rawValue) {
-        cleaned[streamName] = safeRec.rawValue;
-      }
-      continue;
-    }
-    cleaned[streamName] = value;
-  }
-  return cleaned;
+  return sanitizeActorInputsCore(actorInputs, hazardSlug, role, sanitizedRecords, findInputSlot);
 }
 
 export function evaluateCharacterDashboard(
@@ -268,13 +175,18 @@ export function evaluateLeaderDashboard(
   const alertCountByMember = new Map<string, number>();
   const hazardStatusesByMember = new Map<string, Record<HazardSlug, HazardEvaluationResult["status"]>>();
 
+  const safeScenarioRecords = sanitizeHazardRecordsForRole(
+    options?.scenarioHazardRecords ?? [],
+    "lead"
+  );
+  const safeScenarioSamples = sanitizeHazardSamplesForRole(
+    options?.scenarioHazardSamples ?? [],
+    "lead"
+  );
+
   for (const member of mission.crew) {
-    const memberRecords = (options?.scenarioHazardRecords ?? []).filter(
-      (r) => r.characterId === member.id
-    );
-    const memberSamples = (options?.scenarioHazardSamples ?? []).filter(
-      (s) => s.characterId === member.id
-    );
+    const memberRecords = safeScenarioRecords.filter((r) => r.characterId === member.id);
+    const memberSamples = safeScenarioSamples.filter((s) => s.characterId === member.id);
     let memberAlerts = 0;
     const perHazard = {} as Record<HazardSlug, HazardEvaluationResult["status"]>;
 
@@ -283,8 +195,8 @@ export function evaluateLeaderDashboard(
         actorInputs: options?.actorInputs?.[member.id] ?? {},
         hazardRecords: memberRecords,
         hazardSamples: memberSamples,
-        scenarioHazardRecords: options?.scenarioHazardRecords,
-        scenarioHazardSamples: options?.scenarioHazardSamples,
+        scenarioHazardRecords: safeScenarioRecords,
+        scenarioHazardSamples: safeScenarioSamples,
         role: "lead",
       });
       perHazard[h.slug] = snap.status;
@@ -300,7 +212,7 @@ export function evaluateLeaderDashboard(
     alertCountByMember.set(member.id, memberAlerts);
   }
 
-  const crewMatrix = mission.crew.map((member) => {
+  const crewMatrix: CrewMatrixMember[] = mission.crew.map((member) => {
     const statuses = hazardStatusesByMember.get(member.id) ?? ({} as Record<HazardSlug, HazardEvaluationResult["status"]>);
     const vals = Object.values(statuses);
     const overallStatus: HazardEvaluationResult["status"] = vals.includes("CRITICAL")
@@ -308,6 +220,60 @@ export function evaluateLeaderDashboard(
       : vals.includes("ELEVATED")
       ? "ELEVATED"
       : "NOMINAL";
+
+    const memberRecords = safeScenarioRecords.filter((r) => r.characterId === member.id);
+    const memberSamples = safeScenarioSamples.filter((s) => s.characterId === member.id);
+
+    const dosimeter = memberRecords.find(
+      (r) => r.hazardSlug === "radiation" && r.streamName === "Personal Dosimeter"
+    );
+    const wearable = memberRecords.find(
+      (r) => r.hazardSlug === "isolation" && r.streamName === "Wearable / Actigraphy"
+    );
+    const acoustics = memberRecords.find(
+      (r) => r.hazardSlug === "isolation" && r.streamName === "Habitat Acoustics & Lighting"
+    );
+    const medInv =
+      memberRecords.find(
+        (r) => r.hazardSlug === "distance" && r.streamName === "Onboard Medical Inventory"
+      ) ??
+      safeScenarioRecords.find(
+        (r) => r.hazardSlug === "distance" && r.streamName === "Onboard Medical Inventory"
+      );
+
+    const rateVal = dosimeter?.payload?.doseRateValue;
+    const rateUnit = dosimeter?.payload?.doseRateUnit ?? "µSv/h";
+    const cumVal = dosimeter?.payload?.cumulativeDoseValue;
+    const cumUnit = dosimeter?.payload?.cumulativeDoseUnit ?? "mSv";
+    const sleepH = wearable?.payload?.sleep_duration_h;
+    const noiseDba = acoustics?.payload?.sleep_quarter_noise_dba;
+
+    const exSamples = memberSamples.filter(
+      (s) => s.hazardSlug === "gravity" && s.streamName === "Daily Exercise Log"
+    );
+    let exercisePct: number | null = null;
+    if (exSamples.length > 0) {
+      const recent = exSamples.slice(-7);
+      const avgTotal =
+        recent.reduce((sum, s) => {
+          const aero = Number(s.samplePayload?.aerobic_minutes ?? 0);
+          const res = Number(s.samplePayload?.resistance_minutes ?? 0);
+          const tot = Number(s.numericValue ?? aero + res);
+          return sum + (Number.isFinite(tot) ? tot : 0);
+        }, 0) / recent.length;
+      exercisePct = Math.round((avgTotal / 150) * 100);
+    } else {
+      const exRec = memberRecords.find(
+        (r) => r.hazardSlug === "gravity" && r.streamName === "Daily Exercise Log"
+      );
+      const aero = Number(exRec?.payload?.aerobic_minutes ?? NaN);
+      const res = Number(exRec?.payload?.resistance_minutes ?? NaN);
+      if (Number.isFinite(aero) && Number.isFinite(res)) {
+        exercisePct = Math.round(((aero + res) / 150) * 100);
+      }
+    }
+
+    const kitStatusRaw = String(medInv?.payload?.kitStatus ?? "").trim();
 
     return {
       id: member.id,
@@ -318,6 +284,26 @@ export function evaluateLeaderDashboard(
       publicStatusSummary: member.publicStatusSummary,
       blockerCount: member.metrics.blockers.length + (alertCountByMember.get(member.id) ?? 0),
       hazardStatuses: statuses,
+      operationalVitals: {
+        doseRateLabel:
+          typeof rateVal === "number" && Number.isFinite(rateVal)
+            ? `${rateVal.toFixed(1)} ${String(rateUnit)}`
+            : "—",
+        cumulativeDoseLabel:
+          typeof cumVal === "number" && Number.isFinite(cumVal)
+            ? `${cumVal.toFixed(1)} ${String(cumUnit)}`
+            : "—",
+        sleepLabel:
+          typeof sleepH === "number" && Number.isFinite(Number(sleepH))
+            ? `${Number(sleepH).toFixed(1)} h`
+            : "—",
+        acousticsLabel:
+          typeof noiseDba === "number" && Number.isFinite(Number(noiseDba))
+            ? `${Number(noiseDba).toFixed(1)} dBA`
+            : "—",
+        exercisePct,
+        medKitLabel: kitStatusRaw ? kitStatusRaw.replace(/_/g, " ") : "Nominal",
+      },
     };
   });
 
@@ -388,10 +374,10 @@ export function evaluateHazardForActor(
   const rawScenarioRecords = options.scenarioHazardRecords ?? rawAllRecords;
   const rawScenarioSamples = options.scenarioHazardSamples ?? rawAllSamples;
 
-  const allRecords = sanitizeHazardRecordsForRole(rawAllRecords, effectiveRole);
-  const allSamples = sanitizeHazardSamplesForRole(rawAllSamples, effectiveRole);
-  const scenarioRecords = sanitizeHazardRecordsForRole(rawScenarioRecords, effectiveRole);
-  const scenarioSamples = sanitizeHazardSamplesForRole(rawScenarioSamples, effectiveRole);
+  const allRecords = sanitizeHazardRecordsForRole(rawAllRecords, effectiveRole, actor.id);
+  const allSamples = sanitizeHazardSamplesForRole(rawAllSamples, effectiveRole, actor.id);
+  const scenarioRecords = sanitizeHazardRecordsForRole(rawScenarioRecords, effectiveRole, actor.id);
+  const scenarioSamples = sanitizeHazardSamplesForRole(rawScenarioSamples, effectiveRole, actor.id);
   const sanitizedActorInputs = sanitizeActorInputsForRole(
     options.actorInputs,
     hazard.slug,
