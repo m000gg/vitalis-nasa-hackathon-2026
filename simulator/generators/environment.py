@@ -106,6 +106,27 @@ def generate(
         )
     )
 
+    if points and mode != "chaos":
+        cabin_pts = points[:24]
+        for row_idx, pt in enumerate(cabin_pts):
+            sample_rows.append(
+                sample_row(
+                    scenario.id,
+                    owner.id,
+                    "environment",
+                    "Cabin CO2 Replay",
+                    f"cabin_{row_idx}",
+                    pt.co2_ppm_iss,
+                    {
+                        "unit": "ppm",
+                        "rowIndex": row_idx,
+                        "controllerTimeGmt": pt.controller_time_gmt,
+                        "source": "NASA-RR1-EDA-CSV",
+                    },
+                    iso_minutes_ago((len(cabin_pts) - row_idx) * 10.0),
+                )
+            )
+
     # Module air streams (backed by RR-1_EDA_Telemetry_table.csv CO2_ppm_ISS * 0.00076)
     # Assign to up to 4 crew members deterministically so each slot carries distinct module telemetry too
     sample_count = 16
