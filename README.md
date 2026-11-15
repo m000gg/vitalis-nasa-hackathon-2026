@@ -28,7 +28,7 @@ For a zero-setup radiation demonstration without Supabase, open [http://127.0.0.
 
 The radiation page contains three complementary surfaces:
 
-1. **Live/DB dashboard** — personal dose, history, crew comparison, compartment telemetry and DONKI context.
+1. **Telemetry Center** — autonomous seeded DEMO stream or existing LIVE/Supabase data, synchronized crew exposure, compartment sensors, short/long horizons, DONKI context and telemetry-derived emergency history.
 2. **Scenario Workbench** — all documented scenarios A–S with editable parameters, deterministic backend calculations, metrics, explanation, actions, protocol checklist, event log, local history, reset, comparison and JSON export.
 3. **Fixture Verification Lab** — 34 deterministic engineering fixtures covering the contracts of 20 product functions and 14 automated workflows, including visible safety guards. It is not presented as 34 arbitrary-input end-user tools.
 
@@ -36,14 +36,17 @@ Simulation values are labelled `simulated`, `modeled` or `experimental`. DONKI e
 
 ## Spacecraft Map Engine
 
-The shared Spacecraft Map Engine provides a deterministic seeded 2D ship, connected compartments, crew placement, editable hazard zones, door-aware A* routing, route comparison, shelter allocation, movement simulation, event history, local snapshots and alternative mission branches.
+The shared Spacecraft Map Engine provides eight deterministic seeded ship families, connected compartments, crew placement, provenance-aware radiation heatmaps, door-aware A* routing, shelter allocation, event playback, local snapshots and alternative mission branches. Radiation results A–S can be projected from the Workbench without rerunning or replacing the calculation engine; analytic scenarios stay explicitly non-spatial.
 
 Start the application and open [http://127.0.0.1:1654/mission-studio/map](http://127.0.0.1:1654/mission-studio/map). The surface works in isolated Demo Mode; when the existing Supabase configuration is available it reads crew identities without writing simulated positions or exposure into shared astronaut records.
 
 ```ts
 import { createInitialMapState, findRoute, generateSpacecraft } from "@/lib/spacecraft";
 
-const blueprint = generateSpacecraft({ includePowerSection: true }, "MARS-126");
+const blueprint = generateSpacecraft(
+  { shapeFamily: "RING", shipSize: "STANDARD", includePowerSection: true },
+  "MARS-126",
+);
 const state = createInitialMapState(blueprint, "mars-transit-126", crew);
 const route = findRoute(blueprint, state, start, destination, { mode: "safe" });
 ```
@@ -87,7 +90,7 @@ Never commit `.env.local` or expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 - **`lightningcss` or native binary error after copying `node_modules`:** delete `node_modules` and `.next`, then run `npm install`. Do not transfer `node_modules` between Windows and Linux.
 - **Port 1654 already in use:** stop the other Node process; project security rules intentionally bind to `127.0.0.1:1654`.
 - **DONKI error:** configure `NASA_API_KEY`; the Scenario Workbench remains available without DONKI.
-- **No telemetry charts:** ingest through `/api/radiation/telemetry` or run the existing A–D DB Scenario Console, then use **Sync DB**.
+- **No LIVE telemetry charts:** ingest through `/api/radiation/telemetry` or use **Telemetry → DEMO** for the autonomous synthetic stream. DEMO readings are never saved as measured data.
 
 ## Documentation
 

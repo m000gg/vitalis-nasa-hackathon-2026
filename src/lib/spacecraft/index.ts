@@ -4,3 +4,4 @@ export * from "./validation.ts";
 export * from "./pathfinding.ts";
 export * from "./state.ts";
 export * from "./hazards.ts";
+export * from "./radiation-scenarios.ts";

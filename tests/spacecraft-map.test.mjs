@@ -13,6 +13,8 @@ import {
   findRoute,
   generateSpacecraft,
   radiationScenarioAAdapter,
+  projectRadiationScenario,
+  RADIATION_SCENARIO_PROJECTIONS,
   restoreMap,
   serializeMap,
   setDoorState,
@@ -52,6 +54,18 @@ test("generated spacecraft contains required connected compartments", () => {
     assert.equal(validation.valid, true, `${seed}: ${validation.errors.join(" ")}`);
     assert.ok(blueprint.compartments.some((room) => room.type === "RADIATION_SHELTER"));
     assert.ok(blueprint.doors.every((door) => door.connects.length === 2));
+  }
+});
+
+test("all eight shape families generate deterministic connected spacecraft", () => {
+  const families = ["LINEAR", "CROSS", "T", "Y", "RING", "ASYMMETRIC", "CLUSTERED", "CHAOTIC"];
+  for (const shapeFamily of families) {
+    const first = generateSpacecraft({ shapeFamily, shipSize: "STANDARD" }, `SHAPE-${shapeFamily}`);
+    const second = generateSpacecraft({ shapeFamily, shipSize: "STANDARD" }, `SHAPE-${shapeFamily}`);
+    assert.deepEqual(first, second);
+    assert.equal(first.shapeFamily, shapeFamily);
+    assert.equal(first.generatorVersion, "2.0.0");
+    assert.equal(validateSpacecraft(first).valid, true, shapeFamily);
   }
 });
 
@@ -152,4 +166,16 @@ test("radiation scenario A uses the existing engine and creates a simulated over
   assert.equal(zone.source, "simulated");
   assert.ok(zone.affectedTiles.length > 0);
   assert.equal(zone.parameters.doseRateMsvPerHour, 0.62);
+});
+
+test("all A-S map projections are registered and analytic projections do not invent zones", () => {
+  assert.equal(RADIATION_SCENARIO_PROJECTIONS.length, 19);
+  assert.deepEqual(RADIATION_SCENARIO_PROJECTIONS.map((item) => item.id), "ABCDEFGHIJKLMNOPQRS".split(""));
+  const { blueprint, state } = fixture("PROJECTIONS");
+  const analytic = projectRadiationScenario(blueprint, state, { scenarioId: "N", severity: "ELEVATED", summary: "Mission duration changed.", parameters: { durationHours: 400 } });
+  assert.equal(analytic.zones.length, 0);
+  assert.match(analytic.events.at(-1).summary, /no single room footprint/i);
+  const spatial = projectRadiationScenario(blueprint, state, { scenarioId: "I", severity: "ELEVATED", summary: "Cargo comparison complete.", parameters: { newRate: 2 } });
+  assert.equal(spatial.zones.at(-1).source, "simulated");
+  assert.ok(spatial.zones.at(-1).affectedTiles.length > 0);
 });

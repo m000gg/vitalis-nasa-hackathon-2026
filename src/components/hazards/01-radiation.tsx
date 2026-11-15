@@ -6,13 +6,14 @@ import {
   Beaker,
   BookOpen,
   CheckCircle2,
-  CircleHelp,
   CloudSun,
   Database,
   Download,
   FlaskConical,
   GitCompareArrows,
+  Gauge,
   ListChecks,
+  Map as MapIcon,
   Play,
   Radio,
   RefreshCw,
@@ -20,10 +21,15 @@ import {
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
+  Satellite,
   Users,
+  Wrench,
   X,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import { RadiationTelemetryCenter } from "@/components/radiation/RadiationTelemetryCenter";
+import { MissionMapWorkbench } from "@/components/spacecraft/MissionMapWorkbench";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 import { PARAMETER_GROUPS, validateWorkbenchParameters } from "@/lib/radiation/simulation-ux";
 import type { ParameterGroup, WorkbenchParameterDefinition } from "@/lib/radiation/simulation-ux";
 import type { HazardScreenProps } from "./types";
@@ -145,34 +151,7 @@ function methodClass(status: MethodItem["status"]) {
 }
 
 function ParameterHelp({ parameter }: { parameter: SimulationParameterDefinition }) {
-  const [open, setOpen] = useState(false);
-  const tooltipId = `parameter-help-${parameter.key}`;
-  return (
-    <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        aria-label={`Explain ${parameter.label}`}
-        aria-expanded={open}
-        aria-describedby={open ? tooltipId : undefined}
-        onClick={() => setOpen(true)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[#4502FF] outline-none hover:bg-violet-100 focus:ring-2 focus:ring-[#FFDA14]"
-      >
-        <CircleHelp className="h-4 w-4" aria-hidden="true" />
-      </button>
-      {open && (
-        <span id={tooltipId} role="tooltip" className="absolute left-0 top-7 z-30 w-72 border-2 border-slate-900 bg-white p-3 text-left text-xs font-normal normal-case leading-relaxed text-slate-700 shadow-[4px_4px_0_#FFDA14]" style={mono}>
-          {parameter.tooltip}
-        </span>
-      )}
-    </span>
-  );
+  return <InfoTooltip label={`Explain ${parameter.label}`}>{parameter.tooltip}</InfoTooltip>;
 }
 
 export function RadiationHazardScreen({
@@ -183,8 +162,11 @@ export function RadiationHazardScreen({
   hazardRecords,
   hazardSamples,
   scenarioHazardRecords,
+  scenarioHazardSamples,
   linkOnline,
 }: HazardScreenProps) {
+  const standaloneDemo = mission.id === "radiation-demo-local";
+  const legacyTelemetryEnabled: boolean = false;
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
   const [emergencies, setEmergencies] = useState<EmergencyItem[]>([]);
   const [donkiEvents, setDonkiEvents] = useState<DonkiItem[]>([]);
@@ -199,9 +181,9 @@ export function RadiationHazardScreen({
   const [protocolCompletion, setProtocolCompletion] = useState<Record<string, boolean>>({});
   const [showComparison, setShowComparison] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "simulator" | "map" | "telemetry" | "engineering">(standaloneDemo ? "simulator" : "overview");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
-  const standaloneDemo = mission.id === "radiation-demo-local";
 
   const refreshEmergencies = useCallback(async () => {
     if (standaloneDemo) {
@@ -547,6 +529,32 @@ export function RadiationHazardScreen({
     && comparisonRuns[0].comparisonUnit === comparisonRuns[1].comparisonUnit;
   const simulationChartMax = Math.max(1, ...(activeSimulationResult?.chart.map((point) => Math.abs(point.value)) ?? [1]));
   const completedProtocolSteps = activeSimulationResult?.protocol.filter((step) => protocolCompletion[step.id]).length ?? 0;
+  const essentialParameterGroups = groupedSimulationParameters.filter(([group]) => group !== "Safety Thresholds" && group !== "Simulation Assumptions");
+  const advancedParameterGroups = groupedSimulationParameters.filter(([group]) => group === "Safety Thresholds" || group === "Simulation Assumptions");
+
+  const renderParameterGroup = ([group, parameters]: [ParameterGroup, SimulationParameterDefinition[]]) => (
+    <fieldset key={group} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <legend className="px-2 text-xs font-bold tracking-wider text-[#4502FF]" style={mono}>{group.toUpperCase()}</legend>
+      <div className="space-y-3">
+        {parameters.map((parameter) => {
+          const error = simulationValidationErrors[parameter.key];
+          return <div key={parameter.key} className={`rounded-lg border bg-white p-3 ${error ? "border-red-500" : "border-slate-200"}`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1"><label htmlFor={`sim-${parameter.key}`} className="text-xs font-bold" style={mono}>{parameter.label.toUpperCase()}</label><ParameterHelp parameter={parameter} /></span>
+              {parameter.unit && <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600" style={mono}>{parameter.unit}</span>}
+            </div>
+            {parameter.type === "number" && <div className="mt-2 grid grid-cols-[1fr_92px] items-center gap-3">
+              <input id={`sim-${parameter.key}`} type="range" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} className="w-full accent-[#4502FF]" />
+              <input type="number" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} aria-label={`${parameter.label} numeric value`} aria-invalid={Boolean(error)} className="rounded border border-slate-300 px-2 py-1 text-right text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]" style={mono} />
+            </div>}
+            {parameter.type === "boolean" && <button id={`sim-${parameter.key}`} type="button" role="switch" aria-checked={Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onClick={() => updateSimulationParameter(parameter.key, !Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue))} className={`mt-2 w-full rounded-lg border px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#FFDA14] ${Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-100 text-slate-700"}`} style={mono}>{Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "YES / CONFIRMED" : "NO / NOT CONFIRMED"}</button>}
+            {parameter.type === "select" && <select id={`sim-${parameter.key}`} value={String(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, event.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]">{parameter.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>}
+            {error && <p className="mt-2 text-xs font-bold text-red-700" role="alert">{error}</p>}
+          </div>;
+        })}
+      </div>
+    </fieldset>
+  );
 
   return (
     <section className="space-y-5 text-slate-900" style={arcade}>
@@ -554,8 +562,7 @@ export function RadiationHazardScreen({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold tracking-[0.22em] text-[#4502FF]" style={mono}>VITALIS+ / HAZARD 01</p>
-            <h2 className="mt-1 text-3xl leading-none">RADIATION CONTROL DECK</h2>
-            <p className="mt-2 max-w-3xl text-sm text-slate-700">DB-synced radiation decision support. Dose units, data provenance and space-weather context remain visibly separate.</p>
+            <h2 className="mt-1 text-3xl leading-none">SPACE RADIATION</h2>
           </div>
           <div className={`border-2 px-3 py-2 text-center ${statusClass(snapshot.status)}`}>
             <p className="text-[10px] tracking-widest" style={mono}>CURRENT STATUS</p>
@@ -569,16 +576,33 @@ export function RadiationHazardScreen({
         </div>
       </div>
 
+      <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1" aria-label="Radiation workspace">
+        {([
+          ["overview", "Overview", Gauge],
+          ["simulator", "Simulator", SlidersHorizontal],
+          ["map", "Spacecraft Map", MapIcon],
+          ["telemetry", "Telemetry", Satellite],
+          ["engineering", "Engineering", Wrench],
+        ] as const).map(([id, label, Icon]) => <button key={id} type="button" onClick={() => setWorkspaceTab(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4502FF] ${workspaceTab === id ? "bg-[#4502FF] text-white" : "text-slate-600 hover:bg-slate-100"}`}><Icon className="h-4 w-4" />{label}</button>)}
+      </nav>
+
       {notice && <div className="border-2 border-[#4502FF] bg-[#F4F0FF] p-3 text-sm" role="status">{notice}</div>}
 
-      {role === "lead" && (
+      {workspaceTab === "overview" && <section className="grid gap-4 md:grid-cols-3">
+        <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-bold text-slate-500" style={mono}>CURRENT ASSESSMENT</p><p className={`mt-3 inline-flex rounded-lg border px-3 py-2 text-xl font-bold ${statusClass(snapshot.status)}`}>{snapshot.status}</p><p className="mt-3 text-sm text-slate-600">{snapshot.immediateHorizon}</p></article>
+        <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-bold text-slate-500" style={mono}>NEXT ACTION</p><p className="mt-3 text-lg font-bold">{snapshot.solutions[0] ?? "Monitor available telemetry."}</p><button type="button" onClick={() => setWorkspaceTab("simulator")} className="mt-4 rounded-lg bg-[#4502FF] px-3 py-2 text-sm font-bold text-white">OPEN SIMULATOR</button></article>
+        <article className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-xs font-bold text-slate-500" style={mono}>DATA STATUS</p><p className="mt-3 text-2xl font-bold">{hazardSamples.length}</p><p className="text-sm text-slate-600">radiation sample(s)</p><button type="button" onClick={() => setWorkspaceTab("telemetry")} className="mt-4 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold">VIEW TELEMETRY</button></article>
+      </section>}
+
+      {workspaceTab === "map" && <section className="rounded-xl border border-slate-200 bg-slate-100 p-2 sm:p-4"><MissionMapWorkbench embedded radiationResult={activeSimulationResult} /></section>}
+
+      {workspaceTab === "simulator" && role === "lead" && (
         <section className="overflow-hidden border-2 border-slate-900 bg-[#F8FAFC] shadow-[8px_8px_0_#4502FF]">
           <div className="border-b-2 border-slate-900 bg-[#111827] p-5 text-white">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold tracking-[0.2em] text-[#FFDA14]" style={mono}>DEMO MODE · DETERMINISTIC · NO LIVE CREW DATA</p>
                 <h3 className="mt-1 text-3xl">RADIATION SCENARIO WORKBENCH</h3>
-                <p className="mt-2 max-w-3xl text-sm text-slate-300">Select any documented scenario A–S, change its model inputs, run the same backend logic, complete the response protocol and compare recent results.</p>
               </div>
               <div className="space-y-2 text-right text-xs" style={mono}>
                 <div className="border border-slate-600 px-3 py-2">
@@ -626,52 +650,25 @@ export function RadiationHazardScreen({
                     <span className="text-[10px] text-slate-500" style={mono}>SCENARIO {activeSimulationDefinition.id}</span>
                   </div>
                   <h4 className="mt-2 text-2xl">{activeSimulationDefinition.title}</h4>
-                  <div className="mt-3 space-y-3 border-2 border-slate-900 bg-slate-50 p-3">
-                    <div><p className="text-[10px] font-bold tracking-wider text-[#4502FF]" style={mono}>WHAT&apos;S HAPPENING?</p><p className="mt-1 text-sm leading-relaxed text-slate-700">{activeSimulationDefinition.whatsHappening}</p></div>
-                    <div className="border-t border-slate-300 pt-3"><p className="text-[10px] font-bold tracking-wider text-[#4502FF]" style={mono}>WHAT WILL VITALIS+ DO?</p><p className="mt-1 text-sm leading-relaxed text-slate-700">{activeSimulationDefinition.whatVitalisDoes}</p></div>
+                  <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                    <span>Scenario {activeSimulationDefinition.id}</span>
+                    <InfoTooltip label={`Explain ${activeSimulationDefinition.title}`}>
+                      <p className="font-bold text-slate-900">What&apos;s happening?</p>
+                      <p className="mt-1">{activeSimulationDefinition.whatsHappening}</p>
+                      <p className="mt-3 font-bold text-slate-900">What will Vitalis+ do?</p>
+                      <p className="mt-1">{activeSimulationDefinition.whatVitalisDoes}</p>
+                    </InfoTooltip>
                   </div>
 
                   <div className="mt-4">
-                    <p className="text-[10px] font-bold tracking-wider text-slate-500" style={mono}>QUICK DEMONSTRATION PRESETS</p>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                      {activeSimulationDefinition.presets.map((preset) => <button key={preset.id} type="button" onClick={() => applySimulationPreset(preset)} title={preset.description} className="border-2 border-slate-300 bg-white px-2 py-2 text-left text-xs font-bold hover:border-[#4502FF] hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-[#FFDA14]">{preset.label}<span className="mt-1 block text-[10px] font-normal leading-snug text-slate-500">{preset.description}</span></button>)}
+                    <p className="text-[10px] font-bold tracking-wider text-slate-500" style={mono}>QUICK PRESETS</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {activeSimulationDefinition.presets.map((preset) => <span key={preset.id} className="inline-flex items-center gap-0.5"><button type="button" onClick={() => applySimulationPreset(preset)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold hover:border-[#4502FF] hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-[#FFDA14]">{preset.id === "normal" || preset.id === "quiet" || preset.id === "healthy" || preset.id === "stable" ? "Normal" : preset.id === "critical" || preset.id === "overflow" || preset.id === "combined" || preset.id === "late" ? "Critical" : "Elevated"}</button><InfoTooltip label={`Explain ${preset.label}`}><strong className="text-slate-900">{preset.label}</strong><p className="mt-1">{preset.description}</p></InfoTooltip></span>)}
                     </div>
                   </div>
 
-                  <div className="mt-5 space-y-5">
-                    {groupedSimulationParameters.map(([group, parameters]) => (
-                      <fieldset key={group} className="border-2 border-slate-300 bg-slate-100/70 p-3">
-                        <legend className="px-2 text-xs font-bold tracking-wider text-[#4502FF]" style={mono}>{group.toUpperCase()}</legend>
-                        <div className="space-y-3">
-                          {parameters.map((parameter) => {
-                            const error = simulationValidationErrors[parameter.key];
-                            return <div key={parameter.key} className={`border-2 bg-white p-3 ${error ? "border-red-500" : "border-slate-300"}`}>
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="flex items-center gap-1.5"><label htmlFor={`sim-${parameter.key}`} className="text-xs font-bold" style={mono}>{parameter.label.toUpperCase()}</label><ParameterHelp parameter={parameter} /></span>
-                                {parameter.unit && <span className="border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600" style={mono}>{parameter.unit}</span>}
-                              </div>
-                              {parameter.type === "number" && (
-                                <div className="mt-2 grid grid-cols-[1fr_92px] items-center gap-3">
-                                  <input id={`sim-${parameter.key}`} type="range" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} className="w-full accent-[#4502FF]" />
-                                  <input type="number" min={parameter.min} max={parameter.max} step={parameter.step} value={Number(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, Number(event.target.value))} aria-label={`${parameter.label} numeric value`} aria-invalid={Boolean(error)} className="border-2 border-slate-900 px-2 py-1 text-right text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]" style={mono} />
-                                </div>
-                              )}
-                              {parameter.type === "boolean" && (
-                                <button id={`sim-${parameter.key}`} type="button" role="switch" aria-checked={Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onClick={() => updateSimulationParameter(parameter.key, !Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue))} className={`mt-2 w-full border-2 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#FFDA14] ${Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "border-[#16A34A] bg-emerald-50 text-emerald-800" : "border-slate-400 bg-slate-100 text-slate-700"}`} style={mono}>{Boolean(activeSimulationParameters[parameter.key] ?? parameter.defaultValue) ? "YES / CONFIRMED" : "NO / NOT CONFIRMED"}</button>
-                              )}
-                              {parameter.type === "select" && (
-                                <select id={`sim-${parameter.key}`} value={String(activeSimulationParameters[parameter.key] ?? parameter.defaultValue)} onChange={(event) => updateSimulationParameter(parameter.key, event.target.value)} className="mt-2 w-full border-2 border-slate-900 bg-white p-2 text-sm outline-none focus:ring-2 focus:ring-[#FFDA14]">
-                                  {parameter.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                                </select>
-                              )}
-                              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{parameter.help}</p>
-                              {error && <p className="mt-2 text-xs font-bold text-red-700" role="alert">{error}</p>}
-                            </div>;
-                          })}
-                        </div>
-                      </fieldset>
-                    ))}
-                  </div>
+                  <div className="mt-5 space-y-4">{essentialParameterGroups.map(renderParameterGroup)}</div>
+                  {advancedParameterGroups.length > 0 && <details className="mt-4 rounded-lg border border-slate-300 bg-white p-3"><summary className="cursor-pointer text-xs font-bold text-slate-700" style={mono}>ADVANCED PARAMETERS</summary><div className="mt-4 space-y-4">{advancedParameterGroups.map(renderParameterGroup)}</div></details>}
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button type="button" onClick={runInteractiveSimulation} disabled={busy !== null || Object.keys(simulationValidationErrors).length > 0} className="border-2 border-slate-900 bg-[#4502FF] px-3 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111827] enabled:hover:translate-x-px enabled:hover:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"><Play className="mr-2 inline h-4 w-4" />{busy === "simulation" ? "RUNNING…" : Object.keys(simulationValidationErrors).length > 0 ? "FIX INPUT ERRORS" : "RUN SCENARIO"}</button>
@@ -683,18 +680,14 @@ export function RadiationHazardScreen({
 
             <div className="p-5">
               {!activeSimulationResult ? (
-                activeSimulationDefinition && <div className="min-h-[520px] border-2 border-slate-900 bg-white p-5 shadow-[5px_5px_0_#FFDA14]">
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-slate-900 pb-4">
-                    <div><p className="text-xs font-bold tracking-[0.18em] text-[#4502FF]" style={mono}>SCENARIO PREVIEW · READY TO CONFIGURE</p><h4 className="mt-1 text-3xl">{activeSimulationDefinition.id}. {activeSimulationDefinition.title}</h4></div>
-                    <SlidersHorizontal className="h-10 w-10 text-[#4502FF]" aria-hidden="true" />
+                activeSimulationDefinition && <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                  <div className="max-w-md">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-[#4502FF]"><SlidersHorizontal className="h-8 w-8" aria-hidden="true" /></div>
+                    <div className="mt-5 flex items-center justify-center gap-2"><p className="text-xs font-bold tracking-[0.18em] text-[#4502FF]" style={mono}>READY TO SIMULATE</p><InfoTooltip label={`Preview ${activeSimulationDefinition.title}`}><p className="font-bold text-slate-900">{activeSimulationDefinition.title}</p><p className="mt-1">{activeSimulationDefinition.whatsHappening}</p><p className="mt-2 font-bold text-slate-900">This run models</p><ul className="mt-1 list-disc pl-5">{activeSimulationDefinition.previewEvents.map((event) => <li key={event}>{event}</li>)}</ul></InfoTooltip></div>
+                    <h4 className="mt-2 text-3xl">{activeSimulationDefinition.id}. {activeSimulationDefinition.title}</h4>
+                    <p className="mt-3 text-base text-slate-600">Configure parameters and run the scenario.</p>
+                    <span className="mt-4 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-[#4502FF]" style={mono}>SIMULATED · DEMO MODEL</span>
                   </div>
-                  <p className="mt-5 max-w-3xl text-base leading-relaxed text-slate-700">{activeSimulationDefinition.whatsHappening}</p>
-                  <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                    <article className="border-2 border-slate-900 bg-slate-50 p-4"><p className="text-xs font-bold text-[#4502FF]" style={mono}>EVENTS THIS RUN WILL MODEL</p><ol className="mt-3 space-y-3">{activeSimulationDefinition.previewEvents.map((event, index) => <li key={event} className="flex gap-3 text-sm"><span className="flex h-6 w-6 shrink-0 items-center justify-center border border-slate-900 bg-white text-xs font-bold" style={mono}>{index + 1}</span><span>{event}</span></li>)}</ol></article>
-                    <article className="border-2 border-slate-900 bg-[#111827] p-4 text-white"><p className="text-xs font-bold text-[#FFDA14]" style={mono}>RESULTS YOU WILL SEE</p><ul className="mt-3 space-y-3">{activeSimulationDefinition.resultHighlights.map((item) => <li key={item} className="flex gap-2 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#FFDA14]" /><span>{item}</span></li>)}</ul></article>
-                  </div>
-                  <div className="mt-6"><p className="text-xs font-bold tracking-wider text-slate-500" style={mono}>THREE SIMPLE STEPS</p><div className="mt-3 grid gap-3 sm:grid-cols-3">{[{ n: "1", title: "Configure", text: "Adjust the mission conditions or choose a preset." }, { n: "2", title: "Simulate", text: "Run the existing calculation engine." }, { n: "3", title: "Understand", text: "Review the assessment, actions, and timeline." }].map((step) => <div key={step.n} className="border-2 border-slate-300 p-3"><span className="text-2xl font-bold text-[#4502FF]" style={mono}>{step.n}</span><p className="font-bold">{step.title}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{step.text}</p></div>)}</div></div>
-                  <p className="mt-6 border-l-4 border-[#4502FF] bg-violet-50 p-3 text-xs leading-relaxed text-slate-700"><strong>Demo boundary:</strong> this scenario uses simulated inputs and documented toy-model assumptions. It does not display live crew telemetry or issue medical advice.</p>
                 </div>
               ) : (
                 <div className="space-y-5">
@@ -710,14 +703,10 @@ export function RadiationHazardScreen({
                     <p className="mt-1 text-base font-bold">{activeSimulationResult.summary}</p>
                   </div>
 
-                  <div className="border-2 border-slate-900 bg-white p-4">
-                    <p className="text-xs font-bold text-[#4502FF]" style={mono}>WHY DID VITALIS+ MAKE THIS DECISION?</p>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-700">{activeSimulationResult.explanation}</p>
-                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" style={mono}><p className="border border-slate-300 bg-slate-50 p-2"><strong>INPUTS:</strong> values configured in this Workbench</p><p className="border border-slate-300 bg-slate-50 p-2"><strong>CALCULATION:</strong> deterministic scenario engine</p></div>
-                  </div>
+                  <div className="flex items-center gap-2"><span className="text-xs font-bold text-[#4502FF]" style={mono}>WHY THIS RESULT?</span><InfoTooltip label="Explain this result"><p className="font-bold text-slate-900">Decision basis</p><p className="mt-1">{activeSimulationResult.explanation}</p><p className="mt-3 text-xs text-slate-500">Inputs: configured Workbench values · Calculation: deterministic scenario engine.</p></InfoTooltip></div>
 
                   <div><p className="mb-2 text-xs font-bold text-[#4502FF]" style={mono}>UNDERSTAND THE NUMBERS</p><div className="grid gap-2 sm:grid-cols-3">
-                    {activeSimulationResult.metrics.map((item) => <div key={item.label} className={`border-2 p-3 ${item.tone === "danger" ? "border-red-500 bg-red-50" : item.tone === "warning" ? "border-amber-500 bg-amber-50" : item.tone === "good" ? "border-emerald-500 bg-emerald-50" : "border-slate-300 bg-white"}`}><p className="text-[10px] font-bold tracking-wide text-slate-500" style={mono}>{item.label.toUpperCase()}</p><p className="mt-1 text-xl font-bold">{item.value} {item.unit ?? ""}</p><p className="mt-1 text-[10px] leading-relaxed text-slate-500">{item.unit ? `Reported in ${item.unit}; calculated from this run's simulated inputs.` : "Derived status or count for this simulated run."}</p></div>)}
+                    {activeSimulationResult.metrics.map((item) => <div key={item.label} className={`rounded-lg border p-3 ${item.tone === "danger" ? "border-red-500 bg-red-50" : item.tone === "warning" ? "border-amber-500 bg-amber-50" : item.tone === "good" ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white"}`}><p className="text-[10px] font-bold tracking-wide text-slate-500" style={mono}>{item.label.toUpperCase()}</p><p className="mt-1 text-xl font-bold">{item.value} {item.unit ?? ""}</p></div>)}
                   </div></div>
 
                   {activeSimulationResult.assignments && <div className="border-2 border-slate-900 bg-white p-4"><p className="text-xs font-bold text-[#4502FF]" style={mono}>CREW-TO-SHELTER ALLOCATION</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{activeSimulationResult.assignments.map((assignment) => <div key={assignment.crewMember} className={`flex items-center justify-between gap-3 border p-2 text-sm ${assignment.shelter === "UNASSIGNED" ? "border-red-500 bg-red-50" : "border-slate-300"}`}><span>{assignment.crewMember}</span><strong>{assignment.shelter}</strong></div>)}</div></div>}
@@ -755,7 +744,7 @@ export function RadiationHazardScreen({
                   {comparisonRuns.length >= 2 && !comparisonCompatible && <p className="border border-amber-500 bg-amber-50 p-3 text-xs text-amber-900" role="status">Comparison is available only for two runs of the same scenario with the same metric unit.</p>}
                   {showComparison && comparisonCompatible && <div className="border-2 border-[#4502FF] bg-violet-50 p-4"><p className="text-xs font-bold text-[#4502FF]" style={mono}>COMPATIBLE RUN COMPARISON</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{comparisonRuns.map((run, index) => <div key={run.runId} className="border border-[#4502FF] bg-white p-3"><p className="text-[10px] text-slate-500" style={mono}>RUN {index + 1} · {run.scenarioId}</p><p className="mt-1 font-bold">{run.title}</p><p className="mt-2 text-2xl font-bold text-[#4502FF]">{run.comparisonValue === null ? "—" : Math.round(run.comparisonValue * 1000) / 1000} <span className="text-sm">{run.comparisonUnit}</span></p><p className="mt-2 text-xs text-slate-600">{run.summary}</p></div>)}</div></div>}
 
-                  <details className="border border-slate-300 bg-white p-3"><summary className="cursor-pointer text-xs font-bold text-slate-700" style={mono}>MODEL LIMITATIONS & INPUT SNAPSHOT</summary><ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">{activeSimulationResult.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul><pre className="mt-3 max-h-48 overflow-auto bg-slate-950 p-3 text-[10px] text-emerald-300" style={mono}>{JSON.stringify(activeSimulationResult.parameters, null, 2)}</pre></details>
+                  <details className="rounded-lg border border-slate-300 bg-white p-3"><summary className="cursor-pointer text-xs font-bold text-slate-700" style={mono}>TECHNICAL DETAILS</summary><p className="mt-3 text-xs font-bold text-slate-700">MODEL LIMITATIONS</p><ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">{activeSimulationResult.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul><p className="mt-3 text-xs font-bold text-slate-700">INPUT SNAPSHOT · {activeSimulationResult.provenanceKind.toUpperCase()}</p><pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-950 p-3 text-[10px] text-emerald-300" style={mono}>{JSON.stringify(activeSimulationResult.parameters, null, 2)}</pre></details>
                 </div>
               )}
 
@@ -765,6 +754,23 @@ export function RadiationHazardScreen({
         </section>
       )}
 
+      {workspaceTab === "telemetry" && (
+        <RadiationTelemetryCenter
+          missionId={mission.id}
+          crew={mission.crew}
+          liveRecords={scenarioHazardRecords}
+          liveSamples={scenarioHazardSamples}
+          standaloneDemo={standaloneDemo}
+          activeCharacterId={activeCharacter.id}
+          durableEmergency={activeEmergency}
+          durableBusy={busy}
+          onAcknowledgeDurable={acknowledge}
+          onShelterCheckIn={shelterCheckIn}
+          shelterConfirmed={activeCharacter.shelterConfirmed}
+        />
+      )}
+
+      {legacyTelemetryEnabled && <>
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <article className="border-2 border-slate-900 bg-white p-5">
           <p className="text-xs font-bold tracking-[0.18em] text-[#4502FF]" style={mono}>IMMEDIATE HORIZON</p>
@@ -809,7 +815,9 @@ export function RadiationHazardScreen({
         </article>
       </section>
 
-      {role === "lead" && (
+      </>}
+
+      {workspaceTab === "engineering" && role === "lead" && (
         <section className="border-2 border-[#4502FF] bg-white p-5 shadow-[7px_7px_0_#111827]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -865,9 +873,11 @@ export function RadiationHazardScreen({
         </section>
       )}
 
+      {workspaceTab === "engineering" && <>
       {role === "lead" && !standaloneDemo && <section className="border-2 border-slate-900 bg-[#FFDA14] p-5"><div className="flex items-center gap-2"><RefreshCw className="h-5 w-5" /><h3 className="text-xl">REPRODUCIBLE SCENARIO CONSOLE</h3></div><p className="mt-1 text-sm">These buttons write clearly marked simulation telemetry to the existing Supabase tables. They are not fake frontend alarms.</p><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{scenarios.filter((scenario) => ["A", "B", "C", "D"].includes(scenario.id)).map((scenario) => <div key={scenario.id} className="border-2 border-slate-900 bg-white p-3"><p className="font-bold">{scenario.id}. {scenario.title}</p><p className="mt-1 min-h-12 text-xs text-slate-700">{scenario.description}</p><button type="button" onClick={() => runScenario(scenario.id)} disabled={busy === `scenario-${scenario.id}`} className="mt-3 w-full border-2 border-slate-900 bg-[#4502FF] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busy === `scenario-${scenario.id}` ? "WRITING…" : "RUN SIMULATION"}</button></div>)}</div></section>}
 
       <section className="border-2 border-slate-900 bg-white p-5"><div className="flex items-center gap-2"><Beaker className="h-5 w-5 text-[#4502FF]" /><h3 className="text-xl">LIVE INTEGRATION / MODEL STATUS</h3></div><p className="mt-2 text-xs text-slate-600">All A–S scenarios are executable in the deterministic Workbench above. The labels below separately describe whether each workflow is connected to validated live mission data and hardware.</p><div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{scenarios.map((scenario) => <div key={scenario.id} className="border border-slate-300 p-3 text-sm"><div className="flex items-start justify-between gap-2"><strong>{scenario.id}. {scenario.title}</strong><span className={`px-1.5 py-0.5 text-[10px] font-bold ${scenarioClass(scenario.status)}`} style={mono}>{scenario.status.toUpperCase()}</span></div><p className="mt-1 text-xs text-slate-600">{scenario.description}</p></div>)}</div><p className="mt-4 text-xs text-slate-600"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-[#16A34A]" />Experimental models are stored and displayed honestly; unsupported scientific algorithms are never fabricated.</p></section>
+      </>}
     </section>
   );
 }

@@ -17,8 +17,12 @@ export type CompartmentType =
 export type DoorState = "OPEN" | "CLOSED" | "DAMAGED" | "BLOCKED";
 export type HazardType = "radiation" | "temperature" | "pressure" | "oxygen" | "blocked" | "restricted" | "safe-shelter";
 export type HazardSeverity = "NOMINAL" | "ELEVATED" | "CRITICAL";
-export type HazardSource = "measured" | "modeled" | "simulated";
+export type HazardSource = "measured" | "modeled" | "simulated" | "reconstructed";
 export type RouteMode = "shortest" | "fastest" | "lowest-radiation" | "safe";
+export type ShapeFamily = "LINEAR" | "CROSS" | "T" | "Y" | "RING" | "ASYMMETRIC" | "CLUSTERED" | "CHAOTIC";
+export type ShipSize = "COMPACT" | "STANDARD" | "LARGE";
+export type CorridorComplexity = "LOW" | "MEDIUM" | "HIGH";
+export type MapMode = "EXPLORE" | "ROUTE" | "EDIT_ZONES" | "EVENTS";
 
 export interface SpacecraftTile extends Coordinate {
   id: string;
@@ -86,7 +90,9 @@ export interface HazardZone {
 export interface SpacecraftBlueprint {
   id: string;
   seed: string;
-  generatorVersion: "1.0.0";
+  generatorVersion: "1.0.0" | "2.0.0";
+  shapeFamily?: ShapeFamily;
+  generationConfig?: Required<Pick<GenerationConfig, "shapeFamily" | "shipSize" | "compartmentCount" | "corridorComplexity" | "asymmetry" | "shelterCapacity" | "hazardDensity">>;
   width: number;
   height: number;
   tiles: SpacecraftTile[];
@@ -105,7 +111,7 @@ export interface CrewMapPosition {
   destination: Coordinate | null;
   route: Coordinate[];
   routeIndex: number;
-  movementStatus: "IDLE" | "MOVING" | "ARRIVED" | "BLOCKED";
+  movementStatus: "IDLE" | "MOVING" | "ARRIVED" | "BLOCKED" | "SHELTERED" | "WAITING";
   cumulativeModeledDoseMsv: number;
 }
 
@@ -149,6 +155,51 @@ export interface GenerationConfig {
   height?: number;
   includePowerSection?: boolean;
   missionType?: "TRANSIT" | "SURFACE";
+  shapeFamily?: ShapeFamily;
+  shipSize?: ShipSize;
+  compartmentCount?: number;
+  corridorComplexity?: CorridorComplexity;
+  asymmetry?: number;
+  shelterCapacity?: number;
+  hazardDensity?: number;
+}
+
+export interface MapHazardOverlay extends HazardZone {
+  label?: string;
+  uncertaintyPercent?: number;
+}
+
+export interface MissionMapEvent extends MapEvent {
+  scenarioId?: string;
+  focusCompartmentIds?: string[];
+}
+
+export interface MapSelection {
+  kind: "tile" | "compartment" | "crew" | "event" | "none";
+  id: string | null;
+  position?: Coordinate;
+}
+
+export interface MapDataSource {
+  id: string;
+  label: string;
+  provenance: HazardSource | "no-data";
+  updatedAt?: string;
+  uncertaintyPercent?: number;
+}
+
+export interface MapPlaybackState {
+  cursor: number;
+  playing: boolean;
+  speed: 0.5 | 1 | 2 | 4;
+  eventCount: number;
+}
+
+export interface MapScenarioAdapter<TInput = Record<string, unknown>> {
+  scenarioId: string;
+  title: string;
+  projection: "spatial" | "analytic" | "hybrid";
+  apply: (blueprint: SpacecraftBlueprint, state: SpacecraftMapState, input: TInput) => SpacecraftMapState;
 }
 
 export interface MapValidationResult {

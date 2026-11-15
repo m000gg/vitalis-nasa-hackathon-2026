@@ -1,4 +1,4 @@
-export type DonkiEventType = "SEP" | "FLR" | "RBE";
+export type DonkiEventType = "SEP" | "FLR" | "CME" | "RBE";
 
 export interface DonkiEvent {
   eventId: string;
@@ -11,7 +11,7 @@ export interface DonkiEvent {
   raw: Record<string, unknown>;
 }
 
-const ALLOWED_TYPES: DonkiEventType[] = ["SEP", "FLR", "RBE"];
+const ALLOWED_TYPES: DonkiEventType[] = ["SEP", "FLR", "CME", "RBE"];
 const DEFAULT_BASE_URL = "https://api.nasa.gov/DONKI";
 const MAX_RANGE_DAYS = 30;
 
@@ -49,8 +49,8 @@ export function normalizeDonkiEvent(type: DonkiEventType, value: unknown): Donki
   const eventId =
     asText(raw.sepID) ||
     asText(raw.flrID) ||
-    asText(raw.rbeID) ||
     asText(raw.activityID) ||
+    asText(raw.rbeID) ||
     asText(raw.id) ||
     `donki-${type}-${asText(raw.beginTime) || asText(raw.startTime) || "unknown"}`;
   const startTime = toIsoOrNull(raw.beginTime ?? raw.startTime ?? raw.eventTime);
@@ -59,6 +59,7 @@ export function normalizeDonkiEvent(type: DonkiEventType, value: unknown): Donki
     asText(raw.note) ||
     asText(raw.sourceLocation) ||
     asText(raw.classType) ||
+    asText(raw.catalog) ||
     "NASA DONKI space-weather event";
 
   return {
@@ -81,7 +82,7 @@ export async function fetchDonkiEvents(input: {
   fetchImpl?: typeof fetch;
 }): Promise<{ events: DonkiEvent[]; sourceUrl: string }> {
   const eventType = asEventType(input.eventType);
-  if (!eventType) throw new Error("eventType must be one of SEP, FLR or RBE.");
+  if (!eventType) throw new Error("eventType must be one of SEP, FLR, CME or RBE.");
   const startDate = validateDate(input.startDate, "startDate");
   const endDate = validateDate(input.endDate, "endDate");
   const start = new Date(`${startDate}T00:00:00Z`).getTime();

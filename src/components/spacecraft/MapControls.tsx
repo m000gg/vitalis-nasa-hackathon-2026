@@ -1,6 +1,6 @@
 "use client";
 
-import { Crosshair, Edit3, Pause, Play, RotateCcw, Undo2, Redo2, ZoomIn, ZoomOut } from "lucide-react";
+import { Crosshair, Edit3, Expand, Pause, Play, RotateCcw, Undo2, Redo2, ZoomIn, ZoomOut } from "lucide-react";
 
 interface MapControlsProps {
   zoom: number;
@@ -14,6 +14,7 @@ interface MapControlsProps {
   onPaused: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onFullscreen?: () => void;
 }
 
 const button = "border-2 border-slate-900 px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#4502FF] disabled:opacity-40";
@@ -30,6 +31,7 @@ export function MapControls(props: MapControlsProps) {
       <button type="button" className={idleButton} onClick={props.onUndo} disabled={!props.canUndo}><Undo2 className="h-4 w-4" /><span className="sr-only">Undo</span></button>
       <button type="button" className={idleButton} onClick={props.onRedo} disabled={!props.canRedo}><Redo2 className="h-4 w-4" /><span className="sr-only">Redo</span></button>
       <button type="button" className={idleButton} onClick={props.onFit}><RotateCcw className="mr-1 inline h-4 w-4" />RESET VIEW</button>
+      {props.onFullscreen && <button type="button" className={idleButton} onClick={props.onFullscreen}><Expand className="mr-1 inline h-4 w-4" />FULLSCREEN</button>}
     </div>
   );
 }

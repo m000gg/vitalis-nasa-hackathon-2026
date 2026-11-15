@@ -25,7 +25,10 @@ export function validateSpacecraft(blueprint: SpacecraftBlueprint): MapValidatio
   for (const required of REQUIRED) if (!types.has(required as never)) errors.push(`Missing required compartment: ${required}.`);
   const corridor = blueprint.compartments.find((compartment) => compartment.type === "CORRIDOR");
   if (!corridor) errors.push("Central corridor is missing.");
-  const startTile = blueprint.tiles.find((tile) => tile.compartmentId === corridor?.id && tile.passable);
+  const center = { x: Math.floor(blueprint.width / 2), y: Math.floor(blueprint.height / 2) };
+  const startTile = blueprint.tiles
+    .filter((tile) => tile.compartmentId === corridor?.id && tile.passable)
+    .sort((a, b) => Math.abs(a.x - center.x) + Math.abs(a.y - center.y) - (Math.abs(b.x - center.x) + Math.abs(b.y - center.y)))[0];
   if (startTile) {
     const reached = reachableTiles(blueprint, startTile);
     for (const compartment of blueprint.compartments.filter((item) => item.type !== "CORRIDOR")) {

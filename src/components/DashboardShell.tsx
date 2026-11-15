@@ -8,6 +8,7 @@ import {
   Bell,
   Database,
   LayoutDashboard,
+  Map,
   Radio,
   RefreshCw,
   Shield,
@@ -19,7 +20,7 @@ import { useMission } from "@/context/MissionContext";
 import { useAlerts } from "@/context/AlertContext";
 import { HAZARDS } from "@/lib/hazards";
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({ children, allowWithoutMission = false }: { children: React.ReactNode; allowWithoutMission?: boolean }) {
   const pathname = usePathname();
   const {
     mission,
@@ -61,6 +62,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       href: "/dashboard/alerts",
       label: "Alerts & Buddy-Rescue",
       icon: Bell,
+    },
+    {
+      href: "/mission-studio/map",
+      label: "Spacecraft Map",
+      icon: Map,
     },
   ];
 
@@ -265,7 +271,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
-          {dbStatus === "loading" ? (
+          {allowWithoutMission ? children : dbStatus === "loading" ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
               Loading mission telemetry from Supabase...
             </div>

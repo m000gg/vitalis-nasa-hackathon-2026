@@ -8,13 +8,13 @@ The current interactive surface is available at `/mission-studio/map`. It is a d
 
 Implemented capabilities:
 
-- deterministic seed-based spacecraft generation;
+- deterministic seed-based generation across Linear, Cross, T, Y, Ring, Asymmetric, Clustered and Chaotic families;
 - required compartments, doors, sensors and equipment metadata;
 - generator validation and room-connectivity checks;
 - A* routing with shortest, fastest, lowest-radiation and safe modes;
 - door, blocked-zone, restricted-zone and critical-zone route constraints;
 - crew placement, route assignment and virtual-time movement;
-- radiation scenario A and D adapters backed by the existing radiation engine;
+- spatial or analytic projection metadata for radiation scenarios A–S, plus scenario A and D demo adapters backed by the existing radiation engine;
 - capacity-aware shelter allocation;
 - browser-local state restoration, snapshots, undo/redo, JSON export and branches;
 - a server-only persistence adapter and an unapplied Supabase schema proposal.
@@ -39,7 +39,7 @@ The engine separates immutable geometry from changing mission state:
 
 Use `generateSpacecraft(config, seed)` to create a blueprint. The string seed is hashed into a deterministic pseudo-random sequence. The same seed and configuration produce a deeply equal blueprint; a different seed changes middle-room ordering, room widths and shelter capacity while keeping mandatory structural constraints.
 
-The current generator uses a central multi-lane corridor and two banks of rooms. It always attempts to include:
+Generator 2.0 combines a guaranteed transit spine with family-specific branches, rings and room anchors. `shapeFamily`, `shipSize`, `compartmentCount`, `corridorComplexity`, `asymmetry`, `shelterCapacity` and `hazardDensity` are stored with the blueprint. It always attempts to include:
 
 - Command Bridge;
 - Crew Quarters;
@@ -58,7 +58,17 @@ Every room has one generated door and a connector to the central corridor. `vali
 import { generateSpacecraft, validateSpacecraft } from "@/lib/spacecraft";
 
 const blueprint = generateSpacecraft(
-  { width: 52, height: 32, missionType: "TRANSIT", includePowerSection: true },
+  {
+    shapeFamily: "Y",
+    shipSize: "STANDARD",
+    compartmentCount: 10,
+    corridorComplexity: "MEDIUM",
+    asymmetry: 35,
+    shelterCapacity: 6,
+    hazardDensity: 20,
+    missionType: "TRANSIT",
+    includePowerSection: true,
+  },
   "MARS-TRANSIT-126",
 );
 
@@ -66,7 +76,7 @@ const validation = validateSpacecraft(blueprint);
 if (!validation.valid) throw new Error(validation.errors.join(" "));
 ```
 
-Current generator limits are 42–64 tiles wide and 26–38 tiles high. It is a constrained demo layout, not a general deck-plan compiler. It does not generate multiple decks, pressure bulkheads, real spacecraft dimensions or engineering-certified shielding geometry.
+Current generator limits are 48–88 tiles wide and 34–60 tiles high. Shape families alter the visible room and corridor topology while retaining a validated connected spine. It remains a constrained demo layout, not a general deck-plan compiler, and does not generate multiple decks, pressure bulkheads, real spacecraft dimensions or engineering-certified shielding geometry.
 
 ## Map Data Model
 
@@ -80,7 +90,11 @@ All shared types live in `src/lib/spacecraft/types.ts`.
 | `Sensor` | kind, unit, room and position | Sensor location metadata; it does not fabricate readings. |
 | `Equipment` | kind, label, room and position | Reusable equipment marker. |
 | `CrewMapPosition` | character ID, position, destination, route, movement status | Branch-local crew movement state. |
-| `HazardZone` | type, severity, affected tiles, parameters, source, active | Spatial overlay with explicit provenance. |
+| `HazardZone` / `MapHazardOverlay` | type, severity, affected tiles, parameters, source, active | Spatial overlay with explicit provenance. |
+| `MapSelection` | selection kind, ID and optional position | Shared room/crew/event/tile selection contract. |
+| `MapDataSource` | label, provenance, update time and uncertainty | Heatmap source metadata. |
+| `MapPlaybackState` | cursor, playing, speed and event count | Non-mutating event replay state. |
+| `MapScenarioAdapter` | scenario metadata and apply function | Generic typed scenario-to-map contract. |
 | `SpacecraftMapState` | crew, door states, zones, events, branch and virtual minute | Mutable simulation state. |
 | `MapSnapshot` | blueprint and state copy | Restorable point in virtual mission time. |
 | `MissionBranch` | parent, source snapshot and branch snapshot | Independent alternative timeline. |
@@ -139,12 +153,16 @@ export interface HazardOverlayAdapter<TInput> {
 
 `radiationScenarioAAdapter` and `radiationScenarioDAdapter` call the existing `runRadiationSimulation` engine. Scenario A creates a simulated crew-quarter/corridor radiation overlay. Scenario D creates an engineering overlay and can mark the related engineering door as damaged.
 
+`RADIATION_SCENARIO_PROJECTIONS` documents all A–S projections. `projectRadiationScenario` consumes a result already returned by the Workbench; it never reruns the radiation calculation. Spatial scenarios create overlays only when a compatible dose-rate value is present. Analytic scenarios add an event/context entry and deliberately do not invent a room footprint. Scenario Q uses `reconstructed` provenance when it has enough compatible data to display a reconstruction.
+
 ```ts
 const next = radiationScenarioAAdapter.apply(blueprint, state, {
   doseRate: 0.62,
   elevatedThreshold: 0.3,
   criticalThreshold: 0.8,
 });
+
+const projected = projectRadiationScenario(blueprint, state, workbenchResult);
 ```
 
 ### Gravity — planned adapter
@@ -203,7 +221,7 @@ When Supabase is unavailable, the UI uses clearly identified Demo Mode crew. Thi
 
 Snapshots contain a deep copy of blueprint and state. Branches are created from snapshots and receive a new `branchId`; changing a branch does not mutate `main`. Restoring browser state does not reapply a hazard event or dose increment.
 
-The current event sources are `system`, `user`, `simulated`, `modeled` or `measured`. Map events are shown in the mission journal with virtual time.
+The current event sources are `system`, `user`, `simulated`, `modeled`, `measured` or `reconstructed`. Map events are shown in the mission journal with virtual time. Playback changes only the visible event cursor; it does not move crew or apply dose again.
 
 ## Public API
 
@@ -249,6 +267,7 @@ Import client-safe APIs from `@/lib/spacecraft`. Persistence is deliberately imp
 | `allocateCrewToShelters` | Capacity-aware safe routes for all crew. | Unreachable/overflow crew are returned unassigned. |
 | `radiationScenarioAAdapter.apply` | Solar-storm overlay using scenario A. | Existing simulation validation errors. |
 | `radiationScenarioDAdapter.apply` | Sensor disagreement/damage overlay using scenario D. | Existing simulation validation errors. |
+| `projectRadiationScenario` | Project an existing A–S Workbench result spatially or analytically. | Unknown scenario ID; no zone is created without compatible spatial data. |
 
 ## Supabase Persistence
 
@@ -317,7 +336,7 @@ npm run lint
 npm run build
 ```
 
-`tests/spacecraft-map.test.mjs` covers deterministic generation, multiple-seed validation, room-door blocking, alternative radiation-aware routing, movement, non-negative modeled dose, serialization, snapshot/branch isolation, shelter capacity and radiation scenario A integration.
+`tests/spacecraft-map.test.mjs` covers deterministic generation, all eight shape families, multiple-seed validation, room-door blocking, alternative radiation-aware routing, movement, non-negative modeled dose, serialization, snapshot/branch isolation, shelter capacity, scenario A integration and the A–S projection registry.
 
 Manual UI smoke test:
 
@@ -333,7 +352,7 @@ Manual UI smoke test:
 
 - Geometry is a constrained 2D demo layout, not a real spacecraft deck plan.
 - Movement speed, tile scale and radiation field are modeling assumptions.
-- Only radiation scenarios A and D currently have map adapters.
+- All A–S radiation scenarios have honest projection metadata; only A and D also expose standalone demo adapters that execute the radiation engine directly.
 - Gravity, isolation, environment and distance adapters are planned, not implemented.
 - Operator-created zones are simulated and are not sensor measurements.
 - Browser persistence is local to one browser profile.

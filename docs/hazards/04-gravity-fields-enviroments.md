@@ -177,11 +177,11 @@ Jev returns typed decisions (probabilities, confidence, values) and does not wri
 
 # Hackathon features (For this Hazard):
 
---- 
+---
  Feature 1: Autonomous Pre-EVA Readiness Gate & Condition Guard
 
-> **Hazard Module:** Hazard 4 — Gravity Fields ([04-gravity-fields-enviroments.md](../04-gravity-fields-enviroments.md))  
-> **System Alignment:** [OUTLINE.md](../../OUTLINE.md) — Short-Horizon Readiness Gate, Estimated Time of Action (ETA), 1–2 Actionable Solutions, and Privacy-Preserving Commander View.  
+> **Hazard Module:** Hazard 4 — Gravity Fields ([04-gravity-fields-enviroments.md](04-gravity-fields-enviroments.md))
+> **System Alignment:** [OUTLINE.md](../OUTLINE.md) — Short-Horizon Readiness Gate, Estimated Time of Action (ETA), 1–2 Actionable Solutions, and Privacy-Preserving Commander View.
 > **NASA Source Basis:** `MR081L` (Handgrip Dynamometry), `MEDB 6.3` (Arm Ergometry), `MR087L` (EVA Exercise Prebreathe), `MEDB 6.1/6.2` (EVA Medical Monitoring), `MEDB 5.2` (Periodic Fitness Evaluation / PFE), `MR090L` (ISLE Prebreathe Prerequisite).
 
 https://nlsp.nasa.gov/resources/lsah
@@ -303,7 +303,7 @@ Using date/flight-day arithmetic relative to `plannedEvaTimestamp`:
   2. **Action 2 (Condition Fix):** *"Repeat Arm Ergometry (`MEDB 6.3`) tomorrow morning: today's reading was flagged `conditionsMet = false` due to caffeine intake within 8h of testing."*
 
 ### B. Commander View (Privacy-Preserving Flight Note — `MEDB 6.1/6.2` Analogue)
-In accordance with `MEDB 6.1/6.2` (where the Flight Surgeon provides a *Flight Note on EVA Readiness* rather than raw clinical records) and [OUTLINE.md](../../OUTLINE.md):
+In accordance with `MEDB 6.1/6.2` (where the Flight Surgeon provides a *Flight Note on EVA Readiness* rather than raw clinical records) and [OUTLINE.md](../OUTLINE.md):
 - **Per-Crew EVA Gate Status:** `GO` | `CONDITIONAL` | `NO-GO`
 - **Blocker Category Only (No Raw Medical Values or Private Notes):**
   - Shows high-level operational labels such as `"1 Pre-EVA Test Window Closing (18h left)"`, `"Test Retake Required (Pre-Test Conditions)"`, or `"Ready for Suit Donning"`.
@@ -314,8 +314,8 @@ In accordance with `MEDB 6.1/6.2` (where the Flight Surgeon provides a *Flight N
 
 # Feature 2: Microgravity Atrophy, Proxy Bone-Shield & Exercise Adherence Engine
 
-> **Hazard Module:** Hazard 4 — Gravity Fields ([04-gravity-fields-enviroments.md](../04-gravity-fields-enviroments.md))  
-> **System Alignment:** [OUTLINE.md](../../OUTLINE.md) — Prolonged Risk Alerts (Days–Weeks), Personal Baseline Drift, Estimated Time of Action (ETA), 1–2 Actionable Solutions, and Team-Wide Buffs & Debuffs.  
+> **Hazard Module:** Hazard 4 — Gravity Fields ([04-gravity-fields-enviroments.md](04-gravity-fields-enviroments.md))
+> **System Alignment:** [OUTLINE.md](../OUTLINE.md) — Prolonged Risk Alerts (Days–Weeks), Personal Baseline Drift, Estimated Time of Action (ETA), 1–2 Actionable Solutions, and Team-Wide Buffs & Debuffs.
 > **NASA Source Basis:** `MEDB 5.2` (On-Orbit Strength & Conditioning Monitoring), `MEDB 5.4` (Calf Volume via EZOG Device), `MEDB 1.13` (Body Mass), `MR081L` (Handgrip Dynamometry), `MEDB 1.11` (Bone Densitometry Context), `MR026L` (Postflight Reconditioning Context).
 
 https://nlsp.nasa.gov/resources/lsah

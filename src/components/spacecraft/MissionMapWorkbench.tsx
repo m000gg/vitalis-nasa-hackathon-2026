@@ -16,6 +16,8 @@ import {
   generateSpacecraft,
   radiationScenarioAAdapter,
   radiationScenarioDAdapter,
+  projectRadiationScenario,
+  RADIATION_SCENARIO_PROJECTIONS,
   restoreMap,
   serializeMap,
   setDoorState,
@@ -28,9 +30,12 @@ import {
   type HazardType,
   type HazardZone,
   type MapSnapshot,
+  type MapMode,
   type MissionBranch,
   type RouteMode,
   type RouteResult,
+  type ShapeFamily,
+  type ShipSize,
   type SpacecraftBlueprint,
   type SpacecraftMapState,
 } from "@/lib/spacecraft";
@@ -61,10 +66,15 @@ function zoneParameters(type: HazardType, doseRate: number): HazardParameters {
   return { reason: "Operator-marked obstruction" };
 }
 
-export function MissionMapWorkbench() {
+type RadiationProjectionInput = { scenarioId: string; severity: HazardSeverity; summary: string; parameters: Record<string, number | boolean | string>; metrics?: Array<{ label: string; value: number | string; unit?: string }> };
+
+export function MissionMapWorkbench({ embedded = false, radiationResult = null }: { embedded?: boolean; radiationResult?: RadiationProjectionInput | null }) {
   const [seed, setSeed] = useState("VITALIS-126");
-  const [blueprint, setBlueprint] = useState<SpacecraftBlueprint>(() => generateSpacecraft({ includePowerSection: true }, "VITALIS-126"));
-  const [mapState, setMapState] = useState<SpacecraftMapState>(() => createInitialMapState(generateSpacecraft({ includePowerSection: true }, "VITALIS-126"), "mars-transit-126", DEMO_CREW));
+  const [shapeFamily, setShapeFamily] = useState<ShapeFamily>("LINEAR");
+  const [shipSize, setShipSize] = useState<ShipSize>("STANDARD");
+  const initialBlueprint = useMemo(() => generateSpacecraft({ includePowerSection: true, shapeFamily: "LINEAR", shipSize: "STANDARD" }, "VITALIS-126"), []);
+  const [blueprint, setBlueprint] = useState<SpacecraftBlueprint>(initialBlueprint);
+  const [mapState, setMapState] = useState<SpacecraftMapState>(() => createInitialMapState(initialBlueprint, "mars-transit-126", DEMO_CREW));
   const [crewSource, setCrewSource] = useState<"Loading" | "Supabase" | "Demo Mode">("Loading");
   const [selectedCrewId, setSelectedCrewId] = useState<string | null>(mapState.crew[0]?.characterId ?? null);
   const [selectedCompartmentId, setSelectedCompartmentId] = useState<string | null>(null);
@@ -73,8 +83,12 @@ export function MissionMapWorkbench() {
   const [alternateRoute, setAlternateRoute] = useState<RouteResult | null>(null);
   const [zoom, setZoom] = useState(1);
   const [fitKey, setFitKey] = useState(0);
-  const [editMode, setEditMode] = useState(false);
+  const [mapMode, setMapMode] = useState<MapMode>("EXPLORE");
+  const [selectedProjectionId, setSelectedProjectionId] = useState(radiationResult?.scenarioId ?? "A");
   const [paused, setPaused] = useState(true);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [playbackPlaying, setPlaybackPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<0.5 | 1 | 2 | 4>(1);
   const [showHazards, setShowHazards] = useState(true);
   const [showSensors, setShowSensors] = useState(true);
   const [zoneType, setZoneType] = useState<HazardType>("radiation");
@@ -87,6 +101,7 @@ export function MissionMapWorkbench() {
   const [notice, setNotice] = useState("Select a crew member, then click a destination tile to compare routes.");
   const [storageReady, setStorageReady] = useState(false);
   const initialBlueprintRef = useRef(blueprint);
+  const blueprintInputRef = useRef<HTMLInputElement>(null);
 
   const validation = useMemo(() => validateSpacecraft(blueprint), [blueprint]);
   const selectedCrew = mapState.crew.find((crew) => crew.characterId === selectedCrewId) ?? null;
@@ -159,8 +174,25 @@ export function MissionMapWorkbench() {
     return () => window.clearInterval(timer);
   }, [blueprint, mapState.crew, paused]);
 
-  const generate = () => {
-    const nextBlueprint = generateSpacecraft({ includePowerSection: true }, seed.trim() || `VITALIS-${Date.now()}`);
+  useEffect(() => {
+    if (!playbackPlaying || mapState.events.length === 0) return;
+    const timer = window.setInterval(() => setPlaybackIndex((current) => {
+      if (current >= mapState.events.length - 1) { setPlaybackPlaying(false); return current; }
+      return current + 1;
+    }), 900 / playbackSpeed);
+    return () => window.clearInterval(timer);
+  }, [mapState.events.length, playbackPlaying, playbackSpeed]);
+
+  useEffect(() => { setPlaybackIndex(Math.max(0, mapState.events.length - 1)); }, [mapState.events.length]);
+
+  useEffect(() => { if (radiationResult?.scenarioId) setSelectedProjectionId(radiationResult.scenarioId); }, [radiationResult?.scenarioId]);
+
+  const generate = (surprise = false) => {
+    if ((mapState.simulationMinute > 0 || mapState.zones.length > 0 || mapState.events.length > 1) && !window.confirm("Generate a new spacecraft? Current unsaved map state will be replaced.")) return;
+    const families: ShapeFamily[] = ["LINEAR", "CROSS", "T", "Y", "RING", "ASYMMETRIC", "CLUSTERED", "CHAOTIC"];
+    const nextSeed = surprise ? `SURPRISE-${Date.now().toString(36).toUpperCase()}` : seed.trim() || `VITALIS-${Date.now()}`;
+    const nextFamily = surprise ? families[Math.floor(Math.random() * families.length)] : shapeFamily;
+    const nextBlueprint = generateSpacecraft({ includePowerSection: true, shapeFamily: nextFamily, shipSize }, nextSeed);
     const nextState = createInitialMapState(nextBlueprint, "mars-transit-126", mapState.crew.map((crew) => ({ id: crew.characterId, callsign: crew.callsign, role: crew.role })));
     setBlueprint(nextBlueprint);
     setMapState(nextState);
@@ -171,7 +203,25 @@ export function MissionMapWorkbench() {
     setUndoStack([]);
     setRedoStack([]);
     setSelectedCrewId(nextState.crew[0]?.characterId ?? null);
-    setNotice(`Generated and validated spacecraft ${nextBlueprint.seed}.`);
+    setSeed(nextSeed);
+    setShapeFamily(nextFamily);
+    setNotice(`Generated and validated ${nextFamily.toLowerCase()} spacecraft ${nextBlueprint.seed}.`);
+  };
+
+  const downloadBlueprint = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(blueprint, null, 2)], { type:"application/json" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `vitalis-blueprint-${blueprint.shapeFamily?.toLowerCase() ?? "legacy"}-${blueprint.seed}.json`; anchor.click(); URL.revokeObjectURL(url);
+  };
+
+  const loadBlueprint = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as SpacecraftBlueprint;
+      const checked = validateSpacecraft(parsed);
+      if (!checked.valid) throw new Error(checked.errors.join(" "));
+      const nextState = createInitialMapState(parsed, mapState.missionId, mapState.crew.map((crew) => ({ id:crew.characterId, callsign:crew.callsign, role:crew.role })));
+      setBlueprint(parsed); setMapState(nextState); setSeed(parsed.seed); setShapeFamily(parsed.shapeFamily ?? "LINEAR"); setNotice(`Blueprint ${parsed.seed} loaded and validated.`);
+    } catch (error) { setNotice(error instanceof Error ? `Blueprint rejected: ${error.message}` : "Blueprint rejected."); }
   };
 
   const previewRoute = (destination: { x: number; y: number }) => {
@@ -187,7 +237,7 @@ export function MissionMapWorkbench() {
   const onTileClick = (position: { x: number; y: number }) => {
     const tile = blueprint.tiles.find((item) => item.x === position.x && item.y === position.y);
     if (!tile?.passable) return;
-    if (editMode) {
+    if (mapMode === "EDIT_ZONES") {
       if (tile.type === "DOOR") return;
       const existing = customZone?.affectedTiles ?? [];
       const affectedTiles = existing.includes(tile.id) ? existing.filter((id) => id !== tile.id) : [...existing, tile.id];
@@ -225,6 +275,14 @@ export function MissionMapWorkbench() {
     commitState(next, allocation.unassigned === 0 ? "All crew received capacity-safe shelter routes." : `${allocation.unassigned} crew member(s) remain unassigned because no safe capacity is reachable.`);
   };
 
+  const projectCurrentRadiationResult = () => {
+    if (!radiationResult || radiationResult.scenarioId !== selectedProjectionId) {
+      setNotice(`Run scenario ${selectedProjectionId} in the Simulator, then open the map to project its real result.`);
+      return;
+    }
+    commitState(projectRadiationScenario(blueprint, mapState, radiationResult), `Scenario ${selectedProjectionId} projected from the current simulation result without recalculation.`);
+  };
+
   const saveSnapshot = () => {
     const snapshot = createSnapshot(blueprint, mapState, `Mission minute ${mapState.simulationMinute}`);
     setSnapshots((current) => [...current, snapshot]);
@@ -249,27 +307,35 @@ export function MissionMapWorkbench() {
     URL.revokeObjectURL(url);
   };
 
-  return <main className="min-h-screen bg-slate-100 px-3 py-5 text-slate-900 sm:px-6" style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+  return <main className={embedded ? "text-slate-900" : "min-h-screen bg-slate-100 px-3 py-5 text-slate-900 sm:px-6"} style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
     <div className="mx-auto max-w-[1700px] space-y-4">
-      <header className="border-2 border-slate-900 bg-[#111827] p-5 text-white shadow-[7px_7px_0_#FFDA14]">
+      {!embedded && <header className="border-2 border-slate-900 bg-[#111827] p-5 text-white shadow-[7px_7px_0_#FFDA14]">
         <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold tracking-[0.2em] text-[#FFDA14]">VITALIS+ / SHARED SPATIAL ENGINE</p><h1 className="mt-1 text-3xl font-bold">SPACECRAFT DIGITAL TWIN</h1><p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">A deterministic, tile-based mission map. Geometry, hazards, crew positions, routes and branches are simulation state—not decoration.</p></div><div className="flex gap-2"><Link href="/radiation-demo" className="border-2 border-[#FFDA14] px-3 py-2 text-xs font-bold text-[#FFDA14] hover:bg-[#FFDA14] hover:text-slate-950">RADIATION LAB</Link><Link href="/" className="border-2 border-white px-3 py-2 text-xs font-bold hover:bg-white hover:text-slate-950">BACK TO APP</Link></div></div>
         <div className="mt-4 grid gap-2 text-xs sm:grid-cols-4"><span className="border border-slate-600 p-2"><Radio className="mr-1 inline h-4 w-4 text-[#FFDA14]" />CREW SOURCE: {crewSource.toUpperCase()}</span><span className="border border-slate-600 p-2"><Map className="mr-1 inline h-4 w-4 text-[#FFDA14]" />SEED: {blueprint.seed}</span><span className="border border-slate-600 p-2"><Users className="mr-1 inline h-4 w-4 text-[#FFDA14]" />{mapState.crew.length} CREW</span><span className="border border-slate-600 p-2"><GitBranch className="mr-1 inline h-4 w-4 text-[#FFDA14]" />{mapState.branchId.toUpperCase()} · T+{mapState.simulationMinute} MIN</span></div>
-      </header>
+      </header>}
 
       <div className="border-2 border-[#4502FF] bg-violet-50 p-3 text-sm" role="status">{notice}</div>
 
       <section className="grid gap-4 xl:grid-cols-[320px_1fr_330px]">
         <aside className="space-y-4">
-          <section className={panel}><p className="text-xs font-bold tracking-wider text-[#4502FF]">PROCEDURAL GENERATION</p><label className="mt-3 block text-[10px] font-bold">SEED<input value={seed} onChange={(event) => setSeed(event.target.value)} className="mt-1 w-full border-2 border-slate-900 p-2 text-sm" /></label><button type="button" onClick={generate} className="mt-3 w-full border-2 border-slate-900 bg-[#4502FF] px-3 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111827]"><Sparkles className="mr-2 inline h-4 w-4" />GENERATE NEW SPACECRAFT</button><div className={`mt-3 border p-2 text-xs ${validation.valid ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-red-600 bg-red-50 text-red-900"}`}>{validation.valid ? `VALID · ${blueprint.compartments.length} compartments · ${blueprint.doors.length} doors` : validation.errors.join(" ")}</div></section>
+          <section className={panel}>
+            <p className="text-xs font-bold tracking-wider text-[#4502FF]">SPACECRAFT GENERATOR 2.0</p>
+            <label className="mt-3 block text-[10px] font-bold">SHAPE FAMILY<select value={shapeFamily} onChange={(event) => setShapeFamily(event.target.value as ShapeFamily)} className="mt-1 w-full border-2 border-slate-900 bg-white p-2 text-sm">{(["LINEAR","CROSS","T","Y","RING","ASYMMETRIC","CLUSTERED","CHAOTIC"] as ShapeFamily[]).map((shape) => <option key={shape} value={shape}>{shape.replaceAll("_", " ")}</option>)}</select></label>
+            <label className="mt-3 block text-[10px] font-bold">SHIP SIZE<select value={shipSize} onChange={(event) => setShipSize(event.target.value as ShipSize)} className="mt-1 w-full border-2 border-slate-900 bg-white p-2 text-sm"><option value="COMPACT">COMPACT</option><option value="STANDARD">STANDARD</option><option value="LARGE">LARGE</option></select></label>
+            <label className="mt-3 block text-[10px] font-bold">SEED<input value={seed} onChange={(event) => setSeed(event.target.value)} className="mt-1 w-full border-2 border-slate-900 p-2 text-sm" /></label>
+            <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => generate(false)} className="border-2 border-slate-900 bg-[#4502FF] px-3 py-2 text-xs font-bold text-white"><Sparkles className="mr-1 inline h-4 w-4" />GENERATE</button><button type="button" onClick={() => generate(true)} className={action}><Sparkles className="mr-1 inline h-4 w-4" />SURPRISE ME</button></div>
+            <div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={downloadBlueprint} className={action}><Save className="mr-1 inline h-4 w-4" />SAVE</button><button type="button" onClick={() => blueprintInputRef.current?.click()} className={action}>LOAD</button><input ref={blueprintInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => void loadBlueprint(event.target.files?.[0])} /></div>
+            <div className={`mt-3 border p-2 text-xs ${validation.valid ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-red-600 bg-red-50 text-red-900"}`}>{validation.valid ? `VALID · ${blueprint.shapeFamily ?? "LEGACY"} · ${blueprint.compartments.length} compartments` : validation.errors.join(" ")}</div>
+          </section>
 
-          <section className={panel}><p className="text-xs font-bold tracking-wider text-[#4502FF]">MISSION EVENTS</p><div className="mt-3 grid gap-2"><button type="button" className={action} onClick={applySolarStorm}><ShieldAlert className="mr-1 inline h-4 w-4 text-red-600" />SOLAR STORM · A</button><button type="button" className={action} onClick={applyShieldDamage}><AlertTriangle className="mr-1 inline h-4 w-4 text-amber-600" />SHIELD DAMAGE · D</button><button type="button" className={action} onClick={allocateShelters}>ALLOCATE SHELTERS · L</button><button type="button" className={action} onClick={() => commitState({ ...mapState, zones: [] }, "All Demo Mode zones cleared.")}>CLEAR HAZARDS</button></div></section>
+          <section className={panel}><p className="text-xs font-bold tracking-wider text-[#4502FF]">RADIATION A–S PROJECTION</p><label className="mt-3 block text-[10px] font-bold">SCENARIO<select value={selectedProjectionId} onChange={(event) => setSelectedProjectionId(event.target.value)} className="mt-1 w-full border-2 border-slate-900 bg-white p-2 text-xs">{RADIATION_SCENARIO_PROJECTIONS.map((item) => <option key={item.id} value={item.id}>{item.id}. {item.title} · {item.kind}</option>)}</select></label><p className="mt-2 text-[10px] leading-relaxed text-slate-500">{RADIATION_SCENARIO_PROJECTIONS.find((item) => item.id === selectedProjectionId)?.note}</p><button type="button" className="mt-3 w-full border-2 border-slate-900 bg-[#4502FF] px-3 py-2 text-xs font-bold text-white disabled:opacity-40" disabled={!radiationResult || radiationResult.scenarioId !== selectedProjectionId} onClick={projectCurrentRadiationResult}>PROJECT CURRENT RESULT</button><div className="mt-3 grid gap-2"><button type="button" className={action} onClick={applySolarStorm}><ShieldAlert className="mr-1 inline h-4 w-4 text-red-600" />DEMO SOLAR STORM · A</button><button type="button" className={action} onClick={applyShieldDamage}><AlertTriangle className="mr-1 inline h-4 w-4 text-amber-600" />DEMO SHIELD DAMAGE · D</button><button type="button" className={action} onClick={allocateShelters}>ALLOCATE SHELTERS · L</button><button type="button" className={action} onClick={() => commitState({ ...mapState, zones: [] }, "All Demo Mode zones cleared.")}>CLEAR HAZARDS</button></div></section>
 
           <ZoneEditor type={zoneType} severity={zoneSeverity} doseRate={zoneDoseRate} selectedTiles={customZone?.affectedTiles.length ?? 0} onType={setZoneType} onSeverity={setZoneSeverity} onDoseRate={setZoneDoseRate} onClear={() => commitState(setHazardZone(mapState, { id: "operator-zone", type: zoneType, severity: zoneSeverity, parameters: zoneParameters(zoneType, zoneDoseRate), affectedTiles: [], source: "simulated", active: false }), "Operator zone cleared.")} />
         </aside>
 
         <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-slate-900 bg-white p-3"><MapControls zoom={zoom} editMode={editMode} paused={paused} canUndo={undoStack.length > 0} canRedo={redoStack.length > 0} onZoom={setZoom} onFit={() => { setZoom(1); setFitKey((value) => value + 1); }} onEditMode={() => setEditMode((value) => !value)} onPaused={() => setPaused((value) => !value)} onUndo={() => { const previous = undoStack.at(-1); if (!previous) return; setRedoStack((current) => [...current, mapState]); setUndoStack((current) => current.slice(0, -1)); setMapState(previous); }} onRedo={() => { const next = redoStack.at(-1); if (!next) return; setUndoStack((current) => [...current, mapState]); setRedoStack((current) => current.slice(0, -1)); setMapState(next); }} /><div className="flex gap-2 text-xs"><label className="flex items-center gap-1"><input type="checkbox" checked={showHazards} onChange={(event) => setShowHazards(event.target.checked)} />HAZARDS</label><label className="flex items-center gap-1"><input type="checkbox" checked={showSensors} onChange={(event) => setShowSensors(event.target.checked)} />SENSORS</label></div></div>
-          <SpacecraftMap blueprint={blueprint} state={mapState} route={routeResult?.path ?? selectedCrew?.route ?? []} alternateRoute={alternateRoute?.path} selectedCrewId={selectedCrewId} selectedCompartmentId={selectedCompartmentId} zoom={zoom} fitKey={fitKey} showHazards={showHazards} showSensors={showSensors} onTileClick={onTileClick} onCrewClick={(id) => { setSelectedCrewId(id); setRouteResult(null); setAlternateRoute(null); }} onCompartmentClick={setSelectedCompartmentId} onDoorClick={(doorId) => { if (!editMode) return; const order: DoorState[] = ["OPEN", "CLOSED", "DAMAGED", "BLOCKED"]; const current = mapState.doorStates[doorId]; commitState(setDoorState(mapState, doorId, order[(order.indexOf(current) + 1) % order.length]), `Door ${doorId} updated; affected routes must be recalculated.`); setRouteResult(null); setAlternateRoute(null); }} />
+          <div className="space-y-3 border-2 border-slate-900 bg-white p-3"><div className="flex flex-wrap gap-1" aria-label="Map interaction mode">{(["EXPLORE","ROUTE","EDIT_ZONES","EVENTS"] as MapMode[]).map((mode) => <button key={mode} type="button" onClick={() => setMapMode(mode)} className={`rounded px-3 py-2 text-xs font-bold ${mapMode === mode ? "bg-[#4502FF] text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>{mode.replaceAll("_", " ")}</button>)}</div><div className="flex flex-wrap items-center justify-between gap-3"><MapControls zoom={zoom} editMode={mapMode === "EDIT_ZONES"} paused={paused} canUndo={undoStack.length > 0} canRedo={redoStack.length > 0} onZoom={setZoom} onFit={() => { setZoom(1); setFitKey((value) => value + 1); }} onEditMode={() => setMapMode((current) => current === "EDIT_ZONES" ? "EXPLORE" : "EDIT_ZONES")} onPaused={() => setPaused((value) => !value)} onUndo={() => { const previous = undoStack.at(-1); if (!previous) return; setRedoStack((current) => [...current, mapState]); setUndoStack((current) => current.slice(0, -1)); setMapState(previous); }} onRedo={() => { const next = redoStack.at(-1); if (!next) return; setUndoStack((current) => [...current, mapState]); setRedoStack((current) => current.slice(0, -1)); setMapState(next); }} /><div className="flex gap-2 text-xs"><label className="flex items-center gap-1"><input type="checkbox" checked={showHazards} onChange={(event) => setShowHazards(event.target.checked)} />HEATMAP</label><label className="flex items-center gap-1"><input type="checkbox" checked={showSensors} onChange={(event) => setShowSensors(event.target.checked)} />SENSORS</label></div></div></div>
+          <SpacecraftMap blueprint={blueprint} state={mapState} route={routeResult?.path ?? selectedCrew?.route ?? []} alternateRoute={alternateRoute?.path} selectedCrewId={selectedCrewId} selectedCompartmentId={selectedCompartmentId} zoom={zoom} fitKey={fitKey} showHazards={showHazards} showSensors={showSensors} onZoomChange={setZoom} onTileClick={onTileClick} onCrewClick={(id) => { setSelectedCrewId(id); setRouteResult(null); setAlternateRoute(null); }} onCompartmentClick={setSelectedCompartmentId} onDoorClick={(doorId) => { if (mapMode !== "EDIT_ZONES") return; const order: DoorState[] = ["OPEN", "CLOSED", "DAMAGED", "BLOCKED"]; const current = mapState.doorStates[doorId]; commitState(setDoorState(mapState, doorId, order[(order.indexOf(current) + 1) % order.length]), `Door ${doorId} updated; affected routes must be recalculated.`); setRouteResult(null); setAlternateRoute(null); }} />
           <MapLegend />
         </div>
 
@@ -284,7 +350,7 @@ export function MissionMapWorkbench() {
         </aside>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_0.55fr]"><div className={panel}><p className="text-xs font-bold tracking-wider text-[#4502FF]">MISSION EVENT JOURNAL</p><div className="mt-3 grid max-h-52 gap-2 overflow-y-auto">{mapState.events.slice().reverse().map((event) => <div key={event.id} className="grid grid-cols-[70px_1fr] gap-3 border-b border-slate-200 pb-2 text-xs"><span className="font-bold text-slate-500">T+{event.simulationMinute} MIN</span><span><strong>{event.type}</strong> · {event.summary} <em className="text-slate-500">[{event.source}]</em></span></div>)}</div></div><div className="border-2 border-slate-900 bg-[#111827] p-4 text-white"><p className="text-xs font-bold tracking-wider text-[#FFDA14]">MODEL BOUNDARY</p><p className="mt-2 text-xs leading-relaxed text-slate-300">Crew movement, zones and route dose are simulated. Supabase crew identities may be read, but Demo Mode never writes positions or modeled exposure into the shared astronaut records. The proposed persistence schema is not applied automatically.</p></div></section>
+      <section className="grid gap-4 lg:grid-cols-[1fr_0.55fr]"><div className={panel}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold tracking-wider text-[#4502FF]">MISSION EVENT PLAYBACK</p><div className="flex gap-1"><button type="button" className={action} onClick={() => setPlaybackIndex(0)}>RESTART</button><button type="button" className={action} onClick={() => setPlaybackIndex((value) => Math.min(mapState.events.length - 1, value + 1))}>STEP</button><button type="button" className={action} onClick={() => setPlaybackPlaying((value) => !value)}>{playbackPlaying ? "PAUSE" : "PLAY"}</button><select aria-label="Playback speed" value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as 0.5 | 1 | 2 | 4)} className="border-2 border-slate-900 bg-white px-2 text-xs"><option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></div></div><input className="mt-3 w-full accent-[#4502FF]" aria-label="Event playback position" type="range" min="0" max={Math.max(0, mapState.events.length - 1)} value={Math.min(playbackIndex, Math.max(0, mapState.events.length - 1))} onChange={(event) => setPlaybackIndex(Number(event.target.value))} /><div className="mt-3 grid max-h-52 gap-2 overflow-y-auto">{mapState.events.slice(0, playbackIndex + 1).reverse().map((event, index) => <div key={event.id} className={`grid grid-cols-[70px_1fr] gap-3 border-b border-slate-200 pb-2 text-xs ${index === 0 ? "bg-violet-50" : ""}`}><span className="font-bold text-slate-500">T+{event.simulationMinute} MIN</span><span><strong>{event.type}</strong> · {event.summary} <em className="text-slate-500">[{event.source}]</em></span></div>)}</div></div><div className="border-2 border-slate-900 bg-[#111827] p-4 text-white"><p className="text-xs font-bold tracking-wider text-[#FFDA14]">MODEL BOUNDARY</p><p className="mt-2 text-xs leading-relaxed text-slate-300">Crew movement, zones and route dose are simulated. Supabase crew identities may be read, but Demo Mode never writes positions or modeled exposure into the shared astronaut records. The proposed persistence schema is not applied automatically.</p></div></section>
     </div>
   </main>;
 }

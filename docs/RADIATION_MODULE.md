@@ -7,12 +7,13 @@ The module implements the first Vitalis+ hazard, **Space Radiation**:
 - DB-backed personal dosimeter and compartment-sensor telemetry;
 - strict separation of absorbed-dose (Gy) and equivalent-dose (Sv) families;
 - timestamp-aware trapezoidal dose integration, gap handling, forecast and sensor-disagreement detection;
-- NASA DONKI SEP/FLR/RBE event retrieval as *space-weather context only*;
+- NASA DONKI SEP/FLR/CME/RBE event retrieval as *space-weather context only*;
 - durable radiation emergencies, acknowledgements, shelter check-ins and incident-report JSON;
 - reproducible Supabase-backed demo scenarios **A–D**; scenarios **E–S** remain visibly catalogued as experimental, contract-only, or unsupported instead of being faked;
 - a role-aware arcade-style radiation dashboard. It accepts no manual astronaut telemetry input.
 - an interactive lead-only Fixture Verification Lab covering the contracts of 20 product functions and 14 automated workflows with safe deterministic fixtures, visible provenance and a `RUN ALL 34 FIXTURES` check. It does not claim that every fixture is an arbitrary-input end-user tool.
 - an interactive Scenario Workbench covering documented scenarios A–S with editable inputs, deterministic backend results, protocol progress, event history, reset, comparison and JSON export.
+- a unified Telemetry Center with deterministic synthetic DEMO data, LIVE record normalization, crew and compartment histories, sensor failure/recovery, telemetry-derived forecasts, configurable demo thresholds and alert acknowledgement. Synthetic readings stay client-local and are never persisted as measurements.
 
 ## Setup
 
@@ -28,7 +29,7 @@ The scenario runner writes clearly marked `simulated` records to the existing `c
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/radiation/telemetry` | Validates and persists radiation telemetry snapshots and optional samples. |
-| `GET /api/radiation/donki?eventType=SEP&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` | Retrieves DONKI context; never turns it into crew dose. |
+| `GET /api/radiation/donki?eventType=SEP|FLR|CME|RBE&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` | Retrieves DONKI context; never turns it into crew dose. |
 | `POST /api/radiation/forecast` | Unit-safe constant-rate mission forecast. |
 | `POST /api/radiation/what-if` | Explicit rate-multiplier comparison; a model input, not a shielding claim. |
 | `GET/POST /api/radiation/emergencies` | Reads or creates durable radiation-event state. |
@@ -50,7 +51,8 @@ The scenario runner writes clearly marked `simulated` records to the existing `c
 ## Verification
 
 ```bash
-node --experimental-strip-types --test tests/radiation.test.mjs
+npm run test:radiation
+npm run test:spacecraft
 npm run lint
 npm run build
 ```
