@@ -40,16 +40,16 @@ import type { HazardScreenProps } from "./types";
  */
 
 const CONDITION_STATUS_STYLES: Record<PreTestConditionCheckItem["status"], string> = {
-  VALID: "bg-emerald-100 text-emerald-800",
-  VIOLATED: "bg-red-100 text-red-800",
-  UNLOGGED: "bg-slate-100 text-slate-600",
+  VALID: "bg-[#16A34A]/20 text-emerald-300",
+  VIOLATED: "bg-[#DC2626]/20 text-red-300",
+  UNLOGGED: "bg-slate-800/80 text-slate-400",
 };
 
 const CONDITIONING_STYLES: Record<ConditioningStatusLabel, string> = {
-  ON_TRACK: "bg-emerald-100 text-emerald-800",
-  WATCH: "bg-amber-100 text-amber-800",
-  ALERT: "bg-red-100 text-red-800",
-  UNLOGGED: "bg-slate-100 text-slate-600",
+  ON_TRACK: "bg-[#16A34A]/20 text-emerald-300",
+  WATCH: "bg-[#D97706]/20 text-amber-300",
+  ALERT: "bg-[#DC2626]/20 text-red-300",
+  UNLOGGED: "bg-slate-800/80 text-slate-400",
 };
 
 function formatSignedPct(val: number): string {
@@ -105,89 +105,98 @@ export function GravityHazardScreen({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <section
+        className={`hud-panel rounded-lg border p-5 ${
+          snapshot.status === "CRITICAL"
+            ? "border-[#DC2626]/50 bg-[#DC2626]/12"
+            : snapshot.status === "ELEVATED"
+            ? "border-[#D97706]/45 bg-[#D97706]/12"
+            : "border-[#16A34A]/40 bg-[#16A34A]/10"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900">
-              Gravity &amp; Conditioning ({activeCharacter.callsign})
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
+                snapshot.status === "CRITICAL"
+                  ? "border-[#DC2626]/50 bg-[#DC2626]/15 text-red-200"
+                  : snapshot.status === "ELEVATED"
+                  ? "border-[#D97706]/45 bg-[#D97706]/15 text-amber-200"
+                  : "border-[#16A34A]/40 bg-[#16A34A]/15 text-emerald-300"
+              }`}
+            >
+              <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+              {snapshot.status}
+            </span>
+            <h2 className="font-display text-base font-bold text-slate-100">
+              Gravity &amp; Conditioning Briefing
             </h2>
             <InfoCircle
               entry={GRAVITY_RESEARCH_METADATA.eva_readiness_gate}
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
-            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#3B82F6]/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
               {role === "lead" ? (
                 <>
-                  <Users className="h-3 w-3" /> Commander View
+                  <Users className="h-3 w-3" /> Commander View (All Crew)
                 </>
               ) : (
                 <>
-                  <Lock className="h-3 w-3" /> Personal View
+                  <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
                 </>
               )}
             </span>
+            <span className="rounded-md border border-slate-800 bg-[#0B111F]/90 px-2 py-0.5 font-mono text-[11px] text-slate-300">
+              FD {diagnostics.currentFlightDay ?? "—"} ·{" "}
+              {diagnostics.conditioningStatus.replace("_", " ")}
+            </span>
           </div>
+
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#0B111F] px-2.5 py-1 text-xs font-medium text-slate-300">
+            <Clock className="h-3.5 w-3.5 text-[#3B82F6]" aria-hidden="true" />
+            {snapshot.eta}
+          </span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Immediate Horizon · Condition Guard &amp; Cadence
-              </span>
-              <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                FD {diagnostics.currentFlightDay ?? "—"}
-              </span>
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <div className="space-y-3 lg:col-span-6">
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
+              <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
+                Immediate Horizon (Condition Guard &amp; Cadence)
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-100">
+                {snapshot.immediateHorizon}
+              </p>
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-800">
-              {snapshot.immediateHorizon}
+
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
+              <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
+                Prolonged Horizon (Atrophy &amp; Bone-Shield)
+              </p>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
+                {snapshot.prolongedHorizon}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#3B82F6]/35 bg-[#0B111F] p-4 lg:col-span-6">
+            <p className="text-xs font-bold tracking-wide text-blue-200 uppercase">
+              Prioritized Conditioning Actions ({snapshot.solutions.length} Max)
             </p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Prolonged Horizon · Atrophy &amp; Bone-Shield
-              </span>
-              <span
-                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                  CONDITIONING_STYLES[diagnostics.conditioningStatus]
-                }`}
-              >
-                {diagnostics.conditioningStatus.replace("_", " ")}
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-800">
-              {snapshot.prolongedHorizon}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              <Clock className="h-3.5 w-3.5 text-sky-600" /> Estimated Time of Action
-            </div>
-            <p className="mt-1.5 text-xs font-medium text-slate-900">{snapshot.eta}</p>
-          </div>
-
-          <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 md:col-span-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-900">
-                Prioritized Actions
-              </span>
-            </div>
-            <ul className="mt-1.5 space-y-1 text-xs text-slate-800">
+            <ol className="mt-2.5 space-y-2">
               {snapshot.solutions.map((action, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[10px] font-bold text-white">
+                <li
+                  key={idx}
+                  className="flex items-start gap-2.5 rounded-xl border border-[#3B82F6]/30 bg-[#3B82F6]/15 p-3 text-sm leading-snug text-blue-100"
+                >
+                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#3B82F6] text-xs font-bold text-white">
                     {idx + 1}
                   </span>
                   <span>{action}</span>
                 </li>
               ))}
-            </ul>
+            </ol>
           </div>
         </div>
       </section>
@@ -209,19 +218,19 @@ export function GravityHazardScreen({
       )}
 
       {/* 4. Deterministic Telemetry Charts (with dashed threshold lines) */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="font-display text-sm font-bold text-slate-100">
               {role === "lead"
                 ? "Crew Conditioning & Adherence Telemetry"
                 : "Personal Conditioning & Exercise Trends"}
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-400">
               Dashed lines mark target thresholds.
             </p>
           </div>
-          <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
+          <span className="rounded-md bg-slate-800/80 px-2.5 py-1 font-mono text-[11px] text-slate-300">
             {charts.length} active chart(s)
           </span>
         </div>
@@ -233,7 +242,7 @@ export function GravityHazardScreen({
             ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-xs text-slate-500">
+          <div className="rounded-xl border border-dashed border-slate-700 bg-[#060A14] p-6 text-center text-xs text-slate-400">
             {role === "lead"
               ? "No crew exercise adherence logs recorded yet."
               : "No conditioning or exercise time-series samples recorded yet."}
@@ -242,10 +251,10 @@ export function GravityHazardScreen({
       </section>
 
       {/* 5. Telemetry Streams */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-700">
-            <Database className="h-3.5 w-3.5 text-sky-600" />
+          <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-300">
+            <Database className="h-3.5 w-3.5 text-[#3B82F6]" />
             Telemetry Streams ({activeCharacter.callsign})
           </h3>
           <InfoCircle
@@ -264,27 +273,27 @@ export function GravityHazardScreen({
             return (
               <div
                 key={slot.streamName}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
+                className="rounded-xl border border-slate-800 bg-[#060A14] p-3 text-xs"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-900">{slot.streamName}</span>
-                  <span className="rounded bg-white px-2 py-0.5 font-mono text-[10px] text-slate-600">
+                  <span className="font-semibold text-slate-100">{slot.streamName}</span>
+                  <span className="rounded bg-[#0B111F] px-2 py-0.5 font-mono text-[10px] text-slate-400">
                     {slot.sourceRef}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-600">
+                <p className="mt-1 text-[11px] text-slate-400">
                   {hideRawSummaryForLead
                     ? "Personal metrics hidden from Lead view."
                     : rec?.rawValue
                     ? rec.rawValue
                     : "No telemetry yet"}
                 </p>
-                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
                   <span>
                     {rec ? `Updated ${new Date(rec.updatedAt).toLocaleString()}` : "—"}
                   </span>
                   {hasAnyPrivateSubfield && (
-                    <span className="inline-flex items-center gap-1 text-slate-600">
+                    <span className="inline-flex items-center gap-1 text-slate-400">
                       <Lock className="h-3 w-3" /> Private to crew member
                     </span>
                   )}
@@ -316,28 +325,28 @@ function LeadGravitySection({
       {/* Crew Exercise Discipline Buff & Conditioning Split */}
       <div className="grid gap-3 md:grid-cols-4">
         <div
-          className={`rounded-2xl border p-4 md:col-span-2 ${
+          className={`hud-panel rounded-lg border p-4 md:col-span-2 ${
             overview.teamExerciseBuffActive
-              ? "border-emerald-200 bg-emerald-50/70"
-              : "border-slate-200 bg-white"
+              ? "border-[#16A34A]/40 bg-[#16A34A]/15"
+              : "border-slate-800 bg-[#0B111F]"
           }`}
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-              <Dumbbell className="h-4 w-4 text-emerald-700" />
+            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-100">
+              <Dumbbell className="h-4 w-4 text-emerald-300" />
               Team Exercise Discipline Buff
             </span>
             <span
               className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
                 overview.teamExerciseBuffActive
-                  ? "bg-emerald-200 text-emerald-900"
-                  : "bg-slate-100 text-slate-700"
+                  ? "bg-[#16A34A]/25 text-emerald-200"
+                  : "bg-slate-800/80 text-slate-300"
               }`}
             >
               {overview.teamExerciseBuffActive ? "ON TARGET" : "MONITORING"}
             </span>
           </div>
-          <p className="mt-2 text-xs text-slate-700">
+          <p className="mt-2 text-xs text-slate-300">
             {overview.loggedExerciseCrewCount > 0 ? (
               <>
                 Team mean adherence:{" "}
@@ -353,39 +362,39 @@ function LeadGravitySection({
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <div className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Crew Conditioning Split
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold">
-            <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-800">
+            <span className="rounded-md bg-[#16A34A]/20 px-2 py-0.5 text-emerald-300">
               ON TRACK: {overview.onTrackCount}
             </span>
-            <span className="rounded-md bg-amber-100 px-2 py-0.5 text-amber-800">
+            <span className="rounded-md bg-[#D97706]/20 px-2 py-0.5 text-amber-300">
               WATCH: {overview.watchCount}
             </span>
-            <span className="rounded-md bg-red-100 px-2 py-0.5 text-red-800">
+            <span className="rounded-md bg-[#DC2626]/20 px-2 py-0.5 text-red-300">
               ALERT: {overview.alertCount}
             </span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <Lock className="h-3.5 w-3.5 text-slate-600" /> Crew Privacy Guard
+        <div className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-4">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <Lock className="h-3.5 w-3.5 text-slate-400" /> Crew Privacy Guard
           </div>
-          <p className="mt-1.5 text-[11px] leading-snug text-slate-600">
+          <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
             {hazard.leadView.privacyRule}
           </p>
         </div>
       </div>
 
       {/* Crew Conditioning & Atrophy Matrix */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-900">
+              <h2 className="font-display text-sm font-bold text-slate-100">
                 Crew Conditioning &amp; Atrophy Matrix (MEDB 5.2 / 5.4)
               </h2>
               <InfoCircle
@@ -394,7 +403,7 @@ function LeadGravitySection({
                 onSelectInfo={onSelectInfo}
               />
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-400">
               Conditioning band, flags &amp; adherence only · raw anthropometrics sealed
             </p>
           </div>
@@ -403,7 +412,7 @@ function LeadGravitySection({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wide text-slate-400">
                 <th className="py-2 pr-3 font-semibold">Crew Member</th>
                 <th className="px-3 py-2 font-semibold">Conditioning</th>
                 <th className="px-3 py-2 font-semibold">Exercise Disc.</th>
@@ -411,12 +420,12 @@ function LeadGravitySection({
                 <th className="py-2 pl-3 font-semibold">Projected ETA</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-800/80">
               {overview.members.map((m) => (
                 <tr key={m.id} className="align-top">
                   <td className="py-2.5 pr-3">
-                    <div className="font-semibold text-slate-900">{m.callsign}</div>
-                    <div className="text-[11px] text-slate-500">{m.assignedRoleTitle}</div>
+                    <div className="font-semibold text-slate-100">{m.callsign}</div>
+                    <div className="text-[11px] text-slate-400">{m.assignedRoleTitle}</div>
                   </td>
                   <td className="px-3 py-2.5">
                     <span
@@ -427,15 +436,15 @@ function LeadGravitySection({
                       {m.conditioningStatus.replace("_", " ")}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-800">
+                  <td className="px-3 py-2.5 font-mono text-xs text-slate-200">
                     {m.adherencePct !== null ? `${m.adherencePct}%` : "—"}
                     {m.reconditioningDayRPlus !== null && (
-                      <div className="text-[10px] text-sky-700">
+                      <div className="text-[10px] text-blue-300">
                         MR026L R+{m.reconditioningDayRPlus}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[11px] text-slate-700">
+                  <td className="px-3 py-2.5 text-[11px] text-slate-300">
                     {m.blockerCategories.length > 0 ? (
                       <ul className="list-disc space-y-0.5 pl-4">
                         {m.blockerCategories.map((b, idx) => (
@@ -443,15 +452,15 @@ function LeadGravitySection({
                         ))}
                       </ul>
                     ) : (
-                      <span className="text-emerald-700">No active blockers</span>
+                      <span className="text-emerald-300">No active blockers</span>
                     )}
                     {m.conditionFlagCount > 0 && (
-                      <div className="mt-1 font-medium text-amber-800">
+                      <div className="mt-1 font-medium text-amber-300">
                         Pre-test condition flags: {m.conditionFlagCount}
                       </div>
                     )}
                   </td>
-                  <td className="py-2.5 pl-3 text-[11px] text-slate-600">{m.etaLabel}</td>
+                  <td className="py-2.5 pl-3 text-[11px] text-slate-400">{m.etaLabel}</td>
                 </tr>
               ))}
             </tbody>
@@ -477,12 +486,12 @@ function MemberGravitySection({
   return (
     <div className="space-y-4">
       {/* Feature 1: Pre-Test Condition Guard */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <ShieldCheck className="h-4 w-4 text-sky-600" />
+              <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100">
+                <ShieldCheck className="h-4 w-4 text-[#3B82F6]" />
                 Pre-Test Condition Guard (Validity Windows)
               </h2>
               <InfoCircle
@@ -491,11 +500,11 @@ function MemberGravitySection({
                 onSelectInfo={onSelectInfo}
               />
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-400">
               Fasting, caffeine, exercise &amp; morning timing checks
             </p>
           </div>
-          <span className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-[11px] text-slate-700">
+          <span className="rounded-md bg-slate-800/80 px-2.5 py-1 font-mono text-[11px] text-slate-300">
             FD {currentFlightDay ?? "—"}
           </span>
         </div>
@@ -504,13 +513,13 @@ function MemberGravitySection({
           {conditionChecks.map((cond) => (
             <div
               key={cond.id}
-              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+              className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-[#060A14] px-3 py-2 text-xs"
             >
               <div>
-                <div className="font-semibold text-slate-900">{cond.label}</div>
-                <div className="text-[11px] text-slate-500">
+                <div className="font-semibold text-slate-100">{cond.label}</div>
+                <div className="text-[11px] text-slate-400">
                   {cond.requirement} ·{" "}
-                  <span className="font-medium text-slate-700">{cond.detail}</span>
+                  <span className="font-medium text-slate-300">{cond.detail}</span>
                 </div>
               </div>
               <span
@@ -526,20 +535,20 @@ function MemberGravitySection({
       </section>
 
       {/* Feature 2: Microgravity Atrophy, Proxy Bone-Shield & Conditioning */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Activity className="h-4 w-4 text-sky-600" />
+            <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100">
+              <Activity className="h-4 w-4 text-[#3B82F6]" />
               Microgravity Atrophy, Proxy Bone-Shield &amp; Conditioning
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-400">
               L+14 / FD14 trends &amp; resistance adherence
             </p>
           </div>
           {atrophy.adherenceSummary?.reconditioningDayRPlus !== null &&
             atrophy.adherenceSummary?.reconditioningDayRPlus !== undefined && (
-              <span className="rounded-md bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
+              <span className="rounded-md bg-[#3B82F6]/20 px-2.5 py-1 text-xs font-semibold text-blue-200">
                 MR026L Postflight R+{atrophy.adherenceSummary.reconditioningDayRPlus} (120 min/d)
               </span>
             )}
@@ -547,12 +556,12 @@ function MemberGravitySection({
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {/* Calf Volume */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#060A14] p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-900">Calf Volume (MEDB 5.4)</span>
+              <span className="font-semibold text-slate-100">Calf Volume (MEDB 5.4)</span>
               <div className="flex items-center gap-1.5">
                 {atrophy.calfDaysOverdue !== null && atrophy.calfDaysOverdue > 0 && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  <span className="rounded bg-[#D97706]/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
                     Overdue {atrophy.calfDaysOverdue}d
                   </span>
                 )}
@@ -565,10 +574,10 @@ function MemberGravitySection({
             </div>
             {atrophy.calfTrend ? (
               <div className="mt-2 space-y-1">
-                <div className="text-lg font-bold text-slate-900">
+                <div className="text-lg font-bold text-slate-100">
                   {formatSignedPct(atrophy.calfTrend.latestPctChange)}
                 </div>
-                <div className="text-[11px] text-slate-600">
+                <div className="text-[11px] text-slate-400">
                   vs L+14 baseline (FD{atrophy.calfTrend.latestFlightDay}) · N=
                   {atrophy.calfTrend.sampleSize} · Slope{" "}
                   {(atrophy.calfTrend.slopePctPerDay * 7).toFixed(2)}%/wk
@@ -577,8 +586,8 @@ function MemberGravitySection({
                   <div
                     className={`text-[11px] font-medium ${
                       atrophy.calfTrend.isThresholdProjectedCrossed
-                        ? "text-red-700"
-                        : "text-amber-800"
+                        ? "text-red-300"
+                        : "text-amber-300"
                     }`}
                   >
                     {renderTrendForecast(atrophy.calfTrend, A.calfAtrophyAlertPct)}
@@ -586,24 +595,24 @@ function MemberGravitySection({
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-400">
                 No valid morning fasted calf + paired mass samples yet.
               </p>
             )}
             {atrophy.invalidCalfSamplesCount > 0 && (
-              <p className="mt-1.5 text-[10px] font-medium text-red-700">
+              <p className="mt-1.5 text-[10px] font-medium text-red-300">
                 {atrophy.invalidCalfSamplesCount} sample(s) excluded (non-fasted/unpaired).
               </p>
             )}
           </div>
 
           {/* Handgrip */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#060A14] p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-900">Handgrip (MR081L)</span>
+              <span className="font-semibold text-slate-100">Handgrip (MR081L)</span>
               <div className="flex items-center gap-1.5">
                 {atrophy.gripDaysOverdue !== null && atrophy.gripDaysOverdue > 0 && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  <span className="rounded bg-[#D97706]/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
                     Overdue {atrophy.gripDaysOverdue}d
                   </span>
                 )}
@@ -616,10 +625,10 @@ function MemberGravitySection({
             </div>
             {atrophy.gripTrend ? (
               <div className="mt-2 space-y-1">
-                <div className="text-lg font-bold text-slate-900">
+                <div className="text-lg font-bold text-slate-100">
                   {formatSignedPct(atrophy.gripTrend.latestPctChange)}
                 </div>
-                <div className="text-[11px] text-slate-600">
+                <div className="text-[11px] text-slate-400">
                   vs FD14 baseline (FD{atrophy.gripTrend.latestFlightDay}) · N=
                   {atrophy.gripTrend.sampleSize} · Slope{" "}
                   {(atrophy.gripTrend.slopePctPerDay * 7).toFixed(2)}%/wk
@@ -628,8 +637,8 @@ function MemberGravitySection({
                   <div
                     className={`text-[11px] font-medium ${
                       atrophy.gripTrend.isThresholdProjectedCrossed
-                        ? "text-red-700"
-                        : "text-amber-800"
+                        ? "text-red-300"
+                        : "text-amber-300"
                     }`}
                   >
                     {renderTrendForecast(atrophy.gripTrend, A.gripDeclineAlertPct)}
@@ -637,18 +646,18 @@ function MemberGravitySection({
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-400">
                 No monthly handgrip samples recorded yet (every 30d).
               </p>
             )}
           </div>
 
           {/* 7d Exercise & Proxy Bone-Shield */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#060A14] p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-900">Exercise &amp; Bone Proxy</span>
+              <span className="font-semibold text-slate-100">Exercise &amp; Bone Proxy</span>
               <div className="flex items-center gap-1.5">
-                <HeartPulse className="h-3.5 w-3.5 text-sky-600" />
+                <HeartPulse className="h-3.5 w-3.5 text-[#3B82F6]" />
                 <InfoCircle
                   entry={GRAVITY_RESEARCH_METADATA.exercise_timing_reconditioning}
                   activeInfo={activeInfo}
@@ -658,12 +667,12 @@ function MemberGravitySection({
             </div>
             {atrophy.adherenceSummary ? (
               <div className="mt-2 space-y-1">
-                <div className="text-lg font-bold text-slate-900">
+                <div className="text-lg font-bold text-slate-100">
                   {atrophy.adherenceSummary.reconditioningPct ??
                     atrophy.adherenceSummary.overallPct}
                   %
                 </div>
-                <div className="text-[11px] text-slate-600">
+                <div className="text-[11px] text-slate-400">
                   Avg {atrophy.adherenceSummary.avgTotalMinutes} min/d (
                   {atrophy.adherenceSummary.reconditioningDayRPlus !== null
                     ? `target 120 min/d MR026L R+${atrophy.adherenceSummary.reconditioningDayRPlus}`
@@ -672,23 +681,23 @@ function MemberGravitySection({
                   {atrophy.adherenceSummary.resistancePct}%
                 </div>
                 {atrophy.adherenceSummary.loadRatioPct !== null && (
-                  <div className="text-[11px] font-medium text-slate-700">
+                  <div className="text-[11px] font-medium text-slate-300">
                     Resistance load ratio (MEDB 1.11 proxy):{" "}
                     {atrophy.adherenceSummary.loadRatioPct}%
                   </div>
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-400">
                 Target 150 min/d (60m aerobic + 90m resistance, MEDB 5.2).
               </p>
             )}
           </div>
 
           {/* Meal/Sleep Guard & Postflight Card */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+          <div className="rounded-xl border border-slate-800 bg-[#060A14] p-3.5 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-slate-900">Timing Guard &amp; MR026L</span>
+              <span className="font-semibold text-slate-100">Timing Guard &amp; MR026L</span>
               <InfoCircle
                 entry={GRAVITY_RESEARCH_METADATA.exercise_timing_reconditioning}
                 activeInfo={activeInfo}
@@ -699,9 +708,9 @@ function MemberGravitySection({
               <div className="mt-2 space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-1.5">
                   {atrophy.adherenceSummary.mealViolations === 0 ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                   ) : (
-                    <XCircle className="h-3.5 w-3.5 text-red-600" />
+                    <XCircle className="h-3.5 w-3.5 text-red-400" />
                   )}
                   <span>
                     Post-meal &ge;90m violations: {atrophy.adherenceSummary.mealViolations}
@@ -709,20 +718,20 @@ function MemberGravitySection({
                 </div>
                 <div className="flex items-center gap-1.5">
                   {atrophy.adherenceSummary.sleepViolations === 0 ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                   ) : (
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
                   )}
                   <span>
                     Pre-sleep &ge;2h violations: {atrophy.adherenceSummary.sleepViolations}
                   </span>
                 </div>
                 {diagnostics.sleepCrossNote && (
-                  <p className="text-[10px] text-amber-800">{diagnostics.sleepCrossNote}</p>
+                  <p className="text-[10px] text-amber-300">{diagnostics.sleepCrossNote}</p>
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-[11px] text-slate-500">
+              <p className="mt-2 text-[11px] text-slate-400">
                 Enforces MEDB 5.2 (&ge;90m post-meal, &ge;2h pre-sleep) and R+0..R+45 120 min/d
                 reconditioning.
               </p>

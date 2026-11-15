@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Orbit,
   Pencil,
   Plus,
   RefreshCw,
@@ -145,14 +146,14 @@ function CharacterPickerContent() {
   const renderEditForm = () => (
     <form
       onSubmit={handleSaveEdit}
-      className="space-y-3 rounded-2xl border border-sky-300 bg-sky-50/40 p-5 text-xs"
+      className="hud-panel space-y-3 rounded-lg border-[#3B82F6]/50 p-5 text-xs"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-slate-900">Edit Character</span>
+        <span className="font-display text-sm text-white">Edit Character</span>
         <button
           type="button"
           onClick={() => setEditingId(null)}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-slate-600 hover:bg-slate-50"
+          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#060A14] px-2.5 py-1 text-slate-300 hover:text-white"
         >
           <X className="h-3.5 w-3.5" />
           Cancel
@@ -165,14 +166,14 @@ function CharacterPickerContent() {
           value={editCallsign}
           onChange={(e) => setEditCallsign(e.target.value)}
           placeholder="Callsign"
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
+          className="rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-slate-100"
         />
         <input
           type="text"
           value={editRoleTitle}
           onChange={(e) => setEditRoleTitle(e.target.value)}
           placeholder="Assigned role title"
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
+          className="rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-slate-100"
         />
       </div>
       <input
@@ -180,24 +181,22 @@ function CharacterPickerContent() {
         value={editSummary}
         onChange={(e) => setEditSummary(e.target.value)}
         placeholder="Public status summary"
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800"
+        className="w-full rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-slate-100"
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-1.5 text-slate-700">
-            <input
-              type="checkbox"
-              checked={editIsLead}
-              onChange={(e) => setEditIsLead(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Leader Role
-          </label>
-        </div>
+        <label className="flex items-center gap-2 text-slate-300">
+          <input
+            type="checkbox"
+            checked={editIsLead}
+            onChange={(e) => setEditIsLead(e.target.checked)}
+            className="rounded border-slate-600 bg-[#060A14]"
+          />
+          Leader Role
+        </label>
         <button
           type="submit"
           disabled={savingEdit}
-          className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-md bg-[#3B82F6] px-4 py-2 font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
         >
           {savingEdit ? "Saving..." : "Save Changes"}
         </button>
@@ -206,34 +205,38 @@ function CharacterPickerContent() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-          <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900">
+    <div className="min-h-screen text-[#F8FAFC]">
+      <header className="border-b border-slate-800/80 bg-[#070B16]/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
+          >
+            <Orbit className="h-4 w-4 text-[#3B82F6]" />
             <ArrowLeft className="h-4 w-4" />
             Change Scenario
           </Link>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-500">Step 2 · Choose or Edit Character</span>
-          </div>
+          <span className="label-caps rounded border border-[#8B5CF6]/35 bg-[#8B5CF6]/12 px-2.5 py-1 text-violet-300">
+            Step 02 · Crew Identity
+          </span>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-8 px-6 py-12">
+      <main className="mx-auto max-w-5xl space-y-8 px-6 py-12">
         {dbError && (
-          <div className="rounded-2xl border border-red-300 bg-red-50 p-5 text-red-950">
+          <div className="rounded-lg border border-[#DC2626]/55 bg-[#DC2626]/12 p-5 text-red-100">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
-                <p className="inline-flex items-center gap-2 text-sm font-bold text-red-900">
+                <p className="inline-flex items-center gap-2 text-sm font-bold text-red-300">
                   <AlertTriangle className="h-4 w-4" />
                   Connection Error
                 </p>
-                <p className="font-mono text-xs text-red-800">{dbError}</p>
+                <p className="font-mono-tech text-xs text-red-200">{dbError}</p>
               </div>
               <button
                 type="button"
                 onClick={() => refreshScenarios()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600"
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#DC2626] px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Retry
@@ -243,15 +246,15 @@ function CharacterPickerContent() {
         )}
 
         {dbStatus === "loading" && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-            Loading characters...
+          <div className="hud-panel rounded-lg p-8 text-center font-mono-tech text-sm text-slate-400">
+            Loading crew roster...
           </div>
         )}
 
         {!activeScenario && dbStatus !== "loading" && !dbError && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
+          <div className="rounded-lg border border-[#D97706]/50 bg-[#D97706]/10 p-6 text-sm text-amber-200">
             Scenario not found.{" "}
-            <Link href="/" className="font-semibold underline">
+            <Link href="/" className="font-semibold text-white underline">
               Return to Scenarios
             </Link>
             .
@@ -260,30 +263,29 @@ function CharacterPickerContent() {
 
         {activeScenario && (
           <>
-            <div className="flex flex-wrap items-end justify-between gap-4">
+            <section className="hud-panel flex flex-wrap items-end justify-between gap-4 rounded-lg p-6">
               <div className="space-y-1.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">{activeScenario.name}</p>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">Choose Your Character</h1>
-                <p className="text-sm text-slate-600">
-                  Pick a character (Leader or Member) to enter the dashboard, or edit their callsign and role.
+                <p className="label-caps text-[#3B82F6]">{activeScenario.name}</p>
+                <h1 className="font-display text-2xl tracking-tight text-white sm:text-3xl">
+                  Select Crew Profile
+                </h1>
+                <p className="text-xs text-slate-400">
+                  Commander view shows all crew operational vitals; Member view isolates personal stats.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddChar((v) => !v)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[#3B82F6]/45 bg-[#3B82F6]/15 px-3.5 py-2 text-xs font-semibold text-blue-200 hover:bg-[#3B82F6]/25 hover:text-white"
               >
                 <Plus className="h-3.5 w-3.5" />
-                {showAddChar ? "Close Form" : "Add Character to Scenario"}
+                {showAddChar ? "Close Form" : "Add Character"}
               </button>
-            </div>
+            </section>
 
             {showAddChar && (
-              <form
-                onSubmit={handleCreateCharacter}
-                className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs"
-              >
-                <h2 className="text-sm font-bold text-slate-900">
+              <form onSubmit={handleCreateCharacter} className="hud-panel space-y-4 rounded-lg p-6">
+                <h2 className="font-display text-sm text-white">
                   Add Character to {activeScenario.name}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -293,22 +295,22 @@ function CharacterPickerContent() {
                     value={callsign}
                     onChange={(e) => setCallsign(e.target.value)}
                     placeholder="Callsign"
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+                    className="rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
                   />
                   <input
                     type="text"
                     value={assignedRoleTitle}
                     onChange={(e) => setAssignedRoleTitle(e.target.value)}
                     placeholder="Assigned role title"
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400"
+                    className="rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-700">
+                <label className="flex items-center gap-2 text-xs text-slate-300">
                   <input
                     type="checkbox"
                     checked={isLeadSlot}
                     onChange={(e) => setIsLeadSlot(e.target.checked)}
-                    className="rounded border-slate-300"
+                    className="rounded border-slate-600 bg-[#060A14]"
                   />
                   Assign Leader Role Slot
                 </label>
@@ -316,7 +318,7 @@ function CharacterPickerContent() {
                   <button
                     type="submit"
                     disabled={creating}
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                    className="rounded-md bg-[#3B82F6] px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
                   >
                     {creating ? "Saving..." : "Save Character"}
                   </button>
@@ -326,9 +328,7 @@ function CharacterPickerContent() {
 
             {leaders.length > 0 && (
               <section className="space-y-3">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Crew Leader ({leaders.length})
-                </h2>
+                <h2 className="label-caps text-slate-400">Crew Leader ({leaders.length})</h2>
                 <div className="space-y-3">
                   {leaders.map((leader) =>
                     editingId === leader.id ? (
@@ -336,24 +336,22 @@ function CharacterPickerContent() {
                     ) : (
                       <div
                         key={leader.id}
-                        className="flex flex-col justify-between gap-4 rounded-2xl border border-sky-200 bg-white p-6 shadow-xs sm:flex-row sm:items-center"
+                        className="hud-panel flex flex-col justify-between gap-4 rounded-lg border-[#3B82F6]/35 p-6 sm:flex-row sm:items-center"
                       >
                         <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
-                              <Shield className="h-3.5 w-3.5" />
-                              LEADER
-                            </span>
-                          </div>
-                          <h3 className="text-lg font-bold text-slate-900">{leader.callsign}</h3>
-                          <p className="text-xs font-medium text-slate-500">{leader.assignedRoleTitle}</p>
-                          <p className="text-sm text-slate-600">{leader.publicStatusSummary}</p>
+                          <span className="inline-flex items-center gap-1.5 rounded border border-[#3B82F6]/40 bg-[#3B82F6]/15 px-2.5 py-0.5 font-mono-tech text-xs font-bold text-blue-300">
+                            <Shield className="h-3.5 w-3.5" />
+                            LEADER
+                          </span>
+                          <h3 className="font-display text-lg text-white">{leader.callsign}</h3>
+                          <p className="font-mono-tech text-xs text-slate-400">{leader.assignedRoleTitle}</p>
+                          <p className="text-sm text-slate-300">{leader.publicStatusSummary}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <button
                             type="button"
                             onClick={() => startEditing(leader)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#060A14] px-3 py-2 text-xs font-medium text-slate-300 hover:border-slate-500 hover:text-white"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             Edit
@@ -361,7 +359,7 @@ function CharacterPickerContent() {
                           <button
                             type="button"
                             onClick={() => handleSelectCharacter(leader)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-500"
+                            className="inline-flex items-center gap-1.5 rounded-md bg-[#3B82F6] px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                           >
                             Enter as Leader
                             <ArrowRight className="h-4 w-4" />
@@ -375,11 +373,9 @@ function CharacterPickerContent() {
             )}
 
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Crew Members ({members.length})
-              </h2>
+              <h2 className="label-caps text-slate-400">Crew Members ({members.length})</h2>
               {members.length === 0 && (
-                <p className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-500">
+                <p className="hud-panel rounded-lg p-4 text-xs text-slate-400">
                   No member characters found for this scenario yet.
                 </p>
               )}
@@ -390,27 +386,22 @@ function CharacterPickerContent() {
                       {renderEditForm()}
                     </div>
                   ) : (
-                    <div
-                      key={member.id}
-                      className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"
-                    >
+                    <div key={member.id} className="hud-panel flex flex-col justify-between rounded-lg p-5">
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                            <UserCheck className="h-3.5 w-3.5" />
-                            MEMBER
-                          </span>
-                        </div>
-                        <h3 className="text-base font-bold text-slate-900">{member.callsign}</h3>
-                        <p className="text-xs text-slate-500">{member.assignedRoleTitle}</p>
-                        <p className="text-xs text-slate-600">{member.publicStatusSummary}</p>
+                        <span className="inline-flex items-center gap-1 rounded border border-[#16A34A]/40 bg-[#16A34A]/15 px-2 py-0.5 font-mono-tech text-xs font-bold text-emerald-300">
+                          <UserCheck className="h-3.5 w-3.5" />
+                          MEMBER
+                        </span>
+                        <h3 className="font-display text-base text-white">{member.callsign}</h3>
+                        <p className="font-mono-tech text-xs text-slate-400">{member.assignedRoleTitle}</p>
+                        <p className="text-xs text-slate-300">{member.publicStatusSummary}</p>
                       </div>
 
-                      <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                      <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-3">
                         <button
                           type="button"
                           onClick={() => startEditing(member)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#060A14] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-500 hover:text-white"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Edit
@@ -418,7 +409,7 @@ function CharacterPickerContent() {
                         <button
                           type="button"
                           onClick={() => handleSelectCharacter(member)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-[#16A34A] px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
                         >
                           Enter Member
                           <ArrowRight className="h-3.5 w-3.5" />
@@ -440,7 +431,7 @@ export default function CharacterChoosingPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] text-sm text-slate-500">
+        <div className="flex min-h-screen items-center justify-center font-mono-tech text-sm text-slate-400">
           Loading characters...
         </div>
       }

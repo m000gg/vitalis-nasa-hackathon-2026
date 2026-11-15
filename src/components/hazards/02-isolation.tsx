@@ -6,6 +6,7 @@ import {
   BedDouble,
   Brain,
   CheckCircle2,
+  Clock,
   Lock,
   ShieldAlert,
   Users,
@@ -41,35 +42,35 @@ const STATUS_STYLE: Record<
   { badge: string; panel: string; text: string; label: string }
 > = {
   NOMINAL: {
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    panel: "border-emerald-200/80 bg-emerald-50/40",
-    text: "text-emerald-800",
+    badge: "border-[#16A34A]/40 bg-[#16A34A]/15 text-emerald-300",
+    panel: "border-[#16A34A]/40 bg-[#16A34A]/10",
+    text: "text-emerald-300",
     label: "NOMINAL",
   },
   ELEVATED: {
-    badge: "border-amber-300 bg-amber-50 text-amber-900",
-    panel: "border-amber-300/80 bg-amber-50/40",
-    text: "text-amber-900",
+    badge: "border-[#D97706]/45 bg-[#D97706]/15 text-amber-200",
+    panel: "border-[#D97706]/45 bg-[#D97706]/12",
+    text: "text-amber-200",
     label: "ELEVATED",
   },
   CRITICAL: {
-    badge: "border-red-300 bg-red-50 text-red-900",
-    panel: "border-red-300/80 bg-red-50/40",
-    text: "text-red-900",
+    badge: "border-[#DC2626]/50 bg-[#DC2626]/15 text-red-200",
+    panel: "border-[#DC2626]/50 bg-[#DC2626]/12",
+    text: "text-red-200",
     label: "CRITICAL",
   },
 };
 
 const TONE_VALUE_CLASS: Record<Tone, string> = {
-  nominal: "text-slate-900",
-  elevated: "text-amber-800",
-  critical: "text-red-700",
+  nominal: "text-slate-100",
+  elevated: "text-amber-300",
+  critical: "text-red-300",
 };
 
 const TONE_SURFACE_CLASS: Record<Tone, string> = {
-  nominal: "border-slate-200 bg-white",
-  elevated: "border-amber-300 bg-amber-50/30",
-  critical: "border-red-300 bg-red-50/30",
+  nominal: "border-slate-800 bg-[#0B111F]",
+  elevated: "border-[#D97706]/45 bg-[#D97706]/10",
+  critical: "border-[#DC2626]/50 bg-[#DC2626]/10",
 };
 
 const CHART_META_MAP: Record<string, string> = {
@@ -142,9 +143,9 @@ function KpiCard({
 }) {
   const toneLabel = tone === "critical" ? "Critical" : tone === "elevated" ? "Elevated" : "Nominal";
   return (
-    <article className={`rounded-2xl border p-4 transition-colors ${TONE_SURFACE_CLASS[tone]}`}>
+    <article className={`hud-panel rounded-lg border p-4 transition-colors ${TONE_SURFACE_CLASS[tone]}`}>
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
           {icon}
           <span>{label}</span>
         </div>
@@ -157,14 +158,14 @@ function KpiCard({
         {tone !== "nominal" && (
           <span
             className={`rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${
-              tone === "critical" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"
+              tone === "critical" ? "bg-[#DC2626]/20 text-red-300" : "bg-[#D97706]/20 text-amber-200"
             }`}
           >
             {toneLabel}
           </span>
         )}
       </div>
-      <p className="mt-1 text-xs leading-snug text-slate-600">{subline}</p>
+      <p className="mt-1 text-xs leading-snug text-slate-400">{subline}</p>
     </article>
   );
 }
@@ -289,8 +290,8 @@ export function IsolationHazardScreen({
   return (
     <div className="space-y-6">
       {/* 1. Ready-to-Act Primary Briefing (Action-First for Fatigued Crew & Commanders) */}
-      <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+      <section className={`hud-panel rounded-lg border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex flex-wrap items-center gap-2.5">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLE[snapshot.status].badge}`}
@@ -298,13 +299,13 @@ export function IsolationHazardScreen({
               <StatusIcon status={snapshot.status} className="h-3.5 w-3.5" />
               {snapshot.status}
             </span>
-            <h2 className="text-base font-bold text-slate-900">Ready-to-Act Briefing</h2>
+            <h2 className="font-display text-base font-bold text-slate-100">Ready-to-Act Briefing</h2>
             <InfoCircle
               entry={ISOLATION_RESEARCH_METADATA.ready_to_act_guidance}
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
-            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#3B82F6]/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
               {role === "lead" ? (
                 <>
                   <Users className="h-3 w-3" /> Commander View (All Crew)
@@ -318,17 +319,18 @@ export function IsolationHazardScreen({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700">
-              ETA: {snapshot.eta}
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#0B111F] px-2.5 py-1 font-medium text-slate-300">
+              <Clock className="h-3.5 w-3.5 text-[#3B82F6]" aria-hidden="true" />
+              {snapshot.eta}
             </span>
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <div className="space-y-3 lg:col-span-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
+                <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
                   Immediate Horizon (Minutes – Hours)
                 </p>
                 <InfoCircle
@@ -337,14 +339,14 @@ export function IsolationHazardScreen({
                   onSelectInfo={setActiveInfo}
                 />
               </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-900">
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-100">
                 {snapshot.immediateHorizon}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
+                <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
                   Prolonged Horizon (Days – Weeks)
                 </p>
                 <InfoCircle
@@ -353,15 +355,15 @@ export function IsolationHazardScreen({
                   onSelectInfo={setActiveInfo}
                 />
               </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-300">
                 {snapshot.prolongedHorizon}
               </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
+          <div className="rounded-xl border border-[#3B82F6]/35 bg-[#0B111F] p-4 lg:col-span-6">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
+              <p className="text-xs font-bold tracking-wide text-blue-200 uppercase">
                 Prioritized Countermeasures ({snapshot.solutions.length} Max)
               </p>
               <InfoCircle
@@ -374,9 +376,9 @@ export function IsolationHazardScreen({
               {snapshot.solutions.map((sol, idx) => (
                 <li
                   key={sol}
-                  className="flex items-start gap-2.5 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-sm leading-snug text-sky-950"
+                  className="flex items-start gap-2.5 rounded-xl border border-[#3B82F6]/30 bg-[#3B82F6]/15 p-3 text-sm leading-snug text-blue-100"
                 >
-                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-700 text-xs font-bold text-white">
+                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#3B82F6] text-xs font-bold text-white">
                     {idx + 1}
                   </span>
                   <span>{sol}</span>
@@ -395,7 +397,7 @@ export function IsolationHazardScreen({
             value={formatNum(sleepH, "h", 1)}
             subline={`Efficiency ${formatNum(sleepEff, "%")} · HRV ${formatNum(hrvMs, "ms")} · Target ${V.scheduledSleepHours}h`}
             tone={sleepTone}
-            icon={<BedDouble className="h-4 w-4 text-sky-700" aria-hidden="true" />}
+            icon={<BedDouble className="h-4 w-4 text-blue-300" aria-hidden="true" />}
             infoEntry={ISOLATION_RESEARCH_METADATA.actigraphy_sleep}
             activeInfo={activeInfo}
             onSelectInfo={setActiveInfo}
@@ -405,7 +407,7 @@ export function IsolationHazardScreen({
             value={formatNum(pvtRt, "ms")}
             subline={`${formatNum(pvtLapses, "lapses")} (>=355 ms) · Drift ${formatNum(circadianMin, "min")}`}
             tone={pvtTone}
-            icon={<Brain className="h-4 w-4 text-indigo-700" aria-hidden="true" />}
+            icon={<Brain className="h-4 w-4 text-violet-300" aria-hidden="true" />}
             infoEntry={ISOLATION_RESEARCH_METADATA.pvt_cognition}
             activeInfo={activeInfo}
             onSelectInfo={setActiveInfo}
@@ -415,7 +417,7 @@ export function IsolationHazardScreen({
             value={formatNum(noiseDba, "dBA", 1)}
             subline={`NC-40 <= ${V.sleepQuarterNoiseLimitNc40Dba} dBA · ${formatNum(impulseSpikes, "spikes")} · Lux ${formatNum(luxMatch, "%")}`}
             tone={noiseTone}
-            icon={<Volume2 className="h-4 w-4 text-amber-700" aria-hidden="true" />}
+            icon={<Volume2 className="h-4 w-4 text-amber-300" aria-hidden="true" />}
             infoEntry={ISOLATION_RESEARCH_METADATA.sleep_acoustics}
             activeInfo={activeInfo}
             onSelectInfo={setActiveInfo}
@@ -425,7 +427,7 @@ export function IsolationHazardScreen({
             value={missionPct !== null ? `${missionPct}%` : snapshot.status}
             subline={`Status: ${snapshot.status} · Veggie: ${veggieDone === true ? "Done" : veggieDone === false ? "Pending" : "—"} · Check-In: ${socialDone === true ? "Done" : socialDone === false ? "Pending" : "—"}`}
             tone={statusTone}
-            icon={<Users className="h-4 w-4 text-emerald-700" aria-hidden="true" />}
+            icon={<Users className="h-4 w-4 text-emerald-300" aria-hidden="true" />}
             infoEntry={ISOLATION_RESEARCH_METADATA.mission_connect}
             activeInfo={activeInfo}
             onSelectInfo={setActiveInfo}
@@ -435,11 +437,11 @@ export function IsolationHazardScreen({
 
       {/* 3. Role-Specific Workspace (Lead Matrix or Member Private Stream) */}
           {role === "lead" ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-slate-600" aria-hidden="true" />
-                  <h2 className="text-sm font-bold text-slate-900">
+                  <Lock className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                  <h2 className="font-display text-sm font-bold text-slate-100">
                     Crew Telemetry Matrix (Anonymized)
                   </h2>
                   <InfoCircle
@@ -448,24 +450,24 @@ export function IsolationHazardScreen({
                     onSelectInfo={setActiveInfo}
                   />
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                  <span className="rounded-lg bg-slate-800/80 px-2.5 py-1 font-medium">
                     {belowIssMeanCount}/{crewRows.length} &lt; {V.issHistoricalMeanSleepHours}h ISS mean
                   </span>
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
+                  <span className="rounded-lg bg-slate-800/80 px-2.5 py-1 font-medium">
                     {nc40BreachCount} NC-40 breach
                   </span>
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-medium">
+                  <span className="rounded-lg bg-slate-800/80 px-2.5 py-1 font-medium">
                     {veggieActiveCount} Veggie active
                   </span>
                 </div>
               </div>
 
-              <p className="mt-1.5 text-xs text-slate-600">{hazard.leadView.privacyRule}</p>
+              <p className="mt-1.5 text-xs text-slate-400">{hazard.leadView.privacyRule}</p>
 
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
+                  <thead className="bg-[#060A14] text-xs font-semibold text-slate-400">
                     <tr>
                       <th className="px-3.5 py-2.5">Crew Slot</th>
                       <th className="px-3 py-2.5">
@@ -511,39 +513,39 @@ export function IsolationHazardScreen({
                       <th className="px-3.5 py-2.5 text-right">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-800/80">
                     {crewRows.map((row) => {
                       const isActive = row.id === activeCharacter.id;
                       return (
                         <tr
                           key={row.id}
-                          className={isActive ? "bg-sky-50/60" : "bg-white"}
+                          className={isActive ? "bg-[#3B82F6]/12" : "bg-[#0B111F]"}
                         >
                           <td className="px-3.5 py-2.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-slate-900">{row.callsign}</span>
+                              <span className="font-semibold text-slate-100">{row.callsign}</span>
                               <span
                                 className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                   row.isLeadSlot
-                                    ? "bg-sky-100 text-sky-800"
-                                    : "bg-slate-100 text-slate-600"
+                                    ? "bg-[#3B82F6]/20 text-blue-300"
+                                    : "bg-slate-800/80 text-slate-400"
                                 }`}
                               >
                                 {row.isLeadSlot ? "LEAD" : "MEMBER"}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500">{row.roleTitle}</div>
+                            <div className="text-[11px] text-slate-400">{row.roleTitle}</div>
                           </td>
-                          <td className="px-3 py-2.5 tabular-nums text-slate-700">
+                          <td className="px-3 py-2.5 tabular-nums text-slate-300">
                             {formatNum(row.sleepH, "h", 1)}
                           </td>
-                          <td className="px-3 py-2.5 tabular-nums text-slate-700">
+                          <td className="px-3 py-2.5 tabular-nums text-slate-300">
                             {formatNum(row.noiseDba, "dBA", 1)}
                           </td>
-                          <td className="px-3 py-2.5 tabular-nums text-slate-700">
+                          <td className="px-3 py-2.5 tabular-nums text-slate-300">
                             {formatNum(row.pvtRt, "ms")}
                           </td>
-                          <td className="px-3.5 py-2.5 text-right text-[11px] text-slate-700">
+                          <td className="px-3.5 py-2.5 text-right text-[11px] text-slate-300">
                             {row.veggieDone === true ? "Veggie ✓" : "Veggie —"} ·{" "}
                             {row.socialDone === true ? "CONNECT ✓" : "CONNECT —"}
                           </td>
@@ -563,9 +565,9 @@ export function IsolationHazardScreen({
               </div>
             </section>
           ) : (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-900">Personal Stream Details</h2>
+                <h2 className="font-display text-sm font-bold text-slate-100">Personal Stream Details</h2>
                 <InfoCircle
                   entry={ISOLATION_RESEARCH_METADATA.personal_fatigue_strain}
                   activeInfo={activeInfo}
@@ -574,52 +576,52 @@ export function IsolationHazardScreen({
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
+                <div className="rounded-xl border border-slate-800/80 bg-[#060A14] p-3">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-medium text-slate-600">Subjective Fatigue</span>
+                    <span className="text-xs font-medium text-slate-400">Subjective Fatigue</span>
                     <InfoCircle
                       entry={ISOLATION_RESEARCH_METADATA.personal_fatigue_strain}
                       activeInfo={activeInfo}
                       onSelectInfo={setActiveInfo}
                     />
                   </div>
-                  <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
+                  <p className="mt-1 text-lg font-bold text-slate-100 tabular-nums">
                     {formatNum(fatigue, "/ 5")}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
+                <div className="rounded-xl border border-slate-800/80 bg-[#060A14] p-3">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-medium text-slate-600">Workload Strain</span>
+                    <span className="text-xs font-medium text-slate-400">Workload Strain</span>
                     <InfoCircle
                       entry={ISOLATION_RESEARCH_METADATA.personal_fatigue_strain}
                       activeInfo={activeInfo}
                       onSelectInfo={setActiveInfo}
                     />
                   </div>
-                  <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
+                  <p className="mt-1 text-lg font-bold text-slate-100 tabular-nums">
                     {formatNum(strain, "/ 5")}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3">
+                <div className="rounded-xl border border-slate-800/80 bg-[#060A14] p-3">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-medium text-slate-600">Daytime Activity</span>
+                    <span className="text-xs font-medium text-slate-400">Daytime Activity</span>
                     <InfoCircle
                       entry={ISOLATION_RESEARCH_METADATA.chart_hypokinesis}
                       activeInfo={activeInfo}
                       onSelectInfo={setActiveInfo}
                     />
                   </div>
-                  <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
+                  <p className="mt-1 text-lg font-bold text-slate-100 tabular-nums">
                     {formatNum(activityCnt, "cnt")}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50 p-3.5">
+              <div className="mt-3 rounded-xl border border-slate-800/80 bg-[#060A14] p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-100">
                     Personal Reflection &amp; Sleep Aid
                     <InfoCircle
                       entry={ISOLATION_RESEARCH_METADATA.private_journal_firewall}
@@ -627,14 +629,14 @@ export function IsolationHazardScreen({
                       onSelectInfo={setActiveInfo}
                     />
                   </span>
-                  <span className="text-xs text-slate-700">
+                  <span className="text-xs text-slate-300">
                     Mood: <strong>{formatNum(privateMood, "/ 5")}</strong> · Sleep Aid:{" "}
                     <strong>
                       {privateSleepMed === true ? "Yes" : privateSleepMed === false ? "No" : "—"}
                     </strong>
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-700 sm:text-sm">
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-300 sm:text-sm">
                   {privateJournal ?? "No personal reflection note recorded in latest snapshot."}
                 </p>
               </div>
@@ -643,7 +645,7 @@ export function IsolationHazardScreen({
 
           {/* 4. Thresholded Telemetry Charts */}
           <section className="space-y-3">
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="font-display text-sm font-bold text-slate-100">
               Telemetry History &amp; NASA Thresholds
             </h2>
 
@@ -669,7 +671,7 @@ export function IsolationHazardScreen({
                 })}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-600">
+              <div className="hud-panel rounded-lg border border-dashed border-slate-700 bg-[#0B111F] p-6 text-center text-xs text-slate-400">
                 Awaiting telemetry history for thresholded charts.
               </div>
             )}

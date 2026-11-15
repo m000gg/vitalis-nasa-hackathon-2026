@@ -38,44 +38,44 @@ type StatusKey = "NOMINAL" | "ELEVATED" | "CRITICAL";
 
 const STATUS_STYLE: Record<StatusKey, { badge: string; panel: string }> = {
   NOMINAL: {
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    panel: "border-emerald-200/80 bg-emerald-50/40",
+    badge: "border-[#16A34A]/40 bg-[#16A34A]/15 text-emerald-300",
+    panel: "border-[#16A34A]/40 bg-[#16A34A]/10",
   },
   ELEVATED: {
-    badge: "border-amber-300 bg-amber-50 text-amber-900",
-    panel: "border-amber-300/80 bg-amber-50/40",
+    badge: "border-[#D97706]/45 bg-[#D97706]/15 text-amber-200",
+    panel: "border-[#D97706]/45 bg-[#D97706]/12",
   },
   CRITICAL: {
-    badge: "border-red-300 bg-red-50 text-red-900",
-    panel: "border-red-300/80 bg-red-50/40",
+    badge: "border-[#DC2626]/50 bg-[#DC2626]/15 text-red-200",
+    panel: "border-[#DC2626]/50 bg-[#DC2626]/12",
   },
 };
 
 const AIR_STYLE: Record<AirStatus, { card: string; badge: string; ring: string; label: string }> = {
   green: {
-    card: "border-emerald-200 bg-white",
-    badge: "bg-emerald-100 text-emerald-800",
+    card: "border-[#16A34A]/40 bg-[#0B111F]",
+    badge: "bg-[#16A34A]/20 text-emerald-300",
     ring: "ring-emerald-500",
     label: "GREEN",
   },
   yellow: {
-    card: "border-amber-300 bg-amber-50/30",
-    badge: "bg-amber-100 text-amber-900",
+    card: "border-[#D97706]/45 bg-[#D97706]/10",
+    badge: "bg-[#D97706]/20 text-amber-200",
     ring: "ring-amber-500",
     label: "YELLOW",
   },
   red: {
-    card: "border-red-300 bg-red-50/30",
-    badge: "bg-red-100 text-red-900",
+    card: "border-[#DC2626]/50 bg-[#DC2626]/10",
+    badge: "bg-[#DC2626]/20 text-red-200",
     ring: "ring-red-500",
     label: "RED",
   },
 };
 
 const LEVEL_BADGE: Record<Co2Level, string> = {
-  low: "bg-emerald-100 text-emerald-800",
-  elevated: "bg-amber-100 text-amber-900",
-  high: "bg-red-100 text-red-900",
+  low: "bg-[#16A34A]/20 text-emerald-300",
+  elevated: "bg-[#D97706]/20 text-amber-200",
+  high: "bg-[#DC2626]/20 text-red-200",
 };
 
 function fmtNum(value: number, decimals: number): string {
@@ -83,19 +83,19 @@ function fmtNum(value: number, decimals: number): string {
 }
 
 function AirIcon({ status, className = "h-4 w-4" }: { status: AirStatus; className?: string }) {
-  if (status === "red") return <XCircle className={`${className} text-red-600`} aria-hidden="true" />;
-  if (status === "yellow") return <AlertTriangle className={`${className} text-amber-600`} aria-hidden="true" />;
-  return <CheckCircle2 className={`${className} text-emerald-600`} aria-hidden="true" />;
+  if (status === "red") return <XCircle className={`${className} text-red-400`} aria-hidden="true" />;
+  if (status === "yellow") return <AlertTriangle className={`${className} text-amber-400`} aria-hidden="true" />;
+  return <CheckCircle2 className={`${className} text-emerald-400`} aria-hidden="true" />;
 }
 
 function TrendBadge({ mod }: { mod: ModuleModel }) {
   if (mod.forecast.state !== "ready") {
-    return <span className="text-slate-500">{V.messages.collecting}</span>;
+    return <span className="text-slate-400">{V.messages.collecting}</span>;
   }
   const f = mod.forecast;
   const Icon = f.trend === "rising" ? TrendingUp : f.trend === "falling" ? TrendingDown : null;
   const tone =
-    f.trend === "rising" ? "text-red-700" : f.trend === "falling" ? "text-emerald-700" : "text-slate-700";
+    f.trend === "rising" ? "text-red-300" : f.trend === "falling" ? "text-emerald-300" : "text-slate-300";
   return (
     <span className={`inline-flex items-center gap-1 font-mono ${tone}`}>
       {Icon && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -148,46 +148,46 @@ function AlertBannerCard({
     <article
       className={`rounded-xl border p-3.5 text-xs ${
         acked
-          ? "border-slate-200 bg-slate-50 opacity-75"
+          ? "border-slate-800 bg-[#060A14] opacity-75"
           : critical
-          ? "border-red-300 bg-red-50"
-          : "border-amber-300 bg-amber-50"
+          ? "border-[#DC2626]/50 bg-[#DC2626]/15"
+          : "border-[#D97706]/45 bg-[#D97706]/15"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-start gap-2">
           {critical ? (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
           ) : (
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />
           )}
           <div>
-            <p className="font-semibold text-slate-900">
-              <span className={critical ? "text-red-700" : "text-amber-800"}>
+            <p className="font-semibold text-slate-100">
+              <span className={critical ? "text-red-300" : "text-amber-300"}>
                 {critical ? "CRITICAL" : "WARNING"}
               </span>{" "}
               · {alert.title}
             </p>
-            <p className="mt-0.5 text-slate-600">
+            <p className="mt-0.5 text-slate-400">
               {critical ? "Above 4 mmHg limit now" : `ETA ~${alert.etaMin} min`} · started min {alert.startedAtMin}
             </p>
           </div>
         </div>
         {acked ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700">
+          <span className="inline-flex items-center gap-1 rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-300">
             <Check className="h-3.5 w-3.5" aria-hidden="true" /> Acknowledged
           </span>
         ) : (
           <button
             type="button"
             onClick={onAck}
-            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-100"
+            className="rounded-md border border-slate-700 bg-[#0B111F] px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-800/80"
           >
             Acknowledge
           </button>
         )}
       </div>
-      <ol className="mt-2 list-decimal space-y-0.5 pl-8 text-slate-800">
+      <ol className="mt-2 list-decimal space-y-0.5 pl-8 text-slate-200">
         {alert.actions.map((action) => (
           <li key={action}>{action}</li>
         ))}
@@ -244,8 +244,8 @@ export function EnvironmentHazardScreen({
   return (
     <div className="space-y-6">
       {/* 1. Ready-to-Act Primary Briefing */}
-      <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+      <section className={`hud-panel rounded-lg border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLE[snapshot.status].badge}`}
@@ -253,7 +253,7 @@ export function EnvironmentHazardScreen({
               <Wind className="h-3.5 w-3.5" aria-hidden="true" />
               {snapshot.status}
             </span>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="font-display text-base font-bold text-slate-100">
               Habitat Air &amp; Environmental Briefing
             </h2>
             <InfoCircle
@@ -261,7 +261,7 @@ export function EnvironmentHazardScreen({
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
-            <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#3B82F6]/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
               {role === "lead" ? (
                 <>
                   <Users className="h-3 w-3" /> Commander View (All Crew)
@@ -272,43 +272,43 @@ export function EnvironmentHazardScreen({
                 </>
               )}
             </span>
-            <span className="rounded-md bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-700 border border-slate-200">
+            <span className="rounded-md bg-[#0B111F]/90 px-2 py-0.5 text-[11px] font-medium text-slate-300 border border-slate-800">
               {model.dataTag === "REAL" ? "Cabin CO₂: NASA OSDR EDA" : "Cabin CO₂: Simulated Replay"}
             </span>
-            <span className="rounded-md bg-white/90 px-2 py-0.5 font-mono text-[11px] text-slate-600 border border-slate-200">
+            <span className="rounded-md bg-[#0B111F]/90 px-2 py-0.5 font-mono text-[11px] text-slate-400 border border-slate-800">
               min {model.nowMin} · {model.scenarioLabel}
             </span>
           </div>
 
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-            <Clock className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#0B111F] px-2.5 py-1 text-xs font-medium text-slate-300">
+            <Clock className="h-3.5 w-3.5 text-[#3B82F6]" aria-hidden="true" />
             {snapshot.eta}
           </span>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <div className="space-y-3 lg:col-span-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-              <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
+              <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
                 Immediate Horizon (Module Alarms &amp; Trend Warnings)
               </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-900">
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-100">
                 {snapshot.immediateHorizon}
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-              <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
+            <div className="rounded-xl border border-slate-800 bg-[#0B111F] p-3.5">
+              <p className="text-xs font-bold tracking-wide text-slate-400 uppercase">
                 Prolonged Horizon (CO₂ Risk Forecast &amp; Exposure Ledger)
               </p>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-700">
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-300">
                 {snapshot.prolongedHorizon}
               </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
-            <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
+          <div className="rounded-xl border border-[#3B82F6]/35 bg-[#0B111F] p-4 lg:col-span-6">
+            <p className="text-xs font-bold tracking-wide text-blue-200 uppercase">
               Prioritized Module Actions ({snapshot.solutions.length} Max)
             </p>
             {snapshot.solutions.length > 0 ? (
@@ -316,9 +316,9 @@ export function EnvironmentHazardScreen({
                 {snapshot.solutions.map((sol, idx) => (
                   <li
                     key={sol}
-                    className="flex items-start gap-2.5 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-sm leading-snug text-sky-950"
+                    className="flex items-start gap-2.5 rounded-xl border border-[#3B82F6]/30 bg-[#3B82F6]/15 p-3 text-sm leading-snug text-blue-100"
                   >
-                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-700 text-xs font-bold text-white">
+                    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#3B82F6] text-xs font-bold text-white">
                       {idx + 1}
                     </span>
                     <span>{sol}</span>
@@ -326,7 +326,7 @@ export function EnvironmentHazardScreen({
                 ))}
               </ol>
             ) : (
-              <p className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900">
+              <p className="mt-2.5 rounded-xl border border-[#16A34A]/40 bg-[#16A34A]/12 p-3 text-xs text-emerald-200">
                 All modules nominal · 0 CO₂ alerts in 120 min window.
               </p>
             )}
@@ -335,12 +335,12 @@ export function EnvironmentHazardScreen({
 
         {/* Active CO2 Alert Episodes with browser acknowledgement */}
         {model.alerts.length > 0 && (
-          <div className="mt-4 space-y-2 border-t border-slate-200/80 pt-3">
+          <div className="mt-4 space-y-2 border-t border-slate-800/80 pt-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold tracking-wide text-slate-700 uppercase">
+              <span className="font-bold tracking-wide text-slate-300 uppercase">
                 Active CO₂ Alerts
               </span>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-slate-400">
                 {model.alerts.length} active · {openAlerts} unacknowledged
               </span>
             </div>
@@ -362,7 +362,7 @@ export function EnvironmentHazardScreen({
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="font-display text-sm font-bold text-slate-100">
               Habitat Module Weather Map ({model.banner})
             </h2>
             <InfoCircle
@@ -371,32 +371,32 @@ export function EnvironmentHazardScreen({
               onSelectInfo={setActiveInfo}
             />
           </div>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-400">
             Limits: CO₂ ≤ {V.limits.co2TargetMmhg} mmHg · O₂ ≥ {V.limits.o2YellowBelowMmhg}/{V.limits.o2RedBelowMmhg} mmHg · {V.limits.pressureMinPsia}–{V.limits.pressureMaxPsia} psia · &lt;{V.limits.noiseHazardDba} dBA
           </span>
         </div>
 
         {/* Compact Schematic Hatch Strip */}
-        <div className="flex flex-col items-stretch gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col items-stretch gap-2 hud-panel rounded-lg border border-dashed border-slate-700 bg-[#060A14] p-3 sm:flex-row sm:items-center">
           {model.modules.map((mod, idx) => {
             const st = AIR_STYLE[mod.air.status];
             const isSelected = mod.moduleId === selectedId;
             return (
               <React.Fragment key={mod.moduleId}>
                 {idx > 0 && (
-                  <span aria-hidden="true" className="mx-auto h-3 w-2 rounded-sm bg-slate-300 sm:mx-0 sm:h-2 sm:w-4" />
+                  <span aria-hidden="true" className="mx-auto h-3 w-2 rounded-sm bg-slate-700 sm:mx-0 sm:h-2 sm:w-4" />
                 )}
                 <button
                   type="button"
                   onClick={() => setSelectedId(mod.moduleId)}
                   aria-pressed={isSelected}
                   className={`flex flex-1 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${st.card} ${
-                    isSelected ? `ring-2 ring-offset-1 ${st.ring}` : "hover:brightness-95"
+                    isSelected ? `ring-2 ring-offset-1 ring-offset-[#0B111F] ${st.ring}` : "hover:brightness-110"
                   }`}
                 >
                   <div>
-                    <p className="font-bold text-slate-900">{mod.moduleName}</p>
-                    <p className="font-mono text-[11px] text-slate-600">
+                    <p className="font-bold text-slate-100">{mod.moduleName}</p>
+                    <p className="font-mono text-[11px] text-slate-400">
                       {mod.air.status === "green" ? "All nominal" : mod.air.worstMetric.text}
                     </p>
                   </div>
@@ -416,16 +416,16 @@ export function EnvironmentHazardScreen({
               <div
                 key={mod.moduleId}
                 onClick={() => setSelectedId(mod.moduleId)}
-                className={`cursor-pointer rounded-2xl border p-4 transition ${st.card} ${
-                  isSelected ? `ring-2 ring-offset-1 ${st.ring}` : ""
+                className={`cursor-pointer hud-panel rounded-lg border p-4 transition ${st.card} ${
+                  isSelected ? `ring-2 ring-offset-1 ring-offset-[#0B111F] ${st.ring}` : ""
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
                   <div className="flex items-center gap-2">
                     <AirIcon status={mod.air.status} />
-                    <h3 className="text-sm font-bold text-slate-900">{mod.moduleName} Module</h3>
+                    <h3 className="text-sm font-bold text-slate-100">{mod.moduleName} Module</h3>
                     {isLowest && model.counts.red > 0 && (
-                      <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
+                      <span className="rounded bg-[#3B82F6]/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
                         Lowest CO₂
                       </span>
                     )}
@@ -439,15 +439,15 @@ export function EnvironmentHazardScreen({
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   {mod.air.metrics.map((m) => (
-                    <div key={m.metric} className="rounded-xl border border-slate-200/80 bg-slate-50 p-2.5">
+                    <div key={m.metric} className="rounded-xl border border-slate-800/80 bg-[#060A14] p-2.5">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[11px] font-semibold uppercase text-slate-500">
+                        <span className="text-[11px] font-semibold uppercase text-slate-400">
                           {m.metric === "co2" ? "CO₂" : m.metric === "o2" ? "O₂" : m.metric}
                         </span>
                         <div className="flex items-center gap-1">
                           <span
                             className={`rounded px-1 py-0.5 font-mono text-[9px] font-semibold ${
-                              m.tag === "REAL" ? "bg-sky-100 text-sky-800" : "bg-slate-200 text-slate-600"
+                              m.tag === "REAL" ? "bg-[#3B82F6]/20 text-blue-300" : "bg-slate-800 text-slate-400"
                             }`}
                           >
                             {m.tag}
@@ -455,7 +455,7 @@ export function EnvironmentHazardScreen({
                           <AirIcon status={m.status} className="h-3.5 w-3.5" />
                         </div>
                       </div>
-                      <p className="mt-1 font-mono text-sm font-bold text-slate-900">
+                      <p className="mt-1 font-mono text-sm font-bold text-slate-100">
                         {fmtNum(m.value, m.metric === "co2" ? 2 : 1)} {m.unit}
                       </p>
                     </div>
@@ -463,11 +463,11 @@ export function EnvironmentHazardScreen({
                 </div>
 
                 {mod.infoMetrics.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
                     {mod.infoMetrics.map((im) => (
                       <span
                         key={im.key}
-                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono"
+                        className="rounded-md border border-slate-800 bg-[#060A14] px-2 py-0.5 font-mono"
                       >
                         {im.label}: {fmtNum(im.value, 1)} {im.unit}
                       </span>
@@ -475,7 +475,7 @@ export function EnvironmentHazardScreen({
                   </div>
                 )}
 
-                <div className="mt-3 space-y-1 text-xs text-slate-700">
+                <div className="mt-3 space-y-1 text-xs text-slate-300">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span>
                       <strong>Trend:</strong> <TrendBadge mod={mod} />
@@ -490,7 +490,7 @@ export function EnvironmentHazardScreen({
                       ? ` · +2h proj: ${fmtNum(mod.forecast.projectedCo2Mmhg, 2)} mmHg`
                       : ""}
                   </p>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-400">
                     Exposure: {mod.ledger.minutesAboveLimit} min above {V.limits.co2TargetMmhg} mmHg · Max CO₂{" "}
                     {fmtNum(mod.ledger.maxCo2Mmhg, 2)} mmHg
                   </p>
@@ -505,7 +505,7 @@ export function EnvironmentHazardScreen({
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="font-display text-sm font-bold text-slate-100">
               Per-Module CO₂ History, +2h Projection &amp; NASA Target ({V.limits.co2TargetMmhg} mmHg)
             </h2>
             <InfoCircle
@@ -514,7 +514,7 @@ export function EnvironmentHazardScreen({
               onSelectInfo={setActiveInfo}
             />
           </div>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-400">
             Solid: last 2 h · Dashed blue: +2 h trend projection
           </span>
         </div>
@@ -526,18 +526,18 @@ export function EnvironmentHazardScreen({
       </section>
 
       {role === "lead" && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Users className="h-4 w-4 text-sky-600" />
+              <h2 className="font-display flex items-center gap-2 text-sm font-bold text-slate-100">
+                <Users className="h-4 w-4 text-[#3B82F6]" />
                 Crew Habitat Relocation &amp; Accountability ({mission.crew.length} Crew)
               </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-400">
                 {hazard.leadView.privacyRule}
               </p>
             </div>
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            <span className="rounded-md bg-slate-800/80 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
               Safe Zone Target: {safestGreenModule?.moduleName ?? "No green module"}
             </span>
           </div>
@@ -551,25 +551,25 @@ export function EnvironmentHazardScreen({
                   key={member.id}
                   className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-xs ${
                     member.id === activeCharacter.id
-                      ? "border-sky-300 bg-sky-50/40"
-                      : "border-slate-200 bg-slate-50"
+                      ? "border-[#3B82F6]/45 bg-[#3B82F6]/10"
+                      : "border-slate-800 bg-[#060A14]"
                   }`}
                 >
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-900">{member.callsign}</span>
+                      <span className="font-semibold text-slate-100">{member.callsign}</span>
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                           member.isLeadSlot
-                            ? "bg-sky-100 text-sky-800"
-                            : "bg-slate-200 text-slate-700"
+                            ? "bg-[#3B82F6]/20 text-blue-300"
+                            : "bg-slate-800 text-slate-300"
                         }`}
                       >
                         {member.isLeadSlot ? "LEAD" : "MEMBER"}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500">{member.assignedRoleTitle}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-700">
+                    <p className="text-[11px] text-slate-400">{member.assignedRoleTitle}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-300">
                       Station: <strong>{assignedMod?.moduleName ?? "Habitat"}</strong>
                       {modStatus !== "green" && safestGreenModule
                         ? ` → Move to ${safestGreenModule.moduleName}`

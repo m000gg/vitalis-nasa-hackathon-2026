@@ -65,38 +65,37 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
 
   return (
     <DashboardShell>
-      {/* Minimal Shared Header Chrome */}
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+      <section className="hud-panel space-y-3 rounded-lg p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900"
+            className="inline-flex items-center gap-1.5 font-mono-tech text-xs text-slate-400 transition hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Overview
+            Command Deck
           </Link>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 font-mono-tech text-xs">
             <span
-              className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
+              className={`rounded border px-2 py-0.5 font-bold ${
                 snapshot.status === "CRITICAL"
-                  ? "bg-red-100 text-red-800"
+                  ? "border-[#DC2626]/55 bg-[#DC2626]/15 text-red-300"
                   : snapshot.status === "ELEVATED"
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-emerald-100 text-emerald-800"
+                  ? "border-[#D97706]/55 bg-[#D97706]/15 text-amber-300"
+                  : "border-[#16A34A]/50 bg-[#16A34A]/15 text-emerald-300"
               }`}
             >
               {snapshot.status}
             </span>
-            <span className="rounded-md bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
+            <span className="rounded border border-slate-700 bg-[#060A14] px-2.5 py-0.5 text-slate-200">
               {activeCharacter.callsign} ({role.toUpperCase()})
             </span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-slate-900">
-            Hazard {hazard.number}: {hazard.title}
+          <h1 className="font-display text-xl tracking-tight text-white">
+            0{hazard.number} · {hazard.title}
           </h1>
 
           <div className="flex flex-wrap gap-1.5">
@@ -104,20 +103,19 @@ export default function HazardDetailPage({ params }: { params: Promise<{ slug: s
               <Link
                 key={h.slug}
                 href={`/dashboard/hazards/${h.slug}`}
-                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                className={`rounded-md border px-2.5 py-1 font-mono-tech text-xs font-bold transition ${
                   h.slug === hazard.slug
-                    ? "border-sky-300 bg-sky-50 text-sky-800"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    ? "border-[#3B82F6]/65 bg-[#3B82F6]/20 text-blue-200"
+                    : "border-slate-700/80 bg-[#060A14] text-slate-400 hover:border-slate-500 hover:text-white"
                 }`}
               >
-                {h.number}. {h.shortTitle}
+                0{h.number}. {h.shortTitle}
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Isolated Per-Hazard Screen Canvas */}
       <HazardScreen
         hazard={hazard}
         mission={mission}

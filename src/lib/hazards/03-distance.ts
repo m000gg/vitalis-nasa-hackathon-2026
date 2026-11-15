@@ -149,12 +149,12 @@ export function evaluateDistanceHazard(input: HazardEvaluationInput): HazardEval
 
   const immediateHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? `Autonomous mode · ${delay.oneWayLabel} one-way delay.`
+      ? `Local autonomy active · ${delay.oneWayLabel} one-way light delay (RTT ${delay.roundTripLabel}).`
       : distanceHazard.outputSlots.immediateHorizon;
 
   const prolongedHorizon =
     validatedDistanceKm !== null && delay !== null
-      ? "Track onboard medical stock and expiry dates."
+      ? `Track onboard medical kit consumables & expiry dates across ${delay.roundTripLabel} delayed Earth support.`
       : distanceHazard.outputSlots.prolongedHorizon;
 
   const eta =

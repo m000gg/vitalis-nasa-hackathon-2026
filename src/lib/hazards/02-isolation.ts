@@ -707,7 +707,7 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
   const prolongedFindings: string[] = [];
   if (circadianElevated) {
     prolongedFindings.push(
-      `Drift ${circadianShiftMin ?? 0} min${luxCompliancePct !== null ? ` · light ${luxCompliancePct}%` : ""}`
+      `Circadian drift ${circadianShiftMin ?? 0} min${luxCompliancePct !== null ? ` · light schedule ${luxCompliancePct}% match` : ""}`
     );
   }
   if (inThirdQuarter) {
@@ -715,18 +715,18 @@ export function evaluateIsolationHazard(input: HazardEvaluationInput): HazardEva
       activityChangePct !== null
         ? ` · activity ${activityChangePct >= 0 ? "+" : ""}${activityChangePct.toFixed(0)}%`
         : "";
-    prolongedFindings.push(`Third quarter (${missionDayPct}%)${actText}`);
+    prolongedFindings.push(`Third-quarter window (${missionDayPct}% elapsed)${actText}`);
   }
   if (commsDelayMin !== null && commsDelayMin > 0) {
-    prolongedFindings.push(`Comms ${commsDelayMin} min RTT`);
+    prolongedFindings.push(`Earth link delay ${commsDelayMin} min RTT`);
   }
   if (role === "lead" && crewSleepValues.length > 0) {
     const teamAcousticDebuff =
-      crewNoiseBreachCount >= 2 ? ` · ${crewNoiseBreachCount} > NC-40` : crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} noisy` : "";
+      crewNoiseBreachCount >= 2 ? ` · ${crewNoiseBreachCount} quarters > NC-40` : crewNoiseBreachCount > 0 ? ` · ${crewNoiseBreachCount} noisy quarter` : "";
     prolongedFindings.push(
-      `Crew: ${crewBelowIssMeanCount}/${crewSleepValues.length} < ${V.issHistoricalMeanSleepHours} h` +
+      `Crew sleep: ${crewBelowIssMeanCount}/${crewSleepValues.length} below ${V.issHistoricalMeanSleepHours} h ISS mean` +
         teamAcousticDebuff +
-        (crewVeggieCount > 0 ? ` · ${crewVeggieCount} Veggie` : "")
+        (crewVeggieCount > 0 ? ` · ${crewVeggieCount} Veggie active` : "")
     );
   }
 

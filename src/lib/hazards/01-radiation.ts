@@ -1026,15 +1026,15 @@ export function evaluateRadiationHazard(input: HazardEvaluationInput): HazardEva
     ? `${formatNumber(latest.value)} ${latest.unit} — ${summary}`
     : summary;
 
-  let prolongedHorizon = "Need rate, cumulative dose, and hours left.";
+  let prolongedHorizon = "Requires dose rate, cumulative total, and mission hours remaining.";
   if (forecast?.supported && forecast.projectedValue !== null && forecast.unit) {
     const interval =
       forecast.lowerValue !== null && forecast.upperValue !== null
         ? ` (${formatNumber(forecast.lowerValue)}–${formatNumber(forecast.upperValue)} ${forecast.unit})`
         : "";
-    prolongedHorizon = `Projected mission-end: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval}.`;
+    prolongedHorizon = `Projected mission-end dose: ${formatNumber(forecast.projectedValue)} ${forecast.unit}${interval}.`;
   } else if (currentDose) {
-    prolongedHorizon = `Cumulative dose: ${formatNumber(currentDose.value)} ${currentDose.unit}.`;
+    prolongedHorizon = `Cumulative dose logged: ${formatNumber(currentDose.value)} ${currentDose.unit}.`;
   }
 
   let eta = "Budget ETA unavailable";

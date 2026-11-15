@@ -24,12 +24,12 @@ interface VitalItem {
 
 function statusBadgeClass(status: HazardEvaluationResult["status"]): string {
   if (status === "CRITICAL") {
-    return "border border-red-200 bg-red-50 text-red-800";
+    return "border border-[#DC2626]/55 bg-[#DC2626]/15 text-red-300";
   }
   if (status === "ELEVATED") {
-    return "border border-amber-200 bg-amber-50 text-amber-800";
+    return "border border-[#D97706]/55 bg-[#D97706]/15 text-amber-300";
   }
-  return "border border-emerald-200 bg-emerald-50 text-emerald-800";
+  return "border border-[#16A34A]/50 bg-[#16A34A]/15 text-emerald-300";
 }
 
 function findStreamRecord(
@@ -211,7 +211,6 @@ function extractHazardVitals(params: {
     ];
   }
 
-  // Closed Environments ("environment")
   const chartLatestValues = (snapshot.charts ?? [])
     .map((chart) => {
       const last = chart.series[chart.series.length - 1];
@@ -257,7 +256,7 @@ export default function DashboardOverviewPage() {
   if (!mission || !activeCharacter) {
     return (
       <DashboardShell>
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+        <div className="hud-panel rounded-lg p-6 text-sm text-slate-300">
           Select a scenario and character first.
         </div>
       </DashboardShell>
@@ -332,26 +331,30 @@ export default function DashboardOverviewPage() {
 
   return (
     <DashboardShell>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+      {/* Command Header Panel */}
+      <section className="hud-panel relative overflow-hidden rounded-lg p-6">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-[#3B82F6]/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 font-mono-tech text-xs">
               <span
-                className={`rounded-md px-2.5 py-0.5 font-semibold ${
-                  role === "lead" ? "bg-sky-50 text-sky-800" : "bg-emerald-50 text-emerald-800"
+                className={`rounded border px-2 py-0.5 font-bold ${
+                  role === "lead"
+                    ? "border-[#3B82F6]/45 bg-[#3B82F6]/15 text-blue-300"
+                    : "border-[#16A34A]/45 bg-[#16A34A]/15 text-emerald-300"
                 }`}
               >
                 {role === "lead" ? "LEADER" : "MEMBER"}
               </span>
-              <span className="rounded-md bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700">
+              <span className="rounded border border-slate-700 bg-[#060A14] px-2 py-0.5 text-slate-300">
                 {mission.durationContext}
               </span>
-              <span className="text-slate-500">{mission.commsDelayLabel}</span>
+              <span className="text-slate-400">{mission.commsDelayLabel}</span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              {activeCharacter.callsign} · 5-Hazard Telemetry Dashboard
+            <h1 className="font-display text-2xl tracking-tight text-white">
+              {activeCharacter.callsign} · Telemetry Overview
             </h1>
-            <p className="text-sm text-slate-600">
+            <p className="text-xs text-slate-400">
               {activeCharacter.assignedRoleTitle} · {mission.scenarioDescriptionSlot}
             </p>
           </div>
@@ -360,16 +363,17 @@ export default function DashboardOverviewPage() {
             {role === "lead" && (
               <Link
                 href="/dashboard/members"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#3B82F6] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-blue-500"
               >
                 <Users className="h-3.5 w-3.5" />
-                Members ({leaderModel?.totalCrew ?? mission.crew.length})
+                Crew Matrix ({leaderModel?.totalCrew ?? mission.crew.length})
               </Link>
             )}
             <button
               type="button"
               onClick={() => {
-                const topCritical = hazardZones.find((z) => z.snapshot.status === "CRITICAL")?.hazard ?? HAZARDS[0];
+                const topCritical =
+                  hazardZones.find((z) => z.snapshot.status === "CRITICAL")?.hazard ?? HAZARDS[0];
                 triggerAlarm({
                   hazardNumber: topCritical.number,
                   hazardTitle: topCritical.title,
@@ -381,7 +385,7 @@ export default function DashboardOverviewPage() {
                   variant: "hazard",
                 });
               }}
-              className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+              className="rounded-md border border-[#DC2626]/55 bg-[#DC2626]/15 px-3.5 py-2 text-xs font-semibold text-red-200 transition hover:bg-[#DC2626]/25"
             >
               Test Alarm Overlay
             </button>
@@ -389,50 +393,47 @@ export default function DashboardOverviewPage() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5">
-            <p className="text-xs font-medium text-emerald-800">Nominal Hazard Zones</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-950">{nominalZones} / 5</p>
+          <div className="rounded-md border border-[#16A34A]/35 border-t-2 border-t-[#16A34A] bg-[#060A14] p-3.5">
+            <p className="label-caps text-emerald-300">Nominal Zones</p>
+            <p className="font-display mt-1 text-2xl text-white tabular-nums">{nominalZones} / 5</p>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5">
-            <p className="text-xs font-medium text-amber-800">Elevated Hazard Zones</p>
-            <p className="mt-1 text-2xl font-bold text-amber-950">{elevatedZones} / 5</p>
+          <div className="rounded-md border border-[#D97706]/35 border-t-2 border-t-[#D97706] bg-[#060A14] p-3.5">
+            <p className="label-caps text-amber-300">Elevated Zones</p>
+            <p className="font-display mt-1 text-2xl text-white tabular-nums">{elevatedZones} / 5</p>
           </div>
-          <div className="rounded-xl border border-red-200 bg-red-50/70 p-3.5">
-            <p className="text-xs font-medium text-red-800">Critical Hazard Zones</p>
-            <p className="mt-1 text-2xl font-bold text-red-950">{criticalZones} / 5</p>
+          <div className="rounded-md border border-[#DC2626]/40 border-t-2 border-t-[#DC2626] bg-[#060A14] p-3.5">
+            <p className="label-caps text-red-300">Critical Zones</p>
+            <p className="font-display mt-1 text-2xl text-white tabular-nums">{criticalZones} / 5</p>
           </div>
         </div>
       </section>
 
+      {/* 5 NASA HRP Hazard Bento Grid */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            5 NASA HRP Hazard Zones · Live Vitals
-          </h2>
-        </div>
+        <h2 className="label-caps text-slate-400">5 NASA HRP Channels · Live Vitals</h2>
 
-        <div className="grid gap-5 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {hazardZones.map(({ hazard, snapshot, vitals }) => (
             <div
               key={hazard.slug}
-              className={`flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs ${
+              className={`hud-panel flex flex-col justify-between rounded-lg p-5 transition ${
                 snapshot.status === "CRITICAL"
-                  ? "border-red-300"
+                  ? "border-[#DC2626]/55 shadow-[0_0_24px_rgba(220,38,38,0.12)]"
                   : snapshot.status === "ELEVATED"
-                  ? "border-amber-300"
-                  : "border-slate-200"
+                  ? "border-[#D97706]/50"
+                  : "border-slate-800 hover:border-[#3B82F6]/45"
               }`}
             >
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500">
-                      Hazard {hazard.number} · {hazard.shortTitle}
+                    <p className="font-mono-tech text-xs font-bold text-[#3B82F6]">
+                      H-0{hazard.number} · {hazard.shortTitle.toUpperCase()}
                     </p>
-                    <h3 className="mt-0.5 text-base font-bold text-slate-900">{hazard.title}</h3>
+                    <h3 className="font-display mt-0.5 text-base text-white">{hazard.title}</h3>
                   </div>
                   <span
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(
+                    className={`shrink-0 rounded px-2 py-0.5 font-mono-tech text-xs font-bold ${statusBadgeClass(
                       snapshot.status
                     )}`}
                   >
@@ -442,38 +443,48 @@ export default function DashboardOverviewPage() {
 
                 <div className="grid grid-cols-3 gap-2">
                   {vitals.map((vital) => (
-                    <div key={vital.label} className="rounded-xl bg-slate-50 p-2.5">
-                      <p className="truncate text-[11px] font-medium text-slate-500">{vital.label}</p>
-                      <p className="mt-0.5 truncate text-xs font-bold text-slate-900" title={vital.value}>
+                    <div
+                      key={vital.label}
+                      className="rounded-md border border-slate-800/90 bg-[#060A14] p-2.5"
+                    >
+                      <p className="truncate font-mono-tech text-[11px] text-slate-400">
+                        {vital.label}
+                      </p>
+                      <p
+                        className="mt-0.5 truncate font-mono-tech text-xs font-bold text-white"
+                        title={vital.value}
+                      >
                         {vital.value}
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <div className="space-y-1.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-xs">
-                  <p className="font-semibold text-slate-700">Immediate Assessment</p>
-                  <p className="leading-relaxed text-slate-600">{snapshot.immediateHorizon}</p>
+                <div className="space-y-1 rounded-md border border-slate-800/80 bg-[#060A14]/80 p-3 text-xs">
+                  <p className="label-caps text-slate-400">Immediate Assessment</p>
+                  <p className="leading-relaxed text-slate-200">{snapshot.immediateHorizon}</p>
                 </div>
 
                 {snapshot.solutions[0] && (
-                  <div className="flex items-start gap-2 rounded-xl bg-sky-50/70 p-3 text-xs text-sky-950">
-                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+                  <div className="flex items-start gap-2 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 p-3 text-xs text-blue-100">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#3B82F6]" />
                     <p className="leading-relaxed">
-                      <span className="font-semibold">Priority Action: </span>
+                      <span className="font-bold text-blue-300">Priority: </span>
                       {snapshot.solutions[0]}
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="truncate text-xs text-slate-500">ETA: {snapshot.eta}</span>
+              <div className="mt-4 flex items-center justify-between border-t border-slate-800/80 pt-3">
+                <span className="truncate font-mono-tech text-xs text-slate-400">
+                  ETA: {snapshot.eta}
+                </span>
                 <Link
                   href={`/dashboard/hazards/${hazard.slug}`}
-                  className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-900"
+                  className="inline-flex shrink-0 items-center gap-1 font-mono-tech text-xs font-bold text-blue-300 transition hover:text-white"
                 >
-                  Open Zone
+                  OPEN ZONE
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
@@ -482,21 +493,25 @@ export default function DashboardOverviewPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Priority Countermeasures ({activeCharacter.callsign})
+      {/* Bottom Countermeasures + Role Summary */}
+      <section className="grid gap-5 lg:grid-cols-2">
+        <div className="hud-panel rounded-lg p-6">
+          <h2 className="font-display flex items-center gap-2 text-sm text-white">
+            <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
+            Countermeasures · {activeCharacter.callsign}
           </h2>
-          <div className="mt-4 space-y-2.5">
+          <div className="mt-4 space-y-2">
             {characterModel.actions.length === 0 ? (
-              <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-                No urgent countermeasures triggered by current telemetry.
+              <p className="rounded-md border border-slate-800 bg-[#060A14] p-3 text-xs text-slate-400">
+                No urgent countermeasures triggered.
               </p>
             ) : (
               characterModel.actions.map((action, idx) => (
-                <div key={idx} className="rounded-xl bg-slate-50 p-3.5 text-sm text-slate-800">
-                  <span className="mr-2 font-semibold text-sky-700">#{idx + 1}</span>
+                <div
+                  key={idx}
+                  className="rounded-md border border-slate-800 bg-[#060A14] p-3 text-sm text-slate-200"
+                >
+                  <span className="mr-2 font-mono-tech font-bold text-[#3B82F6]">#0{idx + 1}</span>
                   {action}
                 </div>
               ))
@@ -504,43 +519,52 @@ export default function DashboardOverviewPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="hud-panel rounded-lg p-6">
           {role === "lead" && leaderModel ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                  <Users className="h-4 w-4 text-sky-600" />
+                <h2 className="font-display flex items-center gap-2 text-sm text-white">
+                  <Users className="h-4 w-4 text-[#3B82F6]" />
                   Crew Status Summary
                 </h2>
                 <Link
                   href="/dashboard/members"
-                  className="text-xs font-semibold text-sky-700 hover:underline"
+                  className="font-mono-tech text-xs font-bold text-blue-300 hover:text-white"
                 >
-                  View All Members →
+                  VIEW ALL →
                 </Link>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2.5 text-center text-xs">
-                <div className="rounded-xl bg-emerald-50 p-3">
-                  <p className="font-medium text-emerald-700">Nominal</p>
-                  <p className="mt-1 text-xl font-bold text-emerald-950">{leaderModel.nominalCount}</p>
+                <div className="rounded-md border border-[#16A34A]/35 bg-[#060A14] p-3">
+                  <p className="label-caps text-emerald-300">Nominal</p>
+                  <p className="font-display mt-1 text-xl text-white tabular-nums">
+                    {leaderModel.nominalCount}
+                  </p>
                 </div>
-                <div className="rounded-xl bg-amber-50 p-3">
-                  <p className="font-medium text-amber-700">Elevated</p>
-                  <p className="mt-1 text-xl font-bold text-amber-950">{leaderModel.elevatedCount}</p>
+                <div className="rounded-md border border-[#D97706]/35 bg-[#060A14] p-3">
+                  <p className="label-caps text-amber-300">Elevated</p>
+                  <p className="font-display mt-1 text-xl text-white tabular-nums">
+                    {leaderModel.elevatedCount}
+                  </p>
                 </div>
-                <div className="rounded-xl bg-red-50 p-3">
-                  <p className="font-medium text-red-700">Critical</p>
-                  <p className="mt-1 text-xl font-bold text-red-950">{leaderModel.criticalCount}</p>
+                <div className="rounded-md border border-[#DC2626]/40 bg-[#060A14] p-3">
+                  <p className="label-caps text-red-300">Critical</p>
+                  <p className="font-display mt-1 text-xl text-white tabular-nums">
+                    {leaderModel.criticalCount}
+                  </p>
                 </div>
               </div>
               <div className="mt-3 space-y-2">
                 {leaderModel.derivedTeamAlerts.length === 0 ? (
-                  <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-                    All crew hazard zones within nominal tolerances.
+                  <p className="rounded-md border border-slate-800 bg-[#060A14] p-3 text-xs text-slate-400">
+                    All crew streams within tolerance.
                   </p>
                 ) : (
                   leaderModel.derivedTeamAlerts.slice(0, 3).map((alertText, idx) => (
-                    <div key={idx} className="rounded-xl bg-amber-50/70 p-3 text-xs text-amber-950">
+                    <div
+                      key={idx}
+                      className="rounded-md border border-[#D97706]/35 bg-[#D97706]/10 p-3 text-xs text-amber-200"
+                    >
                       {alertText}
                     </div>
                   ))
@@ -549,18 +573,21 @@ export default function DashboardOverviewPage() {
             </>
           ) : (
             <>
-              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                <ShieldAlert className="h-4 w-4 text-amber-600" />
-                Active Hazard Watch Items
+              <h2 className="font-display flex items-center gap-2 text-sm text-white">
+                <ShieldAlert className="h-4 w-4 text-[#D97706]" />
+                Active Watch Items
               </h2>
-              <div className="mt-4 space-y-2.5">
+              <div className="mt-4 space-y-2">
                 {characterModel.blockers.length === 0 ? (
-                  <p className="rounded-xl bg-emerald-50 p-3.5 text-xs text-emerald-800">
-                    All 5 NASA HRP hazard telemetry streams are nominal for {activeCharacter.callsign}.
+                  <p className="rounded-md border border-[#16A34A]/35 bg-[#16A34A]/10 p-3.5 text-xs text-emerald-200">
+                    All 5 NASA HRP streams nominal for {activeCharacter.callsign}.
                   </p>
                 ) : (
                   characterModel.blockers.slice(0, 4).map((item, idx) => (
-                    <div key={idx} className="rounded-xl bg-amber-50/70 p-3 text-xs leading-relaxed text-amber-950">
+                    <div
+                      key={idx}
+                      className="rounded-md border border-[#D97706]/35 bg-[#D97706]/10 p-3 text-xs leading-relaxed text-amber-200"
+                    >
                       {item}
                     </div>
                   ))
@@ -572,65 +599,65 @@ export default function DashboardOverviewPage() {
       </section>
 
       {role === "lead" && leaderModel && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <section className="hud-panel rounded-lg p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                <Users className="h-4 w-4 text-sky-600" />
-                Crew Operational Roster ({leaderModel.totalCrew} Members)
+              <h2 className="font-display flex items-center gap-2 text-sm text-white">
+                <Users className="h-4 w-4 text-[#3B82F6]" />
+                Crew Operational Roster ({leaderModel.totalCrew})
               </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 font-mono-tech text-xs text-slate-400">
                 Operational overview · private notes masked
               </p>
             </div>
             <Link
               href="/dashboard/members"
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-[#060A14] px-3 py-1.5 font-mono-tech text-xs font-bold text-slate-200 hover:border-[#3B82F6]/60 hover:text-white"
             >
-              Detailed Directory
+              Directory
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 overflow-x-auto rounded-md border border-slate-800/90">
             <table className="w-full min-w-[720px] text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="py-2 pr-3">Crew Member</th>
-                  <th className="px-3 py-2">Overall</th>
-                  <th className="px-3 py-2">5 Hazards (R · I · D · G · E)</th>
-                  <th className="px-3 py-2">Dose Rate</th>
-                  <th className="px-3 py-2">Sleep / Noise</th>
-                  <th className="px-3 py-2">Exercise</th>
-                  <th className="py-2 pl-3 text-right">View</th>
+              <thead className="bg-[#060A14]">
+                <tr className="border-b border-slate-800 font-mono-tech text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="px-3 py-2.5">Crew Member</th>
+                  <th className="px-3 py-2.5">Overall</th>
+                  <th className="px-3 py-2.5">5 Hazards (R · I · D · G · E)</th>
+                  <th className="px-3 py-2.5">Dose Rate</th>
+                  <th className="px-3 py-2.5">Sleep / Noise</th>
+                  <th className="px-3 py-2.5">Exercise</th>
+                  <th className="px-3 py-2.5 text-right">View</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-800/70">
                 {leaderModel.crewMatrix.map((member) => {
                   const isCurrent = member.id === activeCharacter.id;
                   return (
                     <tr
                       key={member.id}
-                      className={isCurrent ? "bg-sky-50/50" : "hover:bg-slate-50/70"}
+                      className={isCurrent ? "bg-[#3B82F6]/10" : "hover:bg-slate-800/40"}
                     >
-                      <td className="py-3 pr-3">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900">{member.callsign}</span>
+                          <span className="font-bold text-white">{member.callsign}</span>
                           <span
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            className={`rounded px-1.5 py-0.5 font-mono-tech text-[10px] font-bold ${
                               member.isLeadSlot
-                                ? "bg-sky-100 text-sky-800"
-                                : "bg-slate-100 text-slate-600"
+                                ? "bg-[#3B82F6]/20 text-blue-300"
+                                : "bg-slate-800 text-slate-300"
                             }`}
                           >
                             {member.isLeadSlot ? "LEAD" : "MEMBER"}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-500">{member.assignedRoleTitle}</p>
+                        <p className="text-[11px] text-slate-400">{member.assignedRoleTitle}</p>
                       </td>
                       <td className="px-3 py-3">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusBadgeClass(
+                          className={`inline-block rounded px-2 py-0.5 font-mono-tech text-[11px] font-bold ${statusBadgeClass(
                             member.overallStatus
                           )}`}
                         >
@@ -646,30 +673,30 @@ export default function DashboardOverviewPage() {
                                 key={h.slug}
                                 href={`/dashboard/hazards/${h.slug}`}
                                 title={`${h.title}: ${st}`}
-                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition hover:opacity-80 ${statusBadgeClass(
+                                className={`rounded px-1.5 py-0.5 font-mono-tech text-[10px] font-bold transition hover:opacity-80 ${statusBadgeClass(
                                   st
                                 )}`}
                               >
-                                {h.number}. {h.shortTitle.slice(0, 3)}
+                                {h.number}.{h.shortTitle.slice(0, 3)}
                               </Link>
                             );
                           })}
                         </div>
                       </td>
-                      <td className="px-3 py-3 font-mono text-slate-800">
+                      <td className="px-3 py-3 font-mono-tech text-slate-200">
                         {member.operationalVitals.doseRateLabel}
                       </td>
-                      <td className="px-3 py-3 font-mono text-slate-800">
+                      <td className="px-3 py-3 font-mono-tech text-slate-200">
                         {member.operationalVitals.sleepLabel} · {member.operationalVitals.acousticsLabel}
                       </td>
-                      <td className="px-3 py-3 font-mono text-slate-800">
+                      <td className="px-3 py-3 font-mono-tech text-slate-200">
                         {member.operationalVitals.exercisePct !== null
                           ? `${member.operationalVitals.exercisePct}%`
                           : "—"}
                       </td>
-                      <td className="py-3 pl-3 text-right">
+                      <td className="px-3 py-3 text-right">
                         {isCurrent ? (
-                          <span className="rounded-lg bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-900">
+                          <span className="rounded border border-[#3B82F6]/40 bg-[#3B82F6]/15 px-2.5 py-1 font-mono-tech text-[11px] font-bold text-blue-300">
                             Active
                           </span>
                         ) : (
@@ -685,7 +712,7 @@ export default function DashboardOverviewPage() {
                                 variant: "info",
                               });
                             }}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                            className="rounded border border-slate-700 bg-[#060A14] px-2.5 py-1 font-mono-tech text-[11px] font-bold text-slate-200 hover:border-[#3B82F6]/60 hover:text-white"
                           >
                             Switch View
                           </button>
