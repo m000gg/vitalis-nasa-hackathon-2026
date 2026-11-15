@@ -1,97 +1,94 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Database,
-  FlaskConical,
-  Lock,
-  Radio,
-  Shield,
+  Beaker,
+  CloudSun,
+  Download,
+  RefreshCw,
   ShieldAlert,
-  Sun,
+  SlidersHorizontal,
   Users,
 } from "lucide-react";
 import { HazardTelemetryChart } from "@/components/HazardTelemetryChart";
+import { useMission } from "@/context/MissionContext";
 import { evaluateHazardForActor } from "@/lib/evaluator";
-import { RADIATION_PIPELINE_VALUES } from "@/lib/hazards/01-radiation";
-import type { HazardDataRecord } from "@/lib/hazards/types";
+import {
+  normalizeDose,
+  normalizeDoseRate,
+  RADIATION_PIPELINE_VALUES,
+} from "@/lib/hazards/01-radiation";
 import type { HazardScreenProps } from "./types";
 
-type StatusKey = "NOMINAL" | "ELEVATED" | "CRITICAL";
-
-const STATUS_STYLE: Record<
-  StatusKey,
-  { badge: string; panel: string; label: string }
-> = {
-  NOMINAL: {
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    panel: "border-emerald-200/80 bg-emerald-50/40",
-    label: "NOMINAL",
-  },
-  ELEVATED: {
-    badge: "border-amber-300 bg-amber-50 text-amber-900",
-    panel: "border-amber-300/80 bg-amber-50/40",
-    label: "ELEVATED",
-  },
-  CRITICAL: {
-    badge: "border-red-300 bg-red-50 text-red-900",
-    panel: "border-red-300/80 bg-red-50/40",
-    label: "CRITICAL",
-  },
+type ScenarioItem = {
+  id: string;
+  title: string;
+  threatType: string;
+  description: string;
 };
 
-function StatusIcon({ status, className = "h-3.5 w-3.5" }: { status: StatusKey; className?: string }) {
-  if (status === "CRITICAL") return <ShieldAlert className={className} aria-hidden="true" />;
-  if (status === "ELEVATED") return <AlertTriangle className={className} aria-hidden="true" />;
-  return <CheckCircle2 className={className} aria-hidden="true" />;
+type EmergencyItem = {
+  eventId: string;
+  state: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED";
+  title: string;
+  severity: "WARNING" | "CRITICAL";
+  reason: string;
+  simulation: boolean;
+  acknowledgements: Record<string, string>;
+  shelterCheckIns?: Record<string, string>;
+};
+
+type DonkiEventType = "SEP" | "FLR" | "RBE";
+
+type DonkiItem = {
+  eventId: string;
+  eventType: string;
+  startTime: string | null;
+  summary: string;
+  link?: string | null;
+};
+
+type WhatIfResult = {
+  label: string;
+  rateMultiplier?: number;
+  provenanceKind?: string;
+  status?: string;
+  explanation?: string;
+  forecast?: {
+    supported: boolean;
+    projectedValue: number | null;
+    lowerValue: number | null;
+    upperValue: number | null;
+    unit: string | null;
+    remainingHours: number | null;
+    reason?: string;
+  };
+};
+
+function responseError(payload: unknown, fallback: string): string {
+  return payload &&
+    typeof payload === "object" &&
+    "error" in payload &&
+    typeof payload.error === "string"
+    ? payload.error
+    : fallback;
 }
 
-function latestRecord(
-  records: readonly HazardDataRecord[],
-  streamName: string,
-  characterId?: string
-): HazardDataRecord | undefined {
-  return records
-    .filter(
-      (r) =>
-        r.hazardSlug === "radiation" &&
-        r.streamName === streamName &&
-        (!characterId || r.characterId === characterId)
-    )
-    .slice()
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+function statusBadgeClass(status: string): string {
+  if (status === "CRITICAL") return "bg-red-100 text-red-800";
+  if (status === "ELEVATED") return "bg-amber-100 text-amber-800";
+  return "bg-emerald-100 text-emerald-800";
 }
 
-function readStr(payload: Record<string, unknown> | undefined, key: string): string | null {
-  const val = payload?.[key];
-  return typeof val === "string" && val.trim() !== "" ? val.trim() : null;
+function formatNum(value: number | null | undefined, digits = 4): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  }).format(Number(value.toFixed(digits)));
 }
 
-function readNumStr(payload: Record<string, unknown> | undefined, key: string): string | null {
-  const val = payload?.[key];
-  if (typeof val === "number" && Number.isFinite(val)) return String(val);
-  if (typeof val === "string" && val.trim() !== "") return val.trim();
-  return null;
-}
-
-function readBool(payload: Record<string, unknown> | undefined, key: string): boolean | null {
-  const val = payload?.[key];
-  if (typeof val === "boolean") return val;
-  if (typeof val === "string") {
-    const norm = val.trim().toLowerCase();
-    if (norm === "true" || norm === "yes" || norm === "1") return true;
-    if (norm === "false" || norm === "no" || norm === "0") return false;
-  }
-  return null;
-}
-
-/**
- * HAZARD 1: SPACE RADIATION SCREEN (Read-Only, DB-Driven)
- * Renders evaluated outputs from 01-radiation.ts without inventing thresholds or clinical claims.
- */
 export function RadiationHazardScreen({
   hazard,
   mission,
@@ -103,380 +100,928 @@ export function RadiationHazardScreen({
   scenarioHazardRecords,
   scenarioHazardSamples,
 }: HazardScreenProps) {
+  const { refreshHazardTelemetry, refreshScenarios } = useMission();
   const S = RADIATION_PIPELINE_VALUES.streams;
 
-  const dosimeterRec = latestRecord(hazardRecords, S.personalDosimeter, activeCharacter.id);
-  const policyRec = latestRecord(scenarioHazardRecords, S.missionPolicy);
-  const weatherRec = latestRecord(scenarioHazardRecords, S.spaceWeather);
+  const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
+  const [emergencies, setEmergencies] = useState<EmergencyItem[]>([]);
+  const [donkiType, setDonkiType] = useState<DonkiEventType>("RBE");
+  const [donkiDays, setDonkiDays] = useState<7 | 30>(30);
+  const [donkiEvents, setDonkiEvents] = useState<DonkiItem[]>([]);
+  const [donkiQueryMeta, setDonkiQueryMeta] = useState<{
+    type: DonkiEventType;
+    start: string;
+    end: string;
+    error?: string;
+  } | null>(null);
+  const [whatIfResults, setWhatIfResults] = useState<WhatIfResult[]>([]);
+  const [whatIfLimitation, setWhatIfLimitation] = useState<string>("");
+  const [customMultiplier, setCustomMultiplier] = useState<string>("0.5");
+  const [customHours, setCustomHours] = useState<string>("24");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string>("");
 
-  const compartmentRecs = scenarioHazardRecords.filter(
-    (r) => r.hazardSlug === "radiation" && r.streamName === S.compartmentSensors
+  const refreshEmergencies = useCallback(async () => {
+    const response = await fetch(
+      `/api/radiation/emergencies?scenarioId=${encodeURIComponent(mission.id)}`
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(responseError(data, "Unable to sync radiation emergencies."));
+    }
+    setEmergencies(Array.isArray(data.emergencies) ? data.emergencies : []);
+  }, [mission.id]);
+
+  useEffect(() => {
+    void Promise.all([
+      fetch("/api/radiation/scenarios").then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(responseError(data, "Unable to load scenarios."));
+        }
+        setScenarios(Array.isArray(data.scenarios) ? data.scenarios : []);
+      }),
+      refreshEmergencies(),
+    ]).catch((error) => {
+      setNotice(error instanceof Error ? error.message : "Radiation sync failed.");
+    });
+  }, [refreshEmergencies]);
+
+  const activeEmergency = emergencies.find((item) => item.state !== "RESOLVED") ?? null;
+
+  const radiationRecords = useMemo(
+    () => scenarioHazardRecords.filter((record) => record.hazardSlug === "radiation"),
+    [scenarioHazardRecords]
   );
-  const researchRecs = hazardRecords.filter(
-    (r) => r.hazardSlug === "radiation" && r.streamName === S.researchLab
+  const personalRecords = useMemo(
+    () => radiationRecords.filter((record) => record.streamName === S.personalDosimeter),
+    [radiationRecords, S.personalDosimeter]
+  );
+  const compartmentRecords = useMemo(
+    () => radiationRecords.filter((record) => record.streamName === S.compartmentSensors),
+    [radiationRecords, S.compartmentSensors]
+  );
+  const researchRecords = useMemo(
+    () => radiationRecords.filter((record) => record.streamName === S.researchLab),
+    [radiationRecords, S.researchLab]
+  );
+  const currentPolicy = useMemo(
+    () => radiationRecords.find((record) => record.streamName === S.missionPolicy),
+    [radiationRecords, S.missionPolicy]
+  );
+  const syncedSpaceWeather = useMemo(
+    () => radiationRecords.find((record) => record.streamName === S.spaceWeather),
+    [radiationRecords, S.spaceWeather]
   );
 
-  const rateVal = readNumStr(dosimeterRec?.payload, "doseRateValue");
-  const rateUnit =
-    readStr(dosimeterRec?.payload, "doseRateUnit") ?? readStr(dosimeterRec?.payload, "unit");
-  const cumVal = readNumStr(dosimeterRec?.payload, "cumulativeDoseValue");
-  const cumUnit = readStr(dosimeterRec?.payload, "cumulativeDoseUnit");
-  const qualityFlag = readStr(dosimeterRec?.payload, "qualityFlag") ?? "unknown";
-  const provenanceKind = readStr(dosimeterRec?.payload, "provenanceKind") ?? "unlabeled";
-  const instrument = readStr(dosimeterRec?.payload, "instrument");
+  const displayedCharts = snapshot.charts ?? [];
 
-  const policyLabel = readStr(policyRec?.payload, "policyLabel") ?? "No configured mission policy";
-  const policyMode = readStr(policyRec?.payload, "policyMode");
-  const policyFamily = readStr(policyRec?.payload, "quantityFamily");
-  const remainingHours = readNumStr(policyRec?.payload, "remainingMissionHours");
+  const crewDoseRows = useMemo(
+    () =>
+      mission.crew.map((crew) => {
+        const record = personalRecords
+          .filter((item) => item.characterId === crew.id)
+          .slice()
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+        const payload = record?.payload ?? {};
+        const rate = normalizeDoseRate(
+          payload.doseRateValue,
+          payload.doseRateUnit ?? payload.unit
+        );
+        const cumulative = normalizeDose(
+          payload.cumulativeDoseValue,
+          payload.cumulativeDoseUnit
+        );
+        const memberStatus =
+          role === "lead"
+            ? evaluateHazardForActor(mission, crew, hazard, {
+                actorInputs: {},
+                scenarioHazardRecords,
+                scenarioHazardSamples,
+                role: "lead",
+              }).status
+            : snapshot.status;
 
-  const weatherActive = readBool(weatherRec?.payload, "active");
-  const weatherType = readStr(weatherRec?.payload, "eventType");
-  const weatherEventId = readStr(weatherRec?.payload, "eventId");
-  const weatherSource = readStr(weatherRec?.payload, "source");
+        return {
+          id: crew.id,
+          callsign: crew.callsign,
+          status: memberStatus,
+          sheltered: Boolean(activeEmergency?.shelterCheckIns?.[crew.id]),
+          rateLabel: rate ? `${formatNum(rate.value, 4)} ${rate.unit}` : "—",
+          doseLabel: cumulative ? `${formatNum(cumulative.value, 4)} ${cumulative.unit}` : "—",
+          quality: typeof payload.qualityFlag === "string" ? payload.qualityFlag : "—",
+          instrument: typeof payload.instrument === "string" ? payload.instrument : "",
+          provenance:
+            typeof payload.provenanceKind === "string" ? payload.provenanceKind : "missing",
+        };
+      }),
+    [
+      activeEmergency?.shelterCheckIns,
+      hazard,
+      mission,
+      personalRecords,
+      role,
+      scenarioHazardRecords,
+      scenarioHazardSamples,
+      snapshot.status,
+    ]
+  );
 
-  const charts = snapshot.charts ?? [];
+  const compartmentRows = useMemo(() => {
+    const parsed = compartmentRecords.map((record) => {
+      const payload = record.payload ?? {};
+      const rate = normalizeDoseRate(
+        payload.doseRateValue,
+        payload.doseRateUnit ?? payload.unit
+      );
+      return {
+        id: record.id,
+        name: String(payload.compartmentId ?? payload.compartment ?? "Unnamed compartment"),
+        rate,
+        rateLabel: rate ? `${formatNum(rate.value, 4)} ${rate.unit}` : "—",
+        status: String(payload.detectorStatus ?? "unknown"),
+        provenance: String(payload.provenanceKind ?? "unknown"),
+      };
+    });
+    const comparable = parsed.filter((item) => item.rate !== null);
+    const safest =
+      comparable.length >= 2
+        ? comparable.reduce((min, item) =>
+            item.rate!.value < min.rate!.value ? item : min
+          ).id
+        : null;
+    return parsed.map((item) => ({ ...item, isLowestRate: item.id === safest }));
+  }, [compartmentRecords]);
 
-  const crewRows =
-    role === "lead"
-      ? mission.crew.map((member) => {
-          const memberSnap = evaluateHazardForActor(mission, member, hazard, {
-            actorInputs: {},
-            scenarioHazardRecords,
-            scenarioHazardSamples,
-            role: "lead",
-          });
-          const mDosimeter = latestRecord(scenarioHazardRecords, S.personalDosimeter, member.id);
-          const mRate = readNumStr(mDosimeter?.payload, "doseRateValue");
-          const mRateUnit =
-            readStr(mDosimeter?.payload, "doseRateUnit") ?? readStr(mDosimeter?.payload, "unit");
-          const mCum = readNumStr(mDosimeter?.payload, "cumulativeDoseValue");
-          const mCumUnit = readStr(mDosimeter?.payload, "cumulativeDoseUnit");
-          const mQuality = readStr(mDosimeter?.payload, "qualityFlag") ?? "—";
-          const mProv = readStr(mDosimeter?.payload, "provenanceKind") ?? "—";
+  const activeDosimeterSource = useMemo(() => {
+    const own =
+      personalRecords.find((item) => item.characterId === activeCharacter.id) ??
+      (role === "lead" ? personalRecords[0] : undefined);
+    if (!own) return null;
+    const payload = own.payload ?? {};
+    const rate = normalizeDoseRate(payload.doseRateValue, payload.doseRateUnit ?? payload.unit);
+    const dose = normalizeDose(payload.cumulativeDoseValue, payload.cumulativeDoseUnit);
+    if (!rate || !dose || rate.family !== dose.family) return null;
+    return {
+      rate,
+      dose,
+      uncertaintyPercent:
+        typeof payload.uncertaintyPercent === "number" ? payload.uncertaintyPercent : null,
+    };
+  }, [activeCharacter.id, personalRecords, role]);
 
-          return {
-            id: member.id,
-            callsign: member.callsign,
-            assignedRoleTitle: member.assignedRoleTitle,
-            status: memberSnap.status,
-            rateLabel: mRate ? `${mRate}${mRateUnit ? ` ${mRateUnit}` : ""}` : "—",
-            cumLabel: mCum ? `${mCum}${mCumUnit ? ` ${mCumUnit}` : ""}` : "—",
-            quality: mQuality,
-            provenance: mProv,
-          };
-        })
-      : [];
+  const syncAll = useCallback(async () => {
+    await Promise.all([refreshEmergencies(), refreshHazardTelemetry(), refreshScenarios()]);
+  }, [refreshEmergencies, refreshHazardTelemetry, refreshScenarios]);
+
+  const runScenario = async (scenarioId: string) => {
+    setBusy(`scenario-${scenarioId}`);
+    setNotice("");
+    try {
+      const response = await fetch("/api/radiation/scenarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenarioId: mission.id,
+          radiationScenarioId: scenarioId,
+          actorId: activeCharacter.id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "Scenario runner failed."));
+      await syncAll();
+      setNotice(
+        `${data.scenario?.title ?? "Scenario"} written to Supabase as reproducible simulated telemetry.`
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Scenario runner failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const acknowledge = async () => {
+    if (!activeEmergency) return;
+    setBusy("ack");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/radiation/emergencies/${encodeURIComponent(activeEmergency.eventId)}/acknowledge`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scenarioId: mission.id, actorId: activeCharacter.id }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "Acknowledgement failed."));
+      await syncAll();
+      setNotice("Emergency acknowledgement saved to Supabase audit log.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Acknowledgement failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const shelterCheckIn = async () => {
+    if (!activeEmergency) return;
+    setBusy("shelter");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/radiation/emergencies/${encodeURIComponent(activeEmergency.eventId)}/shelter-check-in`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scenarioId: mission.id, characterId: activeCharacter.id }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "Shelter check-in failed."));
+      await syncAll();
+      setNotice("Shelter check-in confirmed in Supabase.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Shelter check-in failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const exportIncidentReport = async () => {
+    if (!activeEmergency) return;
+    setBusy("report");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/radiation/emergencies/${encodeURIComponent(activeEmergency.eventId)}/report?scenarioId=${encodeURIComponent(mission.id)}`
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "Report generation failed."));
+      const blob = new Blob([JSON.stringify(data.report, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `radiation-incident-${activeEmergency.eventId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setNotice(`Incident report exported for ${activeEmergency.eventId}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Report export failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const resolveEmergency = async () => {
+    if (!activeEmergency) return;
+    setBusy("resolve");
+    setNotice("");
+    try {
+      const response = await fetch("/api/radiation/emergencies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenarioId: mission.id,
+          actorId: activeCharacter.id,
+          eventId: activeEmergency.eventId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "Unable to resolve emergency."));
+      await syncAll();
+      setNotice(`Marked ${activeEmergency.eventId} resolved.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to resolve emergency.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const loadDonki = async () => {
+    setBusy("donki");
+    setNotice("");
+    const end = new Date();
+    const start = new Date(end.getTime() - donkiDays * 86_400_000);
+    const format = (date: Date) => date.toISOString().slice(0, 10);
+    const startDate = format(start);
+    const endDate = format(end);
+    try {
+      const response = await fetch(
+        `/api/radiation/donki?eventType=${donkiType}&startDate=${startDate}&endDate=${endDate}`
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "NASA DONKI request failed."));
+      const events = Array.isArray(data.events) ? data.events : [];
+      setDonkiEvents(events);
+      setDonkiQueryMeta({ type: donkiType, start: startDate, end: endDate });
+      setNotice(
+        `NASA DONKI ${donkiType} (${startDate} .. ${endDate}): ${events.length} event(s) loaded as space-weather context.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "NASA DONKI request failed.";
+      setDonkiEvents([]);
+      setDonkiQueryMeta({ type: donkiType, start: startDate, end: endDate, error: message });
+      setNotice(message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runWhatIf = async () => {
+    if (!activeDosimeterSource) {
+      setNotice("Compatible dosimeter rate and cumulative dose are required for What-If modeling.");
+      return;
+    }
+    const multiplier = Number(customMultiplier);
+    const hours = Number(customHours);
+    if (!Number.isFinite(multiplier) || multiplier < 0 || !Number.isFinite(hours) || hours < 0) {
+      setNotice("Enter valid non-negative multiplier and remaining hours.");
+      return;
+    }
+
+    setBusy("what-if");
+    setNotice("");
+    try {
+      const response = await fetch("/api/radiation/what-if", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentDoseValue: activeDosimeterSource.dose.value,
+          currentDoseUnit: activeDosimeterSource.dose.unit,
+          baselineRateValue: activeDosimeterSource.rate.value,
+          baselineRateUnit: activeDosimeterSource.rate.unit,
+          remainingHours: hours,
+          uncertaintyPercent: activeDosimeterSource.uncertaintyPercent,
+          choices: [
+            { label: "Baseline trajectory (1.0x)", rateMultiplier: 1.0 },
+            { label: "Shelter / attitude attenuation (0.5x modeled)", rateMultiplier: 0.5 },
+            { label: "Higher-exposure task (1.8x modeled)", rateMultiplier: 1.8 },
+            { label: `Custom scenario (${multiplier}x)`, rateMultiplier: multiplier },
+          ],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseError(data, "What-If calculation failed."));
+      setWhatIfResults(Array.isArray(data.results) ? data.results : []);
+      setWhatIfLimitation(typeof data.limitation === "string" ? data.limitation : "");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "What-If calculation failed.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const ownDosimeterRow = crewDoseRows.find((row) => row.id === activeCharacter.id);
+  const selfSheltered = Boolean(activeEmergency?.shelterCheckIns?.[activeCharacter.id]);
 
   return (
-    <div className="space-y-6">
-      {/* 1. Ready-to-Act Primary Briefing */}
-      <section className={`rounded-2xl border p-5 ${STATUS_STYLE[snapshot.status].panel}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${STATUS_STYLE[snapshot.status].badge}`}
-            >
-              <StatusIcon status={snapshot.status} className="h-3.5 w-3.5" />
-              {snapshot.status}
-            </span>
-            <h2 className="text-base font-bold text-slate-900">Ready-to-Act Briefing</h2>
-          </div>
+    <section className="space-y-4 text-slate-900">
+      {notice && (
+        <div
+          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-700"
+          role="status"
+        >
+          {notice}
+        </div>
+      )}
 
-          <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
-            ETA: {snapshot.eta}
+      {/* Status Summary & Immediate / Prolonged Horizons */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Radiation Decision Summary</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {hazardRecords.length} personal snapshot(s) · {hazardSamples.length} sample(s) ·{" "}
+              {currentPolicy
+                ? String(currentPolicy.payload?.policyLabel ?? "Mission policy configured")
+                : "No mission policy configured"}
+            </p>
+          </div>
+          <span
+            className={`rounded-md px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(snapshot.status)}`}
+          >
+            {snapshot.status}
           </span>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div className="space-y-3 lg:col-span-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-              <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
-                Immediate Horizon (Dose Rate &amp; Data Quality)
-              </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-900">
-                {snapshot.immediateHorizon}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-              <p className="text-xs font-bold tracking-wide text-slate-600 uppercase">
-                Prolonged Horizon (Mission Exposure Forecast)
-              </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
-                {snapshot.prolongedHorizon}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-sky-200 bg-white p-4 lg:col-span-6">
-            <p className="text-xs font-bold tracking-wide text-sky-900 uppercase">
-              Prioritized Flight-Rule Actions ({snapshot.solutions.length} Max)
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Immediate Horizon
             </p>
-            <ol className="mt-2.5 space-y-2">
-              {snapshot.solutions.map((sol, idx) => (
-                <li
-                  key={sol}
-                  className="flex items-start gap-2.5 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-sm leading-snug text-sky-950"
-                >
-                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-700 text-xs font-bold text-white">
-                    {idx + 1}
-                  </span>
-                  <span>{sol}</span>
+            <p className="mt-1.5 text-sm text-slate-800">{snapshot.immediateHorizon}</p>
+            <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+              {snapshot.eta}
+            </p>
+            <ul className="mt-3 space-y-1.5 text-xs text-slate-700">
+              {snapshot.solutions.map((solution, index) => (
+                <li key={solution} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <span className="mr-1.5 font-semibold text-slate-900">{index + 1}.</span>
+                  {solution}
                 </li>
               ))}
-            </ol>
+            </ul>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Prolonged Forecast
+            </p>
+            <p className="mt-1.5 text-sm text-slate-800">{snapshot.prolongedHorizon}</p>
+            <p className="mt-3 text-xs text-slate-500">
+              Gy and Sv families remain strictly separated. Forecasts reflect configured model inputs,
+              not medical diagnoses or lifetime cancer probabilities.
+            </p>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* 2. Core Radiation Telemetry & Provenance KPIs */}
-      <section aria-label="Core radiation telemetry" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      {/* Emergency State & Crew/Personal Dosimetry */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">Personal Dosimeter</span>
-            <Activity className="h-4 w-4 text-sky-600" aria-hidden="true" />
-          </div>
-          <p className="mt-2 text-xl font-bold text-slate-900 tabular-nums">
-            {rateVal ? `${rateVal}${rateUnit ? ` ${rateUnit}` : ""}` : "—"}
-          </p>
-          <p className="mt-1 text-xs text-slate-600">
-            Cumulative: {cumVal ? `${cumVal}${cumUnit ? ` ${cumUnit}` : ""}` : "—"}
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Provenance: <span className="font-semibold uppercase">{provenanceKind}</span> · Quality: {qualityFlag}
-            {instrument ? ` · ${instrument}` : ""}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">Mission Policy</span>
-            <Shield className="h-4 w-4 text-sky-600" aria-hidden="true" />
-          </div>
-          <p className="mt-2 text-sm font-bold text-slate-900">{policyLabel}</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Family: {policyFamily ?? "—"} · Remaining: {remainingHours ? `${remainingHours} h` : "—"}
-          </p>
-          <p className="mt-1 text-[11px] text-amber-800">
-            {policyMode === "approved"
-              ? "APPROVED FLIGHT RULE"
-              : policyRec
-              ? "SIMULATION POLICY — NOT A UNIVERSAL NASA LIMIT"
-              : "No policy record synced"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">Space Weather (DONKI)</span>
-            <Sun className="h-4 w-4 text-amber-600" aria-hidden="true" />
-          </div>
-          <p className="mt-2 text-sm font-bold text-slate-900">
-            {weatherActive ? `ACTIVE (${weatherType ?? "EVENT"})` : weatherRec ? "Quiet / Inactive" : "No Event Synced"}
-          </p>
-          <p className="mt-1 text-xs text-slate-600">
-            {weatherEventId ? `Event ID: ${weatherEventId}` : "Space-weather timeline only"}
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Event context ≠ crew dose reading{weatherSource ? ` · ${weatherSource}` : ""}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-slate-600">Compartments &amp; Lab</span>
-            <Database className="h-4 w-4 text-slate-600" aria-hidden="true" />
-          </div>
-          <p className="mt-2 text-xl font-bold text-slate-900 tabular-nums">
-            {compartmentRecs.length} sensor(s)
-          </p>
-          <p className="mt-1 text-xs text-slate-600">
-            Synced personal records: {hazardRecords.length} · Samples: {hazardSamples.length}
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Experimental lab records: {researchRecs.length}
-          </p>
-        </div>
-      </section>
-
-      {/* 3. Role-Tailored View (Lead Crew Comparison & Compartments vs Member Profile & Experimental Lab) */}
-      {role === "lead" ? (
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-sky-700" aria-hidden="true" />
-                <h2 className="text-sm font-bold text-slate-900">
-                  Crew Radiation Comparison (Mission-Safety Dosimetry)
-                </h2>
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
-                <Lock className="h-3 w-3" /> {hazard.leadView.privacyRule}
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <ShieldAlert className="h-4 w-4 text-slate-600" />
+              Active Radiation Event &amp; Shelter Workflow
+            </h3>
+            {activeEmergency && (
+              <span
+                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                  activeEmergency.severity === "CRITICAL"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {activeEmergency.severity}
               </span>
-            </div>
+            )}
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+          {!activeEmergency ? (
+            <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500">
+              No active durable radiation emergency in Supabase.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{activeEmergency.title}</p>
+                <p className="mt-1 text-xs text-slate-600">{activeEmergency.reason}</p>
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  Event {activeEmergency.eventId} ·{" "}
+                  {activeEmergency.simulation ? "Simulated fixture" : "Operational record"} · State:{" "}
+                  {activeEmergency.state}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={acknowledge}
+                  disabled={
+                    busy === "ack" || Boolean(activeEmergency.acknowledgements[activeCharacter.id])
+                  }
+                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {activeEmergency.acknowledgements[activeCharacter.id]
+                    ? "Acknowledged"
+                    : busy === "ack"
+                    ? "Saving..."
+                    : "Acknowledge"}
+                </button>
+                <button
+                  type="button"
+                  onClick={shelterCheckIn}
+                  disabled={busy === "shelter" || selfSheltered}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {selfSheltered
+                    ? "Shelter Confirmed"
+                    : busy === "shelter"
+                    ? "Saving..."
+                    : "Confirm Shelter"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportIncidentReport}
+                  disabled={busy === "report"}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {busy === "report" ? "Exporting..." : "Export Report"}
+                </button>
+                {role === "lead" && (
+                  <button
+                    type="button"
+                    onClick={resolveEmergency}
+                    disabled={busy === "resolve"}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {busy === "resolve" ? "Resolving..." : "Resolve"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </article>
+
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Users className="h-4 w-4 text-slate-600" />
+              {role === "lead" ? "Crew Exposure Summary (Operational)" : "Personal Dosimeter Summary"}
+            </h3>
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+              {role === "lead" ? `${personalRecords.length} record(s)` : activeCharacter.callsign}
+            </span>
+          </div>
+
+          {role === "lead" ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[500px] text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 text-[11px] tracking-wide text-slate-500 uppercase">
-                    <th className="py-2 pr-3 font-semibold">Crew Slot</th>
-                    <th className="px-3 py-2 font-semibold">Status</th>
-                    <th className="px-3 py-2 font-semibold">Dose Rate</th>
-                    <th className="px-3 py-2 font-semibold">Cumulative</th>
-                    <th className="px-3 py-2 font-semibold">Quality</th>
-                    <th className="py-2 pl-3 font-semibold">Provenance</th>
+                  <tr className="border-b border-slate-200 text-slate-500">
+                    <th className="py-2 pr-3 font-medium">Crew</th>
+                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 pr-3 font-medium">Rate</th>
+                    <th className="py-2 pr-3 font-medium">Cumulative</th>
+                    <th className="py-2 pr-3 font-medium">Quality / Source</th>
+                    <th className="py-2 font-medium">Shelter</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {crewRows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="py-2.5 pr-3">
-                        <div className="font-semibold text-slate-900">{row.callsign}</div>
-                        <div className="text-[11px] text-slate-500">{row.assignedRoleTitle}</div>
-                      </td>
-                      <td className="px-3 py-2.5">
+                <tbody>
+                  {crewDoseRows.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-100 text-slate-700">
+                      <td className="py-2 pr-3 font-medium text-slate-900">{row.callsign}</td>
+                      <td className="py-2 pr-3">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${STATUS_STYLE[row.status].badge}`}
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass(row.status)}`}
                         >
                           {row.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-slate-800">{row.rateLabel}</td>
-                      <td className="px-3 py-2.5 font-mono text-slate-800">{row.cumLabel}</td>
-                      <td className="px-3 py-2.5 text-slate-700">{row.quality}</td>
-                      <td className="py-2.5 pl-3 text-[11px] uppercase text-slate-600">{row.provenance}</td>
+                      <td className="py-2 pr-3">{row.rateLabel}</td>
+                      <td className="py-2 pr-3">{row.doseLabel}</td>
+                      <td className="py-2 pr-3 text-[11px] text-slate-500">
+                        {row.quality} · {row.provenance}
+                      </td>
+                      <td className="py-2">
+                        {activeEmergency ? (
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                              row.sheltered
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {row.sheltered ? "Confirmed" : "Pending"}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {compartmentRecs.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="mb-3 flex items-center gap-2">
-                <Radio className="h-4 w-4 text-sky-700" aria-hidden="true" />
-                <h2 className="text-sm font-bold text-slate-900">Compartment Sensors</h2>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">Latest Rate</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {ownDosimeterRow?.rateLabel ?? "—"}
+                </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {compartmentRecs.map((rec) => {
-                  const compId = readStr(rec.payload, "compartmentId") ?? rec.rawValue ?? "Compartment";
-                  const rVal = readNumStr(rec.payload, "doseRateValue") ?? "—";
-                  const rUnit = readStr(rec.payload, "doseRateUnit") ?? readStr(rec.payload, "unit") ?? "";
-                  const detStatus = readStr(rec.payload, "detectorStatus") ?? "unknown";
-                  const pos = readStr(rec.payload, "position");
-                  const prov = readStr(rec.payload, "provenanceKind") ?? "unlabeled";
-                  return (
-                    <div key={rec.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-slate-900">{compId}</span>
-                        <span className="rounded bg-white px-2 py-0.5 font-mono text-[10px] text-slate-600">
-                          {detStatus}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-base font-bold text-slate-900">
-                        {rVal} {rUnit}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Provenance: {prov}
-                        {pos ? ` · ${pos}` : ""}
-                      </p>
-                    </div>
-                  );
-                })}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">Cumulative Dose</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {ownDosimeterRow?.doseLabel ?? "—"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">Quality &amp; Provenance</p>
+                <p className="mt-1 font-medium text-slate-800">
+                  {ownDosimeterRow?.quality ?? "—"} · {ownDosimeterRow?.provenance ?? "missing"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">Instrument / Shelter</p>
+                <p className="mt-1 font-medium text-slate-800">
+                  {ownDosimeterRow?.instrument || "Dosimeter"} ·{" "}
+                  {activeEmergency ? (selfSheltered ? "Sheltered" : "Pending") : "Nominal"}
+                </p>
               </div>
             </div>
           )}
-        </section>
-      ) : (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Lock className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-              Personal Radiation Profile &amp; Experimental Research Context
-            </h2>
-            <span className="text-[11px] text-slate-500">{hazard.memberView.privacyRule}</span>
-          </div>
+        </article>
+      </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
-              <p className="font-semibold text-slate-900">Synced DB Streams ({activeCharacter.callsign})</p>
-              {hazardRecords.length > 0 ? (
-                <ul className="mt-2 space-y-1.5 text-slate-700">
-                  {hazardRecords.map((rec) => (
-                    <li key={rec.id} className="rounded-lg bg-white p-2">
-                      <span className="font-semibold text-slate-900">{rec.streamName}:</span>{" "}
-                      {rec.rawValue || JSON.stringify(rec.payload)}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1.5 text-slate-500">No personal radiation snapshots synced yet.</p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
-              <div className="flex items-center gap-1.5 font-semibold text-slate-900">
-                <FlaskConical className="h-3.5 w-3.5 text-indigo-600" aria-hidden="true" />
-                Shielding &amp; BioShield Lab (Experimental Only)
-              </div>
-              {researchRecs.length > 0 ? (
-                <ul className="mt-2 space-y-1.5 text-slate-700">
-                  {researchRecs.map((rec) => (
-                    <li key={rec.id} className="rounded-lg bg-white p-2">
-                      <span className="mr-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800">
-                        EXPERIMENTAL
-                      </span>
-                      {readStr(rec.payload, "materialOrSpecimen") ?? rec.rawValue ?? "Experiment record"} —{" "}
-                      {readNumStr(rec.payload, "resultValue") ?? "—"}{" "}
-                      {readStr(rec.payload, "resultUnit") ?? ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1.5 text-slate-500">
-                  No experimental OLTARIS / BioShield / BioSentinel records synced. Experimental results are never operational protection claims.
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 4. Thresholded Telemetry Charts */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">
-          Radiation Telemetry History &amp; Comparisons
-        </h2>
-        {charts.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {charts.map((chart) => (
-              <HazardTelemetryChart key={chart.id} chart={chart} />
-            ))}
-          </div>
+      {/* Telemetry Charts */}
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {displayedCharts.length > 0 ? (
+          displayedCharts.map((chart) => <HazardTelemetryChart key={chart.id} chart={chart} />)
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-600">
-            Awaiting DB dose-rate time-series samples to render radiation charts.
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-xs text-slate-500">
+            No numeric radiation samples synced yet. Telemetry charts render once dosimeter or
+            compartment samples are stored.
           </div>
         )}
       </section>
 
-      {/* 5. Scientific Boundaries & NASA References */}
+      {/* Compartment Sensors */}
+      <article className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Activity className="h-4 w-4 text-slate-600" />
+            Compartment Sensors &amp; Shelter Route Context
+          </h3>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+            {compartmentRows.length} reading(s)
+          </span>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {compartmentRows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-3">
+              No compartment telemetry available.
+            </p>
+          ) : (
+            compartmentRows.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs"
+              >
+                <div>
+                  <p className="font-semibold text-slate-900">{item.name}</p>
+                  <p className="text-[11px] text-slate-500">
+                    Detector: {item.status} · {item.provenance}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-slate-900">{item.rateLabel}</p>
+                  {item.isLowestRate && (
+                    <span className="inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+                      Lowest rate
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </article>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* What-If Simulator */}
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+              What-If Decision Comparison
+            </h3>
+            <button
+              type="button"
+              onClick={runWhatIf}
+              disabled={busy === "what-if" || !activeDosimeterSource}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {busy === "what-if" ? "Calculating..." : "Compare Options"}
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs">
+            <label className="flex items-center gap-1.5 text-slate-600">
+              Custom multiplier:
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={customMultiplier}
+                onChange={(event) => setCustomMultiplier(event.target.value)}
+                className="w-20 rounded-md border border-slate-300 px-2 py-1 text-slate-900"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-slate-600">
+              Horizon (h):
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={customHours}
+                onChange={(event) => setCustomHours(event.target.value)}
+                className="w-20 rounded-md border border-slate-300 px-2 py-1 text-slate-900"
+              />
+            </label>
+          </div>
+
+          {whatIfResults.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+              {activeDosimeterSource
+                ? "Run comparison to evaluate baseline vs storm shelter vs higher-exposure multipliers."
+                : "Requires an active compatible dosimeter reading before running What-If comparisons."}
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {whatIfResults.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+                >
+                  <span className="font-medium text-slate-900">{item.label}</span>
+                  <span className="text-slate-700">
+                    {item.forecast?.supported
+                      ? `${formatNum(item.forecast.projectedValue)} ${item.forecast.unit ?? ""}${
+                          item.forecast.lowerValue !== null && item.forecast.upperValue !== null
+                            ? ` (${formatNum(item.forecast.lowerValue)}–${formatNum(item.forecast.upperValue)})`
+                            : ""
+                        }`
+                      : item.explanation ?? item.forecast?.reason ?? "Unavailable"}
+                  </span>
+                </div>
+              ))}
+              {whatIfLimitation && <p className="text-[11px] text-slate-500">{whatIfLimitation}</p>}
+            </div>
+          )}
+        </article>
+
+        {/* NASA DONKI Context */}
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <CloudSun className="h-4 w-4 text-slate-600" />
+              NASA DONKI Space Weather Context
+            </h3>
+            <div className="flex items-center gap-2">
+              <select
+                value={donkiType}
+                onChange={(event) => setDonkiType(event.target.value as DonkiEventType)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+              >
+                <option value="RBE">RBE</option>
+                <option value="SEP">SEP</option>
+                <option value="FLR">FLR</option>
+              </select>
+              <select
+                value={donkiDays}
+                onChange={(event) => setDonkiDays(Number(event.target.value) === 7 ? 7 : 30)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+              >
+                <option value={7}>7 Days</option>
+                <option value={30}>30 Days</option>
+              </select>
+              <button
+                type="button"
+                onClick={loadDonki}
+                disabled={busy === "donki"}
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {busy === "donki" ? "Loading..." : `Load ${donkiDays} Days`}
+              </button>
+            </div>
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500">
+            External heliophysics events only; never converted directly into spacecraft or crew dose.
+          </p>
+
+          {syncedSpaceWeather && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+              <span className="font-medium text-slate-900">Mission DB stream: </span>
+              <span className="text-slate-700">{syncedSpaceWeather.rawValue}</span>
+            </div>
+          )}
+
+          <div className="mt-3 space-y-2">
+            {donkiQueryMeta?.error ? (
+              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                {donkiQueryMeta.error}
+              </p>
+            ) : donkiEvents.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                {donkiQueryMeta
+                  ? `NASA DONKI returned 0 ${donkiQueryMeta.type} events for ${donkiQueryMeta.start} .. ${donkiQueryMeta.end} (quiet solar activity — try RBE or 30 days).`
+                  : "Click Load to query live NASA DONKI events."}
+              </p>
+            ) : (
+              donkiEvents.slice(0, 5).map((event) => (
+                <div
+                  key={event.eventId}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-800">
+                        {event.eventType}
+                      </span>
+                      <span className="font-medium text-slate-900">{event.eventId}</span>
+                    </div>
+                    {event.startTime && (
+                      <span className="text-[11px] text-slate-500">
+                        {event.startTime.slice(0, 16).replace("T", " ")} UTC
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-slate-600">{event.summary}</p>
+                    {event.link && (
+                      <a
+                        href={event.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 font-medium text-slate-700 underline hover:text-slate-900"
+                      >
+                        NASA Report ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+      </div>
+
+      {researchRecords.length > 0 && (
+        <article className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Beaker className="h-4 w-4 text-slate-600" />
+            Experimental Research / BioShield Lab
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Experimental records only — not certified operational shielding.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {researchRecords.map((record) => (
+              <div
+                key={record.id}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
+              >
+                <p className="font-semibold text-slate-900">
+                  {String(record.payload.materialOrSpecimen ?? record.rawValue)}
+                </p>
+                <p className="mt-1 text-slate-600">
+                  Experiment {String(record.payload.experimentId ?? record.id)} ·{" "}
+                  {String(record.payload.resultValue ?? "—")}{" "}
+                  {String(record.payload.resultUnit ?? "")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </article>
+      )}
+
+      {role === "lead" && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-slate-600" />
+            <h3 className="text-sm font-semibold text-slate-900">
+              Reproducible Simulation Fixtures (Lead Only)
+            </h3>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Writes clearly labeled simulated records and audit events to Supabase for end-to-end
+            verification.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {scenarios.map((scenario) => (
+              <div
+                key={scenario.id}
+                className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50 p-3.5"
+              >
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">
+                    {scenario.id}. {scenario.title}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-600">{scenario.description}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => runScenario(scenario.id)}
+                  disabled={busy === `scenario-${scenario.id}`}
+                  className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {busy === `scenario-${scenario.id}` ? "Running..." : "Run Simulation"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 text-xs text-slate-600">
-        <p className="font-bold text-slate-900">Scientific Boundaries &amp; NASA Reference Anchors</p>
+        <p className="font-semibold text-slate-900">Scientific Boundaries &amp; Reference Anchors</p>
         <p className="mt-1">
-          Sv-family (equivalent/effective) and Gy-family (absorbed) quantities are kept strictly separate.
-          DONKI space-weather events are tracked independently from crew dosimetry.
+          Sv-family (equivalent/effective) and Gy-family (absorbed) quantities are never combined.
+          DONKI space-weather events remain separate from onboard crew dosimetry.
         </p>
         <ul className="mt-2 flex flex-wrap gap-2">
           {hazard.nasaReferences.map((ref) => (
-            <li key={ref} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] text-slate-700">
+            <li key={ref} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
               {ref}
             </li>
           ))}
         </ul>
       </section>
-    </div>
+    </section>
   );
 }

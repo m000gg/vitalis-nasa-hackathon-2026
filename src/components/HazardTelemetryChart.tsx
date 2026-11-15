@@ -3,6 +3,11 @@
 import React from "react";
 import { HazardChartSpec } from "@/lib/hazards";
 
+function formatChartValue(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return String(Number(value.toFixed(4)));
+}
+
 export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
   const { title, unit, series, thresholds } = chart;
 
@@ -54,7 +59,7 @@ export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold text-slate-900">{title}</p>
         <span className="rounded bg-sky-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-sky-800">
-          Latest: {latest.value}
+          Latest: {formatChartValue(latest.value)}
           {unit ? ` ${unit}` : ""}
         </span>
       </div>
@@ -84,7 +89,7 @@ export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
               fontWeight="600"
               fill={t.color}
             >
-              {t.label} ({t.value}
+              {t.label} ({formatChartValue(t.value)}
               {unit ? ` ${unit}` : ""})
             </text>
           </g>
@@ -102,7 +107,7 @@ export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
         {coords.map((c, idx) => (
           <circle key={idx} cx={c.x} cy={c.y} r="3.5" fill="#0f172a">
             <title>
-              {c.point.label}: {c.point.value}
+              {c.point.label}: {formatChartValue(c.point.value)}
               {unit ? ` ${unit}` : ""}
             </title>
           </circle>
@@ -121,7 +126,7 @@ export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
                 style={{ borderColor: t.color }}
               />
               <span>
-                {t.label}: {t.value}
+                {t.label}: {formatChartValue(t.value)}
                 {unit ? ` ${unit}` : ""}
               </span>
             </span>
@@ -131,8 +136,8 @@ export function HazardTelemetryChart({ chart }: { chart: HazardChartSpec }) {
 
       <div className="flex items-center justify-between text-[11px] text-slate-500">
         <span>
-          Min: {seriesMin}
-          {unit ? ` ${unit}` : ""} · Max: {seriesMax}
+          Min: {formatChartValue(seriesMin)}
+          {unit ? ` ${unit}` : ""} · Max: {formatChartValue(seriesMax)}
           {unit ? ` ${unit}` : ""}
         </span>
         <span>

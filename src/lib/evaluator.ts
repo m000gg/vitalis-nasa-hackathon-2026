@@ -436,7 +436,7 @@ export function evaluateHazardForActor(
       unit: slotMeta?.unit ?? "",
       series: points.map((p) => ({
         label: new Date(p.recordedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        value: p.numericValue as number,
+        value: Number((p.numericValue as number).toFixed(4)),
       })),
     });
   });
