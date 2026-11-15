@@ -5,6 +5,7 @@
 
 <p>
   <a href="https://github.com/m000gg/vitalis-nasa-hackathon-2026/issues"><img src="https://img.shields.io/github/issues/m000gg/vitalis-nasa-hackathon-2026.svg" alt="Issues"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Next.js-15.3-black?logo=next.js" alt="Next.js 15">
   <img src="https://img.shields.io/badge/React-19-149eca?logo=react" alt="React 19">
   <img src="https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript" alt="TypeScript 5.8">
@@ -33,6 +34,7 @@
 * *[Configuration](#configuration)*
 * *[Verification & Tests](#verification--tests)*
 * *[Authors](#authors)*
+* *[License](#license)*
 
 ---
 
@@ -274,3 +276,9 @@ node --test tests/radiation.test.mjs tests/rbac.test.mjs
 ## 👥 Authors
 
 * **m000gg & Vitalis NASA Hackathon 2026 Team** — [GitHub](https://github.com/m000gg/vitalis-nasa-hackathon-2026)
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
