@@ -6,11 +6,15 @@ import {
   CircleCheck,
   CircleDashed,
   CircleX,
+  Clock,
   Info,
+  Lock,
   MoveRight,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
+  Users,
+  Wind,
 } from "lucide-react";
 import {
   InfoCircle,
@@ -92,6 +96,12 @@ const HAZARD_STATUS_CHIP: Record<"NOMINAL" | "ELEVATED" | "CRITICAL", string> = 
   NOMINAL: "border border-[#16A34A]/40 bg-[#16A34A]/15 text-emerald-300",
   ELEVATED: "border border-[#D97706]/45 bg-[#D97706]/15 text-amber-200",
   CRITICAL: "border border-[#DC2626]/50 bg-[#DC2626]/15 text-red-200",
+};
+
+const HAZARD_STATUS_PANEL: Record<"NOMINAL" | "ELEVATED" | "CRITICAL", string> = {
+  NOMINAL: "border-[#16A34A]/40 bg-[#16A34A]/10",
+  ELEVATED: "border-[#D97706]/45 bg-[#D97706]/12",
+  CRITICAL: "border-[#DC2626]/50 bg-[#DC2626]/12",
 };
 
 function round(value: number, decimals: number): string {
@@ -447,42 +457,42 @@ function ModuleDetails({ module }: { module: ModuleModel }) {
           {V.messages.noSamples} Stream: “{module.streamName}”.
         </p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[420px] text-left">
-            <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800 bg-[#0B111F]">
+          <table className="w-full min-w-[420px] text-left text-xs">
+            <thead className="bg-[#060A14] text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               <tr>
-                <th className="py-1.5 pr-3 font-medium">Metric</th>
-                <th className="py-1.5 pr-3 font-medium">Value</th>
-                <th className="py-1.5 pr-3 font-medium">Status</th>
-                <th className="py-1.5 font-medium">Data</th>
+                <th className="px-3.5 py-2.5">Metric</th>
+                <th className="px-3 py-2.5">Value</th>
+                <th className="px-3 py-2.5">Status</th>
+                <th className="px-3.5 py-2.5">Data</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
               {(module.air?.metrics ?? []).map((m) => (
                 <tr key={m.metric}>
-                  <td className="py-2 pr-3 font-medium text-slate-200">{metricLabel(m.metric)}</td>
-                  <td className="py-2 pr-3 font-mono text-slate-100">
+                  <td className="px-3.5 py-2.5 font-medium text-slate-200">{metricLabel(m.metric)}</td>
+                  <td className="px-3 py-2.5 font-mono text-slate-100">
                     {round(m.value, m.metric === "co2" ? 2 : 1)} {m.unit}
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="px-3 py-2.5">
                     <StatusChip status={m.status} text={m.statusLabel} />
                     {m.statusReason && (
                       <span className="mt-0.5 block text-[10px] text-slate-400">{m.statusReason}</span>
                     )}
                   </td>
-                  <td className="py-2">
+                  <td className="px-3.5 py-2.5">
                     <TagChip tag={m.tag} />
                   </td>
                 </tr>
               ))}
               {module.infoMetrics.map((m) => (
                 <tr key={m.key}>
-                  <td className="py-2 pr-3 font-medium text-slate-200">{m.label}</td>
-                  <td className="py-2 pr-3 font-mono text-slate-300">
+                  <td className="px-3.5 py-2.5 font-medium text-slate-200">{m.label}</td>
+                  <td className="px-3 py-2.5 font-mono text-slate-300">
                     {round(m.value, 1)} {m.unit}
                   </td>
-                  <td className="py-2 pr-3 text-slate-400">information only</td>
-                  <td className="py-2">
+                  <td className="px-3 py-2.5 text-slate-400">information only</td>
+                  <td className="px-3.5 py-2.5">
                     <TagChip tag={m.tag} />
                   </td>
                 </tr>
@@ -612,65 +622,84 @@ export function EnvironmentHazardScreen({
   const openAlerts = model.alerts.filter((a) => !acked.includes(a.ackKey)).length;
 
   return (
-    <div className="space-y-4">
-      {/* Status source + data source */}
-      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-4 text-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-slate-400">Hazard status</span>
-            <span className={`rounded-md px-2 py-0.5 font-semibold ${HAZARD_STATUS_CHIP[snapshot.status]}`}>
+    <div className="space-y-6">
+      {/* 1. Closed-Habitat Atmosphere Briefing */}
+      <section className={`hud-panel rounded-lg border p-5 ${HAZARD_STATUS_PANEL[snapshot.status]}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${HAZARD_STATUS_CHIP[snapshot.status]}`}
+            >
+              <Wind className="h-3.5 w-3.5" aria-hidden="true" />
               {snapshot.status}
             </span>
-            <span className="text-slate-400">= worse of</span>
-            <span className={`rounded-md px-2 py-0.5 ${HAZARD_STATUS_CHIP[breakdown.airStatus]}`}>
-              Air: {model.hasData ? breakdown.airStatus : "no data"}
-            </span>
-            <span className="text-slate-400">and</span>
-            <span
-              className={`rounded-md px-2 py-0.5 ${HAZARD_STATUS_CHIP[breakdown.readinessStatus]} ${
-                breakdown.raisedByReadiness ? "ring-1 ring-current" : ""
-              }`}
-            >
-              Readiness: {breakdown.readinessState}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <LimitsInfo />
+            <h2 className="font-display text-base font-bold text-slate-100">
+              Closed-Habitat Atmosphere Briefing
+            </h2>
             <InfoCircle
               entry={ENVIRONMENT_RESEARCH_METADATA.habitat_air_briefing}
               activeInfo={activeInfo}
               onSelectInfo={setActiveInfo}
             />
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#3B82F6]/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">
+              {role === "lead" ? (
+                <>
+                  <Users className="h-3 w-3" /> Commander View (All Crew)
+                </>
+              ) : (
+                <>
+                  <Lock className="h-3 w-3" /> Personal View ({activeCharacter.callsign})
+                </>
+              )}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <LimitsInfo />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#0B111F] px-2.5 py-1 text-xs font-medium text-slate-300">
+              <Clock className="h-3.5 w-3.5 text-[#3B82F6]" aria-hidden="true" />
+              {snapshot.eta}
+            </span>
           </div>
         </div>
-        {breakdown.raisedByReadiness && (
-          <p className="rounded-md border border-[#D97706]/35 bg-[#D97706]/12 px-3 py-2 text-amber-200">
-            {breakdown.readinessStatus} comes from {activeCharacter.callsign}&apos;s readiness (
-            {breakdown.readinessState}), not from the module air.
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`rounded-md px-2 py-0.5 font-medium ${HAZARD_STATUS_CHIP[breakdown.airStatus]}`}>
+            Air: {model.hasData ? breakdown.airStatus : "no data"}
+          </span>
+          <span
+            className={`rounded-md px-2 py-0.5 font-medium ${HAZARD_STATUS_CHIP[breakdown.readinessStatus]} ${
+              breakdown.raisedByReadiness ? "ring-1 ring-current" : ""
+            }`}
+          >
+            Readiness: {breakdown.readinessState}
+          </span>
           {model.dataBadge && (
-            <span className="rounded-md border border-[#DC2626]/50 bg-[#DC2626]/20 px-2.5 py-1 text-[11px] font-bold tracking-wide text-red-200">
+            <span className="rounded-md border border-[#DC2626]/50 bg-[#DC2626]/20 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-red-200">
               {model.dataBadge}
             </span>
           )}
           {model.dataTag === "REAL" && (
-            <span className="rounded-md border border-[#3B82F6]/35 bg-[#3B82F6]/15 px-2.5 py-1 text-[11px] font-semibold text-blue-300">
+            <span className="rounded-md border border-[#3B82F6]/35 bg-[#3B82F6]/15 px-2.5 py-0.5 text-[11px] font-semibold text-blue-300">
               CO2: REAL · NASA OSDR EDA
             </span>
           )}
           {model.latestLabel && (
-            <span className="rounded-md border border-slate-800 bg-[#060A14] px-2 py-1 font-mono text-[11px] text-slate-300">
+            <span className="rounded-md border border-slate-800 bg-[#0B111F] px-2.5 py-0.5 font-mono text-[11px] text-slate-300">
               latest sample: {model.latestLabel}
             </span>
           )}
-          <span className="rounded-md border border-slate-800 bg-[#060A14] px-2 py-1 text-[11px] text-slate-300">
-            {role === "lead" ? "Lead view" : "Member view"}
-          </span>
         </div>
+
+        {breakdown.raisedByReadiness && (
+          <p className="mt-3 rounded-lg border border-[#D97706]/35 bg-[#D97706]/12 px-3 py-2 text-xs text-amber-200">
+            {breakdown.readinessStatus} comes from {activeCharacter.callsign}&apos;s readiness (
+            {breakdown.readinessState}), not from the module air.
+          </p>
+        )}
+
         {!model.hasData && (
-          <p className="rounded-md border border-slate-800 bg-[#060A14] px-3 py-2 text-slate-400">
+          <p className="mt-3 rounded-lg border border-slate-800 bg-[#0B111F] px-3 py-2 text-xs text-slate-400">
             No Hazard 5 samples in the database yet. Module values appear when samples are written to{" "}
             {V.modules.map((m, i) => (
               <React.Fragment key={m.id}>
@@ -682,16 +711,16 @@ export function EnvironmentHazardScreen({
         )}
       </section>
 
-      {/* Alerts */}
-      <section className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-sm font-semibold text-slate-100">CO2 alerts</h2>
+      {/* 2. Alerts & Recommended Actions */}
+      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-bold text-slate-100">CO2 Alerts</h2>
           <span className="font-mono text-[11px] text-slate-400">
             {model.alerts.length} active · {openAlerts} not acknowledged
           </span>
         </div>
         {model.alerts.length === 0 ? (
-          <p className="flex items-center gap-2 rounded-xl border border-slate-800 bg-[#0B111F] p-3 text-xs text-slate-300">
+          <p className="flex items-center gap-2 rounded-xl border border-slate-800 bg-[#060A14] p-3 text-xs text-slate-300">
             <CircleCheck className="h-4 w-4 text-emerald-400" aria-hidden /> No CO2 alerts.
           </p>
         ) : (
@@ -707,11 +736,9 @@ export function EnvironmentHazardScreen({
           </div>
         )}
         {snapshot.solutions.length > 0 && (
-          <div className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-3 text-xs">
-            <p className="font-display font-semibold text-slate-100">
-              Recommended now
-            </p>
-            <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-slate-300">
+          <div className="rounded-xl border border-slate-800 bg-[#060A14] p-3.5 text-xs">
+            <p className="font-display font-semibold text-slate-100">Recommended now</p>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-slate-300">
               {snapshot.solutions.map((s) => (
                 <li key={s}>{s}</li>
               ))}
@@ -720,11 +747,11 @@ export function EnvironmentHazardScreen({
         )}
       </section>
 
-      {/* Feature 1: Habitat Map */}
-      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-4">
+      {/* 3. Habitat Map */}
+      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-sm font-semibold text-slate-100">Habitat map — air layer</h2>
+            <h2 className="font-display text-sm font-bold text-slate-100">Habitat Map — Air Layer</h2>
             <InfoCircle
               entry={ENVIRONMENT_RESEARCH_METADATA.module_acoustics}
               activeInfo={activeInfo}
@@ -754,12 +781,12 @@ export function EnvironmentHazardScreen({
         <ModuleDetails module={selected} />
       </section>
 
-      {/* Feature 2: CO2 forecast */}
-      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-4">
+      {/* 4. CO2 Forecast */}
+      <section className="hud-panel space-y-3 rounded-lg border border-slate-800 bg-[#0B111F] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-sm font-semibold text-slate-100">
-              Air risk forecast — CO2 and headache odds
+            <h2 className="font-display text-sm font-bold text-slate-100">
+              Air Risk Forecast — CO2 &amp; Headache Odds
             </h2>
             <InfoCircle
               entry={ENVIRONMENT_RESEARCH_METADATA.co2_headache_risk}
@@ -791,32 +818,32 @@ export function EnvironmentHazardScreen({
         </div>
       </section>
 
-      {/* Ledger */}
-      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-4 text-xs">
-        <h2 className="font-display text-sm font-semibold text-slate-100">
-          CO2 ledger (since the first sample)
+      {/* 5. Ledger */}
+      <section className="hud-panel rounded-lg border border-slate-800 bg-[#0B111F] p-5 text-xs">
+        <h2 className="font-display text-sm font-bold text-slate-100">
+          CO2 Ledger (Since First Sample)
         </h2>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[360px] text-left">
-            <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800">
+          <table className="w-full min-w-[360px] text-left text-xs">
+            <thead className="bg-[#060A14] text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               <tr>
-                <th className="py-1.5 pr-3 font-medium">Module</th>
-                <th className="py-1.5 pr-3 font-medium">Minutes above {V.limits.co2TargetMmhg} mmHg</th>
-                <th className="py-1.5 font-medium">Max CO2</th>
+                <th className="px-3.5 py-2.5">Module</th>
+                <th className="px-3 py-2.5">Minutes above {V.limits.co2TargetMmhg} mmHg</th>
+                <th className="px-3.5 py-2.5">Max CO2</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
               {model.modules.map((m) => (
-                <tr key={m.moduleId}>
-                  <td className="py-2 pr-3 font-medium text-slate-200">{m.moduleName}</td>
+                <tr key={m.moduleId} className="bg-[#0B111F]">
+                  <td className="px-3.5 py-2.5 font-medium text-slate-200">{m.moduleName}</td>
                   <td
-                    className={`py-2 pr-3 font-mono ${
+                    className={`px-3 py-2.5 font-mono ${
                       m.ledger && m.ledger.minutesAboveLimit > 0 ? "text-red-300" : "text-slate-300"
                     }`}
                   >
                     {m.ledger ? ledgerMinutes(m.ledger.minutesAboveLimit, model.timeBasis) : "—"}
                   </td>
-                  <td className="py-2 font-mono text-slate-200">
+                  <td className="px-3.5 py-2.5 font-mono text-slate-200">
                     {m.ledger ? `${round(m.ledger.maxCo2Mmhg, 2)} mmHg` : "—"}
                   </td>
                 </tr>
